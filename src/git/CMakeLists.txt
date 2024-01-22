@@ -10,7 +10,8 @@ add_library(${BIN_NAME} SHARED ${SRCS})
 target_link_libraries(${BIN_NAME}
     PRIVATE
     ${dfm-extension_LIBRARIES}
-    Qt${QT_VERSION_MAJOR}::Core
+    Qt5::Core
+    stdc++fs
     )
 
 install(TARGETS ${BIN_NAME} LIBRARY DESTINATION ${DFM_EXT_PLUGIN_DIR})
