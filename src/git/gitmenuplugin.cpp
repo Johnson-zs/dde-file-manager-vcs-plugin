@@ -49,7 +49,6 @@ bool GitMenuPlugin::buildEmptyAreaMenu(dfmext::DFMExtMenu *main, const std::stri
     auto logAct { m_proxy->createAction() };
     auto pushAct { m_proxy->createAction() };
     auto pullAct { m_proxy->createAction() };
-    auto seperatorAct { m_proxy->createAction() };
 
     // TODO: check git repositor statte
 
@@ -57,13 +56,11 @@ bool GitMenuPlugin::buildEmptyAreaMenu(dfmext::DFMExtMenu *main, const std::stri
     logAct->setText("Git Log...");
     pushAct->setText("Git Push...");
     pullAct->setText("Git Pull...");
-    seperatorAct->setSeparator(true);
 
     main->addAction(checkoutAct);
     main->addAction(logAct);
     main->addAction(pushAct);
     main->addAction(pullAct);
-    main->addAction(seperatorAct);
 
     return true;
 }
