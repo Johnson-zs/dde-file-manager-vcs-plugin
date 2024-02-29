@@ -4,7 +4,7 @@
 
 namespace Utils {
 
-QString localRepositoryRoot(const QString &directory)
+QString repositoryBaseDir(const QString &directory)
 {
     QProcess process;
     process.setWorkingDirectory(directory);
@@ -14,13 +14,34 @@ QString localRepositoryRoot(const QString &directory)
     return QString();
 }
 
-bool isGitRepository(const QString &directory)
+QString findPathBelowGitBaseDir(const QString &directory)
+{
+    QProcess process;
+    process.setWorkingDirectory(directory);
+    process.start("git", { "rev-parse", "--show-prefix" });
+    QString dirBelowBaseDir;
+    while (process.waitForReadyRead()) {
+        char buffer[512];
+        while (process.readLine(buffer, sizeof(buffer)) > 0) {
+            dirBelowBaseDir = QString(buffer).trimmed();   // ends in "/" or is empty
+        }
+    }
+    return dirBelowBaseDir;
+}
+
+bool isInsideRepositoryDir(const QString &directory)
 {
     QProcess process;
     process.setWorkingDirectory(directory);
     process.start("git", { "rev-parse", "--is-inside-work-tree" });
     if (process.waitForFinished(1000) && process.exitCode() == 0)
         return true;
+    return false;
+}
+
+bool isInsideRepositoryFile(const QString &path)
+{
+    // TODO: cache
     return false;
 }
 

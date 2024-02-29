@@ -4,6 +4,7 @@
 #include <dfm-extension/menu/dfmextmenu.h>
 #include <dfm-extension/menu/dfmextmenuproxy.h>
 #include <dfm-extension/menu/dfmextaction.h>
+#include <dfm-extension/window/dfmextwindowplugin.h>
 
 #include <QObject>
 
@@ -42,7 +43,7 @@ bool GitMenuPlugin::buildEmptyAreaMenu(dfmext::DFMExtMenu *main, const std::stri
 {
     if (onDesktop)
         return false;
-    if (!Utils::isGitRepository(QString::fromStdString(currentPath)))
+    if (!Utils::isInsideRepositoryDir(QString::fromStdString(currentPath)))
         return false;
 
     auto checkoutAct { m_proxy->createAction() };
@@ -50,7 +51,7 @@ bool GitMenuPlugin::buildEmptyAreaMenu(dfmext::DFMExtMenu *main, const std::stri
     auto pushAct { m_proxy->createAction() };
     auto pullAct { m_proxy->createAction() };
 
-    // TODO: check git repositor statte
+    // TODO: check git repositor state
 
     checkoutAct->setText("Git Checkout...");
     logAct->setText("Git Log...");

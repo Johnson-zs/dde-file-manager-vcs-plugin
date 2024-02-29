@@ -4,8 +4,10 @@
 #include <QString>
 
 namespace Utils {
-QString localRepositoryRoot(const QString &directory);
-bool isGitRepository(const QString &directory);
+QString repositoryBaseDir(const QString &directory);
+QString findPathBelowGitBaseDir(const QString &directory);
+bool isInsideRepositoryDir(const QString &directory);
+bool isInsideRepositoryFile(const QString &path);
 }   // namespace Utils
 
 #endif   // UTILS_H
