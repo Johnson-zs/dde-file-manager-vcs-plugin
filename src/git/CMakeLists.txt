@@ -1,11 +1,17 @@
 set(BIN_NAME dfm-extension-git)
 
 file(GLOB_RECURSE SRCS CONFIGURE_DEPENDS
+    "${PROJECT_SOURCE_DIR}/include/*"
     "./*.h"
     "./*.cpp"
+    "../cache.cpp"
 )
 
-add_library(${BIN_NAME} SHARED ${SRCS})
+add_library(${BIN_NAME} SHARED ${SRCS}
+    )
+
+target_include_directories(${BIN_NAME} PUBLIC
+    ${PROJECT_SOURCE_DIR}/include)
 
 target_link_libraries(${BIN_NAME}
     PRIVATE

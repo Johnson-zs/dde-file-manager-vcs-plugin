@@ -1,8 +1,12 @@
 #include <dfm-extension/dfm-extension.h>
 
+#include <cache.h>
+
 #include "gitemblemiconplugin.h"
 #include "gitmenuplugin.h"
 #include "gitwindowplugin.h"
+
+#include <QCoreApplication>
 
 static DFMEXT::DFMExtMenuPlugin *gitMenu { nullptr };
 static DFMEXT::DFMExtEmblemIconPlugin *gitEmblemIcon { nullptr };
@@ -11,9 +15,11 @@ static DFMEXT::DFMExtWindowPlugin *gitWindowPlugin { nullptr };
 extern "C" {
 void dfm_extension_initiliaze()
 {
-    gitMenu = new GitMenuPlugin;
-    gitEmblemIcon = new GitEmblemIconPlugin;
-    gitWindowPlugin = new GitWindowPlugin;
+    if (qApp->applicationName() == "dde-file-manager") {
+        gitMenu = new GitMenuPlugin;
+        gitEmblemIcon = new GitEmblemIconPlugin;
+        gitWindowPlugin = new GitWindowPlugin;
+    }
 }
 
 void dfm_extension_shutdown()

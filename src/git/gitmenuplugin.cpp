@@ -1,5 +1,4 @@
 #include "gitmenuplugin.h"
-#include "utils.h"
 
 #include <dfm-extension/menu/dfmextmenu.h>
 #include <dfm-extension/menu/dfmextmenuproxy.h>
@@ -7,6 +6,8 @@
 #include <dfm-extension/window/dfmextwindowplugin.h>
 
 #include <QObject>
+
+#include "utils.h"
 
 USING_DFMEXT_NAMESPACE
 
