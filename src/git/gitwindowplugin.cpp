@@ -11,43 +11,15 @@
 
 using Global::ItemVersion;
 
-GitWindowPlugin::GitWindowPlugin()
+void GitVersionWorker::retrieval(const QUrl &url)
 {
-    registerWindowUrlChanged([this](std::uint64_t winId, const std::string &urlString) {
-        return windowUrlChanged(winId, urlString);
-    });
-    registerWindowClosed([this](std::uint64_t winId) {
-        windowClosed(winId);
-    });
-}
-
-void GitWindowPlugin::windowUrlChanged(std::uint64_t winId, const std::string &urlString)
-{
-    Q_UNUSED(winId)
-    const QUrl &url { QString::fromStdString(urlString) };
-    if (!url.isValid() || !url.isLocalFile())
-        return;
-
     if (!Utils::isInsideRepositoryDir(url.toLocalFile()))
         return;
 
     const QString &directory { url.toLocalFile() + "/" };
-    // TODO: 监控仓库中任意文件变化
-    // TODO: 监控 .git ?
-    if (retrieval(directory))
-        m_repoWatcher.startWatching(Utils::repositoryBaseDir(directory));
-}
-
-void GitWindowPlugin::windowClosed(std::uint64_t winId)
-{
-    // TODO: release memory
-}
-
-bool GitWindowPlugin::retrieval(const QString &directory)
-{
     const QString &repositoryPath { Utils::repositoryBaseDir(directory) };
     if (Q_UNLIKELY(repositoryPath.isEmpty()))
-        return false;
+        return;
 
     // clear version
     Global::Cache::instance().removeVersion(repositoryPath);
@@ -112,5 +84,45 @@ bool GitWindowPlugin::retrieval(const QString &directory)
 
     // save version
     Global::Cache::instance().addVersion(repositoryPath, versionInfoHash);
-    return true;
+}
+
+GitVersionController::GitVersionController()
+{
+    GitVersionWorker *worker { new GitVersionWorker };
+    worker->moveToThread(&m_thread);
+    connect(&m_thread, &QThread::finished, worker, &QObject::deleteLater);
+    connect(this, &GitVersionController::requestRetrieval, worker, &GitVersionWorker::retrieval);
+
+    m_thread.start();
+}
+
+GitVersionController::~GitVersionController()
+{
+    m_thread.quit();
+    m_thread.wait(3000);
+}
+
+GitWindowPlugin::GitWindowPlugin()
+{
+    registerWindowUrlChanged([this](std::uint64_t winId, const std::string &urlString) {
+        return windowUrlChanged(winId, urlString);
+    });
+    registerWindowClosed([this](std::uint64_t winId) {
+        windowClosed(winId);
+    });
+}
+
+void GitWindowPlugin::windowUrlChanged(std::uint64_t winId, const std::string &urlString)
+{
+    Q_UNUSED(winId)
+    const QUrl &url { QString::fromStdString(urlString) };
+    if (!url.isValid() || !url.isLocalFile())
+        return;
+
+    emit m_controller.requestRetrieval(url);
+}
+
+void GitWindowPlugin::windowClosed(std::uint64_t winId)
+{
+    // TODO: release memory
 }
