@@ -8,7 +8,7 @@ Cache &Cache::instance()
     return ins;
 }
 
-void Cache::addVersion(const QString &repositoryPath, QHash<QString, ItemVersion> versionInfo)
+void Cache::resetVersion(const QString &repositoryPath, QHash<QString, ItemVersion> versionInfo)
 {
     QMutexLocker locker { &m_mutex };
     m_repositories.insert(repositoryPath, versionInfo);

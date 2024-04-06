@@ -11,22 +11,11 @@
 
 using Global::ItemVersion;
 
-void GitVersionWorker::retrieval(const QUrl &url)
+static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
 {
-    if (!Utils::isInsideRepositoryDir(url.toLocalFile()))
-        return;
-
-    const QString &directory { url.toLocalFile() + "/" };
-    const QString &repositoryPath { Utils::repositoryBaseDir(directory) };
-    if (Q_UNLIKELY(repositoryPath.isEmpty()))
-        return;
-
-    // clear version
-    Global::Cache::instance().removeVersion(repositoryPath);
-
     // cache git status for current path
     QProcess process;
-    process.setWorkingDirectory(repositoryPath);
+    process.setWorkingDirectory(directory);
     process.start("git", { "--no-optional-locks", "status", "--porcelain", "-z", "-u", "--ignored" });
     const QString &dirBelowBaseDir { Utils::findPathBelowGitBaseDir(directory) };
     QHash<QString, ItemVersion> versionInfoHash;
@@ -49,7 +38,7 @@ void GitVersionWorker::retrieval(const QUrl &url)
 
             // File name relative to the current working directory.
             const QString &relativeFileName { fileName.mid(dirBelowBaseDir.length()) };
-            const QString &absoluteFileName { directory + relativeFileName };
+            const QString &absoluteFileName { directory + "/" + relativeFileName };
             Q_ASSERT(QUrl::fromLocalFile(absoluteFileName).isValid());
             // normal file, no directory
             versionInfoHash.insert(absoluteFileName, state);
@@ -82,8 +71,24 @@ void GitVersionWorker::retrieval(const QUrl &url)
         }
     }
 
-    // save version
-    Global::Cache::instance().addVersion(repositoryPath, versionInfoHash);
+    return versionInfoHash;
+}
+
+void GitVersionWorker::onRetrieval(const QUrl &url)
+{
+    if (!Utils::isInsideRepositoryDir(url.toLocalFile()))
+        return;
+
+    const QString &directory { url.toLocalFile() };
+    const QString &repositoryPath { Utils::repositoryBaseDir(directory) };
+    if (Q_UNLIKELY(repositoryPath.isEmpty()))
+        return;
+
+    // retrival
+    const auto &versionInfoHash { ::retrieval(directory) };
+
+    // reset version
+    Global::Cache::instance().resetVersion(repositoryPath, versionInfoHash);
 }
 
 GitVersionController::GitVersionController()
@@ -91,7 +96,7 @@ GitVersionController::GitVersionController()
     GitVersionWorker *worker { new GitVersionWorker };
     worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, worker, &QObject::deleteLater);
-    connect(this, &GitVersionController::requestRetrieval, worker, &GitVersionWorker::retrieval);
+    connect(this, &GitVersionController::requestRetrieval, worker, &GitVersionWorker::onRetrieval);
 
     m_thread.start();
 }
@@ -111,7 +116,7 @@ GitWindowPlugin::GitWindowPlugin()
         windowClosed(winId);
     });
 }
-
+#include <QDebug>
 void GitWindowPlugin::windowUrlChanged(std::uint64_t winId, const std::string &urlString)
 {
     Q_UNUSED(winId)
@@ -120,6 +125,8 @@ void GitWindowPlugin::windowUrlChanged(std::uint64_t winId, const std::string &u
         return;
 
     emit m_controller.requestRetrieval(url);
+
+    // TODO: remove ignroed dir
 }
 
 void GitWindowPlugin::windowClosed(std::uint64_t winId)

@@ -14,7 +14,7 @@ class Cache : public QObject
 public:
     static Cache &instance();
 
-    void addVersion(const QString &repositoryPath, QHash<QString, ItemVersion> versionInfo);
+    void resetVersion(const QString &repositoryPath, QHash<QString, ItemVersion> versionInfo);
     void removeVersion(const QString &repositoryPath);
     ItemVersion version(const QString &filePath);
     QStringList allRepositoryPaths();

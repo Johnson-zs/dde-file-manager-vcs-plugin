@@ -6,14 +6,12 @@
 #include <QString>
 #include <QThread>
 
-#include "gitrepowatcher.h"
-
 class GitVersionWorker : public QObject
 {
     Q_OBJECT
 
 public Q_SLOTS:
-    void retrieval(const QUrl &url);
+    void onRetrieval(const QUrl &url);
 };
 
 class GitVersionController : public QObject
@@ -42,7 +40,6 @@ public:
 
 private:
     GitVersionController m_controller;
-    GitRepoWatcher m_repoWatcher;
 };
 
 #endif   // GITWINDOWPLUGIN_H

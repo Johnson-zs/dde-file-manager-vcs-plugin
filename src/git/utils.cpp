@@ -124,7 +124,7 @@ QStringList makeDirGroup(const QString &directory, const QString &relativeFileNa
     QStringList group;
     int index = relativeFileName.indexOf('/');
     while (index != -1) {
-        group.append(directory + relativeFileName.left(index));
+        group.append(directory + "/" + relativeFileName.left(index));
         index = relativeFileName.indexOf('/', index + 1);
     }
     return group;
