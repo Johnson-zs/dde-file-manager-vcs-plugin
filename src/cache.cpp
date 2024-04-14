@@ -11,7 +11,8 @@ Cache &Cache::instance()
 void Cache::resetVersion(const QString &repositoryPath, QHash<QString, ItemVersion> versionInfo)
 {
     QMutexLocker locker { &m_mutex };
-    m_repositories.insert(repositoryPath, versionInfo);
+    if (m_repositories.value(repositoryPath) != versionInfo)
+        m_repositories.insert(repositoryPath, versionInfo);
 }
 
 void Cache::removeVersion(const QString &repositoryPath)

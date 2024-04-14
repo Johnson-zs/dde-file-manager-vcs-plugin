@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QTextCodec>
 #include <QFileInfo>
+#include <QCoreApplication>
 
 #include <cache.h>
 
@@ -87,16 +88,25 @@ void GitVersionWorker::onRetrieval(const QUrl &url)
     // retrival
     const auto &versionInfoHash { ::retrieval(directory) };
 
+    if (!Global::Cache::instance().allRepositoryPaths().contains(repositoryPath))
+        emit newRepositoryAdded(repositoryPath);
+
     // reset version
     Global::Cache::instance().resetVersion(repositoryPath, versionInfoHash);
 }
 
 GitVersionController::GitVersionController()
 {
+    Q_ASSERT(qApp->thread() == QThread::currentThread());
+    Q_ASSERT(!m_timer);
+
     GitVersionWorker *worker { new GitVersionWorker };
     worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, worker, &QObject::deleteLater);
-    connect(this, &GitVersionController::requestRetrieval, worker, &GitVersionWorker::onRetrieval);
+    connect(this, &GitVersionController::requestRetrieval,
+            worker, &GitVersionWorker::onRetrieval, Qt::QueuedConnection);
+    connect(worker, &GitVersionWorker::newRepositoryAdded,
+            this, &GitVersionController::onNewRepositoryAdded, Qt::QueuedConnection);
 
     m_thread.start();
 }
@@ -105,6 +115,32 @@ GitVersionController::~GitVersionController()
 {
     m_thread.quit();
     m_thread.wait(3000);
+}
+
+void GitVersionController::onNewRepositoryAdded(const QString &path)
+{
+    Q_UNUSED(path);
+
+    if (m_timer)
+        return;
+
+    // init timer
+    static std::once_flag flag;
+    std::call_once(flag, [this]() {
+        m_timer = new QTimer(this);
+        connect(m_timer, &QTimer::timeout, this, &GitVersionController::onTimeout);
+        m_timer->start(2000);
+    });
+}
+
+void GitVersionController::onTimeout()
+{
+    const auto &paths { Global::Cache::instance().allRepositoryPaths() };
+    std::for_each(paths.begin(), paths.end(), [this](const auto &path) {
+        const QUrl &url { QUrl::fromLocalFile(path) };
+        if (url.isValid())
+            emit requestRetrieval(url);
+    });
 }
 
 GitWindowPlugin::GitWindowPlugin()
@@ -116,7 +152,7 @@ GitWindowPlugin::GitWindowPlugin()
         windowClosed(winId);
     });
 }
-#include <QDebug>
+
 void GitWindowPlugin::windowUrlChanged(std::uint64_t winId, const std::string &urlString)
 {
     Q_UNUSED(winId)
@@ -124,7 +160,9 @@ void GitWindowPlugin::windowUrlChanged(std::uint64_t winId, const std::string &u
     if (!url.isValid() || !url.isLocalFile())
         return;
 
-    emit m_controller.requestRetrieval(url);
+    if (!m_controller)
+        m_controller.reset(new GitVersionController);
+    emit m_controller->requestRetrieval(url);
 
     // TODO: remove ignroed dir
 }
