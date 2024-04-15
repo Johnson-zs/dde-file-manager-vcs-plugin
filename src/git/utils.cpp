@@ -13,7 +13,7 @@ QString repositoryBaseDir(const QString &directory)
     QProcess process;
     process.setWorkingDirectory(directory);
     process.start("git", { "rev-parse", "--show-toplevel" });
-    if (process.waitForReadyRead(1000) && process.exitCode() == 0)
+    if (process.waitForFinished(1000) && process.exitCode() == 0)
         return QString::fromUtf8(process.readAll().chopped(1));
     return QString();
 }
