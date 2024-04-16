@@ -20,6 +20,7 @@ GitEmblemIconPlugin::GitEmblemIconPlugin()
 // work in thread
 DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePath, int systemIconCount) const
 {
+    Q_UNUSED(systemIconCount)
     using Global::ItemVersion;
     const QString &path { QString::fromStdString(filePath) };
     DFMExtEmblem emblem;

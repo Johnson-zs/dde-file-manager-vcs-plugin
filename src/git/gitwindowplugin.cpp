@@ -86,7 +86,9 @@ void GitVersionWorker::onRetrieval(const QUrl &url)
         return;
 
     // retrival
-    const auto &versionInfoHash { ::retrieval(directory) };
+    auto versionInfoHash { ::retrieval(directory) };
+    if (versionInfoHash.isEmpty())
+        versionInfoHash.insert(repositoryPath, ItemVersion::NormalVersion);
 
     if (!Global::Cache::instance().allRepositoryPaths().contains(repositoryPath))
         emit newRepositoryAdded(repositoryPath);
