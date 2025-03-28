@@ -1,0 +1,7 @@
+dde-file-manager-vcs-plugin (0.1.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Added Git integration for Deepin File Manager.
+  * Supports file emblems, context menus, and status monitoring.
+
+ -- zhangsheng <zhangsheng@uniontech.com>  Fri, 28 Mar 2025 16:38:20 +0800

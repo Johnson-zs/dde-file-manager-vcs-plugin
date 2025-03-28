@@ -16,7 +16,8 @@ target_include_directories(${BIN_NAME} PUBLIC
 target_link_libraries(${BIN_NAME}
     PRIVATE
     ${dfm-extension_LIBRARIES}
-    Qt5::Core
+    Qt6::Core
+    Qt6::Core5Compat
     stdc++fs
     )
 
