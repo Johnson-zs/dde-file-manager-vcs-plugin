@@ -34,10 +34,11 @@ private Q_SLOTS:
     void onRefreshClicked();
     void onBranchChanged();
     void onSearchTextChanged();
+    void onLoadMoreClicked();
     
 private:
     void setupUI();
-    void loadCommitHistory();
+    void loadCommitHistory(bool append = false);
     void loadBranches();
     void setupCommitList();
     void setupCommitDetails();
@@ -54,12 +55,17 @@ private:
     QComboBox *m_branchCombo;
     QLineEdit *m_searchEdit;
     QPushButton *m_refreshButton;
+    QPushButton *m_loadMoreButton;
     
     // 右上：提交详情
     QTextEdit *m_commitDetails;
     
     // 右下：文件差异
     QTextEdit *m_diffView;
+    
+    // 分页相关
+    int m_currentOffset;
+    static const int COMMITS_PER_PAGE = 100;
 };
 
 /**

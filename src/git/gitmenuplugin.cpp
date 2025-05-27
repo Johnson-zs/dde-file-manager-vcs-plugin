@@ -8,6 +8,7 @@
 #include <QWidget>
 #include <QApplication>
 #include <QFileInfo>
+#include <QDir>
 
 #include "utils.h"
 #include "gitdialogs.h"
@@ -229,9 +230,13 @@ void GitMenuPlugin::handleGitAdd(const std::string &filePath)
         return;
     }
 
-    qInfo() << "INFO: [GitMenuPlugin::handleGitAdd] Adding file:" << file;
+    // 计算相对于仓库根目录的路径
+    QString relativePath = QDir(repoPath).relativeFilePath(file);
+    
+    qInfo() << "INFO: [GitMenuPlugin::handleGitAdd] Adding file:" << file 
+            << "relative path:" << relativePath;
 
-    QStringList args { "add", file };
+    QStringList args { "add", relativePath };
     executeGitOperation("Add", repoPath, args);
 }
 
@@ -245,9 +250,30 @@ void GitMenuPlugin::handleGitRemove(const std::string &filePath)
         return;
     }
 
-    qInfo() << "INFO: [GitMenuPlugin::handleGitRemove] Removing file:" << file;
+    // 计算相对于仓库根目录的路径
+    QString relativePath = QDir(repoPath).relativeFilePath(file);
+    
+    qInfo() << "INFO: [GitMenuPlugin::handleGitRemove] Removing file:" << file
+            << "relative path:" << relativePath;
 
-    QStringList args { "rm", "--cached", file };
+    // 根据文件状态选择合适的删除命令
+    auto status = Utils::getFileGitStatus(file);
+    QStringList args;
+    
+    using Global::ItemVersion;
+    if (status == ItemVersion::AddedVersion) {
+        // 如果是新添加的文件，使用 reset 来取消暂存
+        args << "reset" << "HEAD" << relativePath;
+    } else if (status == ItemVersion::NormalVersion || 
+               status == ItemVersion::LocallyModifiedVersion ||
+               status == ItemVersion::LocallyModifiedUnstagedVersion) {
+        // 对于已跟踪的文件，使用 rm --cached 从暂存区删除但保留工作目录文件
+        args << "rm" << "--cached" << relativePath;
+    } else {
+        // 其他情况使用默认的 rm --cached
+        args << "rm" << "--cached" << relativePath;
+    }
+    
     executeGitOperation("Remove", repoPath, args);
 }
 
@@ -261,9 +287,31 @@ void GitMenuPlugin::handleGitRevert(const std::string &filePath)
         return;
     }
 
-    qInfo() << "INFO: [GitMenuPlugin::handleGitRevert] Reverting file:" << file;
+    // 计算相对于仓库根目录的路径
+    QString relativePath = QDir(repoPath).relativeFilePath(file);
+    
+    qInfo() << "INFO: [GitMenuPlugin::handleGitRevert] Reverting file:" << file
+            << "relative path:" << relativePath;
 
-    QStringList args { "checkout", "HEAD", "--", file };
+    // 根据文件状态选择合适的还原命令
+    auto status = Utils::getFileGitStatus(file);
+    QStringList args;
+    
+    using Global::ItemVersion;
+    if (status == ItemVersion::LocallyModifiedUnstagedVersion) {
+        // 对于工作目录中的修改，使用 restore 命令（Git 2.23+）或 checkout
+        args << "restore" << relativePath;
+    } else if (status == ItemVersion::LocallyModifiedVersion) {
+        // 对于暂存区的修改，先取消暂存再还原
+        args << "restore" << "--staged" << "--worktree" << relativePath;
+    } else if (status == ItemVersion::AddedVersion) {
+        // 对于新添加的文件，使用 reset 取消暂存
+        args << "reset" << "HEAD" << relativePath;
+    } else {
+        // 默认使用 checkout 命令（兼容旧版本Git）
+        args << "checkout" << "HEAD" << "--" << relativePath;
+    }
+    
     executeGitOperation("Revert", repoPath, args);
 }
 
