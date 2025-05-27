@@ -1,5 +1,4 @@
 set(BIN_NAME dfm-extension-git)
-
 file(GLOB_RECURSE SRCS CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/include/*"
     "./*.h"
@@ -18,6 +17,8 @@ target_link_libraries(${BIN_NAME}
     ${dfm-extension_LIBRARIES}
     Qt6::Core
     Qt6::Core5Compat
+    Qt6::Widgets
+    Qt6::Gui
     stdc++fs
     )
 

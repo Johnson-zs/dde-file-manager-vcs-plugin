@@ -19,6 +19,13 @@ Global::ItemVersion parseXYState(Global::ItemVersion state, char X, char Y);
 QStringList makeDirGroup(const QString &directory, const QString &relativeFileName);
 bool isDirectoryEmpty(const QString &path);
 bool isIgnoredDirectory(const QString &directory, const QString &path);
+
+// Git 操作状态检查函数
+bool canAddFile(const QString &filePath);
+bool canRemoveFile(const QString &filePath);
+bool canRevertFile(const QString &filePath);
+bool canShowFileLog(const QString &filePath);
+Global::ItemVersion getFileGitStatus(const QString &filePath);
 }   // namespace Utils
 
 #endif   // UTILS_H

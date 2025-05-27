@@ -149,4 +149,66 @@ bool isIgnoredDirectory(const QString &directory, const QString &path)
     return false;
 }
 
+Global::ItemVersion getFileGitStatus(const QString &filePath)
+{
+    return Global::Cache::instance().version(filePath);
+}
+
+bool canAddFile(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath))
+        return false;
+    
+    auto status = getFileGitStatus(filePath);
+    using Global::ItemVersion;
+    
+    // 可以添加的文件状态：未版本控制、本地修改(未暂存)、忽略的文件可以强制添加
+    return status == ItemVersion::UnversionedVersion 
+           || status == ItemVersion::LocallyModifiedUnstagedVersion
+           || status == ItemVersion::IgnoredVersion;
+}
+
+bool canRemoveFile(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath))
+        return false;
+    
+    auto status = getFileGitStatus(filePath);
+    using Global::ItemVersion;
+    
+    // 可以删除的文件状态：正常版本、本地修改、已添加
+    return status == ItemVersion::NormalVersion 
+           || status == ItemVersion::LocallyModifiedVersion
+           || status == ItemVersion::LocallyModifiedUnstagedVersion
+           || status == ItemVersion::AddedVersion;
+}
+
+bool canRevertFile(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath))
+        return false;
+    
+    auto status = getFileGitStatus(filePath);
+    using Global::ItemVersion;
+    
+    // 可以还原的文件状态：本地修改、冲突、已删除
+    return status == ItemVersion::LocallyModifiedVersion
+           || status == ItemVersion::LocallyModifiedUnstagedVersion
+           || status == ItemVersion::ConflictingVersion
+           || status == ItemVersion::RemovedVersion;
+}
+
+bool canShowFileLog(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath))
+        return false;
+    
+    auto status = getFileGitStatus(filePath);
+    using Global::ItemVersion;
+    
+    // 只要是在版本控制中的文件都可以查看日志（除了未版本控制和忽略的文件）
+    return status != ItemVersion::UnversionedVersion 
+           && status != ItemVersion::IgnoredVersion;
+}
+
 }   // namespace Utils
