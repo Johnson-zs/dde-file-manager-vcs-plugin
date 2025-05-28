@@ -13,6 +13,7 @@
 #include <QScrollArea>
 
 #include "utils.h"
+#include "gitcommandexecutor.h"
 
 // ============================================================================
 // GitLogDialog Implementation
@@ -312,123 +313,319 @@ void GitLogDialog::onLoadMoreClicked()
 }
 
 // ============================================================================
-// GitOperationDialog Implementation
+// GitOperationDialog Implementation - 重构版本
 // ============================================================================
 
 GitOperationDialog::GitOperationDialog(const QString &operation, QWidget *parent)
-    : QDialog(parent), m_operation(operation), m_process(nullptr), m_outputTimer(new QTimer(this))
+    : QDialog(parent)
+    , m_operation(operation)
+    , m_executionResult(GitCommandExecutor::Result::Success)
+    , m_statusLabel(nullptr)
+    , m_descriptionLabel(nullptr)
+    , m_progressBar(nullptr)
+    , m_outputText(nullptr)
+    , m_outputScrollArea(nullptr)
+    , m_cancelButton(nullptr)
+    , m_retryButton(nullptr)
+    , m_closeButton(nullptr)
+    , m_detailsButton(nullptr)
+    , m_outputWidget(nullptr)
+    , m_executor(new GitCommandExecutor(this))
+    , m_isExecuting(false)
+    , m_showDetails(false)
 {
     setupUI();
+    
+    // 连接GitCommandExecutor信号
+    connect(m_executor, &GitCommandExecutor::commandFinished,
+            this, &GitOperationDialog::onCommandFinished);
+    connect(m_executor, &GitCommandExecutor::outputReady,
+            this, &GitOperationDialog::onOutputReady);
+}
 
-    m_outputTimer->setInterval(100);
-    connect(m_outputTimer, &QTimer::timeout, this, &GitOperationDialog::updateOutput);
+GitOperationDialog::~GitOperationDialog()
+{
+    if (m_isExecuting) {
+        m_executor->cancelCurrentCommand();
+    }
 }
 
 void GitOperationDialog::setupUI()
 {
     setWindowTitle(tr("Git %1").arg(m_operation));
     setModal(true);
-    resize(600, 400);
+    setMinimumSize(500, 200);
+    resize(600, 300);
 
-    auto *layout = new QVBoxLayout(this);
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
 
-    m_statusLabel = new QLabel(tr("Preparing to %1...").arg(m_operation));
-    layout->addWidget(m_statusLabel);
+    setupProgressSection();
+    setupOutputSection();  
+    setupButtonSection();
 
+    mainLayout->addWidget(m_descriptionLabel);
+    mainLayout->addWidget(m_statusLabel);
+    mainLayout->addWidget(m_progressBar);
+    mainLayout->addWidget(m_outputWidget);
+    mainLayout->addLayout(static_cast<QLayout*>(m_detailsButton->parent()));
+
+    // 初始状态：隐藏输出区域
+    m_outputWidget->setVisible(false);
+    adjustSize();
+}
+
+void GitOperationDialog::setupProgressSection()
+{
+    // 操作描述标签
+    m_descriptionLabel = new QLabel;
+    m_descriptionLabel->setWordWrap(true);
+    QFont descFont = m_descriptionLabel->font();
+    descFont.setPointSize(descFont.pointSize() + 1);
+    m_descriptionLabel->setFont(descFont);
+
+    // 状态标签
+    m_statusLabel = new QLabel(tr("Preparing to execute %1 operation...").arg(m_operation));
+    m_statusLabel->setStyleSheet("QLabel { color: #555; }");
+
+    // 进度条
     m_progressBar = new QProgressBar;
-    m_progressBar->setRange(0, 0);   // 不确定进度
-    layout->addWidget(m_progressBar);
+    m_progressBar->setRange(0, 0); // 不确定进度模式
+    m_progressBar->setVisible(false);
+}
 
+void GitOperationDialog::setupOutputSection()
+{
+    // 输出文本区域
     m_outputText = new QTextEdit;
     m_outputText->setReadOnly(true);
     m_outputText->setFont(QFont("Consolas", 9));
-    layout->addWidget(m_outputText);
+    m_outputText->setMinimumHeight(200);
+    
+    // 设置样式
+    m_outputText->setStyleSheet(
+        "QTextEdit {"
+        "    background-color: #f8f8f8;"
+        "    border: 1px solid #ddd;"
+        "    border-radius: 4px;"
+        "    padding: 8px;"
+        "}"
+    );
 
+    // 创建可折叠的输出容器
+    m_outputWidget = new QWidget;
+    auto *outputLayout = new QVBoxLayout(m_outputWidget);
+    outputLayout->setContentsMargins(0, 0, 0, 0);
+    outputLayout->addWidget(new QLabel(tr("Command Output:")));
+    outputLayout->addWidget(m_outputText);
+}
+
+void GitOperationDialog::setupButtonSection()
+{
     auto *buttonLayout = new QHBoxLayout;
+    
+    // 详情按钮（切换输出显示）
+    m_detailsButton = new QPushButton(tr("Show Details"));
+    m_detailsButton->setCheckable(true);
+    connect(m_detailsButton, &QPushButton::toggled, this, &GitOperationDialog::onDetailsToggled);
+    
+    buttonLayout->addWidget(m_detailsButton);
     buttonLayout->addStretch();
 
+    // 重试按钮
+    m_retryButton = new QPushButton(tr("Retry"));
+    m_retryButton->setVisible(false);
+    connect(m_retryButton, &QPushButton::clicked, this, &GitOperationDialog::onRetryClicked);
+    buttonLayout->addWidget(m_retryButton);
+
+    // 取消按钮
+    m_cancelButton = new QPushButton(tr("Cancel"));
+    connect(m_cancelButton, &QPushButton::clicked, this, &GitOperationDialog::onCancelClicked);
+    buttonLayout->addWidget(m_cancelButton);
+
+    // 关闭按钮
     m_closeButton = new QPushButton(tr("Close"));
-    m_closeButton->setEnabled(false);
+    m_closeButton->setDefault(true);
+    m_closeButton->setVisible(false);
     connect(m_closeButton, &QPushButton::clicked, this, &QDialog::accept);
     buttonLayout->addWidget(m_closeButton);
 
-    layout->addLayout(buttonLayout);
+    // 创建容器widget用于buttonLayout
+    auto *buttonWidget = new QWidget;
+    buttonWidget->setLayout(buttonLayout);
 }
 
-void GitOperationDialog::executeCommand(const QString &workingDir, const QStringList &arguments)
+void GitOperationDialog::executeCommand(const QString &repoPath, const QStringList &arguments, int timeout)
 {
-    m_process = new QProcess(this);
-    m_process->setWorkingDirectory(workingDir);
-
-    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &GitOperationDialog::onProcessFinished);
-    connect(m_process, &QProcess::errorOccurred,
-            this, &GitOperationDialog::onProcessError);
-
+    // 保存参数用于重试
+    m_lastRepoPath = repoPath;
+    m_lastArguments = arguments;
+    
+    // 更新UI状态
+    updateUIState(true);
+    m_outputText->clear();
+    
+    // 设置状态
     m_statusLabel->setText(tr("Executing: git %1").arg(arguments.join(' ')));
-    m_outputTimer->start();
-
-    m_process->start("git", arguments);
+    
+    // 构建Git命令
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = m_operation;
+    cmd.arguments = arguments;
+    cmd.workingDirectory = repoPath;
+    cmd.timeout = timeout;
+    
+    // 记录日志
+    qInfo() << "INFO: [GitOperationDialog::executeCommand] Starting" << m_operation 
+            << "with args:" << arguments << "in" << repoPath;
+    
+    // 异步执行命令
+    m_executor->executeCommandAsync(cmd);
 }
 
-void GitOperationDialog::updateOutput()
+void GitOperationDialog::setOperationDescription(const QString &description)
 {
-    if (m_process) {
-        QString output = QString::fromUtf8(m_process->readAllStandardOutput());
-        QString error = QString::fromUtf8(m_process->readAllStandardError());
-
-        if (!output.isEmpty()) {
-            m_outputText->append(output);
-        }
-        if (!error.isEmpty()) {
-            m_outputText->append(QString("<font color='red'>%1</font>").arg(error));
-        }
-    }
+    m_currentDescription = description;
+    m_descriptionLabel->setText(description);
+    m_descriptionLabel->setVisible(!description.isEmpty());
 }
 
-void GitOperationDialog::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+GitCommandExecutor::Result GitOperationDialog::getExecutionResult() const
 {
-    m_outputTimer->stop();
-    updateOutput();   // 获取最后的输出
+    return m_executionResult;
+}
 
-    m_progressBar->setRange(0, 1);
-    m_progressBar->setValue(1);
-
-    if (exitStatus == QProcess::NormalExit && exitCode == 0) {
-        m_statusLabel->setText(tr("Operation completed successfully"));
-        m_outputText->append(tr("\n--- Operation completed successfully ---"));
+void GitOperationDialog::onCommandFinished(const QString &command, GitCommandExecutor::Result result, 
+                                         const QString &output, const QString &error)
+{
+    Q_UNUSED(command)
+    
+    m_executionResult = result;
+    updateUIState(false);
+    showResult(result, output, error);
+    
+    // 记录结果
+    if (result == GitCommandExecutor::Result::Success) {
+        qInfo() << "INFO: [GitOperationDialog::onCommandFinished] Operation completed successfully:" << m_operation;
     } else {
-        m_statusLabel->setText(tr("Operation failed (exit code: %1)").arg(exitCode));
-        m_outputText->append(tr("\n--- Operation failed ---"));
+        qWarning() << "WARNING: [GitOperationDialog::onCommandFinished] Operation failed:" << m_operation 
+                  << "Result:" << static_cast<int>(result);
     }
-
-    m_closeButton->setEnabled(true);
 }
 
-void GitOperationDialog::onProcessError(QProcess::ProcessError error)
+void GitOperationDialog::onOutputReady(const QString &output, bool isError)
 {
-    m_outputTimer->stop();
-    m_progressBar->setRange(0, 1);
-    m_progressBar->setValue(1);
-
-    QString errorMsg;
-    switch (error) {
-    case QProcess::FailedToStart:
-        errorMsg = tr("Failed to start git process");
-        break;
-    case QProcess::Crashed:
-        errorMsg = tr("Git process crashed");
-        break;
-    case QProcess::Timedout:
-        errorMsg = tr("Git process timed out");
-        break;
-    default:
-        errorMsg = tr("Unknown error occurred");
+    if (isError) {
+        m_outputText->setTextColor(QColor(200, 50, 50)); // 红色错误文本
+    } else {
+        m_outputText->setTextColor(QColor(50, 50, 50));  // 普通文本颜色
     }
+    
+    m_outputText->append(output);
+    
+    // 自动滚动到底部
+    QTextCursor cursor = m_outputText->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    m_outputText->setTextCursor(cursor);
+}
 
-    m_statusLabel->setText(errorMsg);
-    m_outputText->append(QString("<font color='red'>%1</font>").arg(errorMsg));
-    m_closeButton->setEnabled(true);
+void GitOperationDialog::onCancelClicked()
+{
+    if (m_isExecuting) {
+        m_executor->cancelCurrentCommand();
+        m_statusLabel->setText(tr("Operation cancelled"));
+        updateUIState(false);
+        qInfo() << "INFO: [GitOperationDialog::onCancelClicked] User cancelled operation:" << m_operation;
+    } else {
+        reject();
+    }
+}
+
+void GitOperationDialog::onRetryClicked()
+{
+    if (!m_lastArguments.isEmpty() && !m_lastRepoPath.isEmpty()) {
+        qInfo() << "INFO: [GitOperationDialog::onRetryClicked] Retrying operation:" << m_operation;
+        executeCommand(m_lastRepoPath, m_lastArguments);
+    }
+}
+
+void GitOperationDialog::onDetailsToggled(bool visible)
+{
+    m_showDetails = visible;
+    m_outputWidget->setVisible(visible);
+    m_detailsButton->setText(visible ? tr("Hide Details") : tr("Show Details"));
+    
+    // 调整对话框大小
+    if (visible) {
+        resize(width(), height() + 250);
+    } else {
+        adjustSize();
+    }
+}
+
+void GitOperationDialog::updateUIState(bool isExecuting)
+{
+    m_isExecuting = isExecuting;
+    
+    m_progressBar->setVisible(isExecuting);
+    m_cancelButton->setText(isExecuting ? tr("Cancel") : tr("Close"));
+    m_retryButton->setVisible(!isExecuting && m_executionResult != GitCommandExecutor::Result::Success);
+    m_closeButton->setVisible(!isExecuting && m_executionResult == GitCommandExecutor::Result::Success);
+    
+    // 在执行期间禁用部分控件
+    m_retryButton->setEnabled(!isExecuting);
+    m_detailsButton->setEnabled(true); // 始终允许切换详情显示
+}
+
+void GitOperationDialog::showResult(GitCommandExecutor::Result result, const QString &output, const QString &error)
+{
+    QString statusText;
+    QString styleSheet;
+    
+    switch (result) {
+    case GitCommandExecutor::Result::Success:
+        statusText = tr("✓ Operation completed successfully");
+        styleSheet = "QLabel { color: #27ae60; font-weight: bold; }";
+        break;
+        
+    case GitCommandExecutor::Result::CommandError:
+        statusText = tr("✗ Git command execution failed");
+        styleSheet = "QLabel { color: #e74c3c; font-weight: bold; }";
+        if (!error.isEmpty()) {
+            m_outputText->append("\n" + tr("Error information: ") + error);
+        }
+        break;
+        
+    case GitCommandExecutor::Result::Timeout:
+        statusText = tr("⏱ Operation timed out");
+        styleSheet = "QLabel { color: #f39c12; font-weight: bold; }";
+        break;
+        
+    case GitCommandExecutor::Result::ProcessError:
+        statusText = tr("✗ Process error");
+        styleSheet = "QLabel { color: #e74c3c; font-weight: bold; }";
+        break;
+        
+    default:
+        statusText = tr("✗ Unknown error");
+        styleSheet = "QLabel { color: #e74c3c; font-weight: bold; }";
+        break;
+    }
+    
+    m_statusLabel->setText(statusText);
+    m_statusLabel->setStyleSheet(styleSheet);
+    
+    // 如果有输出且未显示详情，提示用户查看
+    if (!output.isEmpty() && !m_showDetails) {
+        m_detailsButton->setText(tr("Show Details (New output)"));
+        m_detailsButton->setStyleSheet("QPushButton { font-weight: bold; }");
+    }
+    
+    // 添加最终输出
+    if (!output.isEmpty()) {
+        m_outputText->append("\n--- Operation completed ---\n" + output);
+    }
 }
 
 // ============================================================================

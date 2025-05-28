@@ -12,6 +12,7 @@
 
 #include "utils.h"
 #include "gitdialogs.h"
+#include "gitcommandexecutor.h"
 #include <cache.h>
 
 USING_DFMEXT_NAMESPACE
@@ -223,15 +224,22 @@ bool GitMenuPlugin::buildEmptyAreaMenu(dfmext::DFMExtMenu *main, const std::stri
 void GitMenuPlugin::handleGitAdd(const std::string &filePath)
 {
     const QString &file = QString::fromStdString(filePath);
-    const QString &repoPath = Utils::repositoryBaseDir(file);
+    
+    // 使用GitCommandExecutor解析仓库路径
+    GitCommandExecutor executor;
+    const QString &repoPath = executor.resolveRepositoryPath(file);
 
     if (repoPath.isEmpty()) {
         qWarning() << "ERROR: [GitMenuPlugin::handleGitAdd] Repository path not found for file:" << file;
         return;
     }
 
-    // 计算相对于仓库根目录的路径
-    QString relativePath = QDir(repoPath).relativeFilePath(file);
+    // 计算相对路径
+    QString relativePath = executor.makeRelativePath(repoPath, file);
+    if (relativePath.isEmpty()) {
+        qWarning() << "ERROR: [GitMenuPlugin::handleGitAdd] Failed to calculate relative path for:" << file;
+        return;
+    }
     
     qInfo() << "INFO: [GitMenuPlugin::handleGitAdd] Adding file:" << file 
             << "relative path:" << relativePath;
@@ -243,15 +251,22 @@ void GitMenuPlugin::handleGitAdd(const std::string &filePath)
 void GitMenuPlugin::handleGitRemove(const std::string &filePath)
 {
     const QString &file = QString::fromStdString(filePath);
-    const QString &repoPath = Utils::repositoryBaseDir(file);
+    
+    // 使用GitCommandExecutor解析仓库路径
+    GitCommandExecutor executor;
+    const QString &repoPath = executor.resolveRepositoryPath(file);
 
     if (repoPath.isEmpty()) {
         qWarning() << "ERROR: [GitMenuPlugin::handleGitRemove] Repository path not found for file:" << file;
         return;
     }
 
-    // 计算相对于仓库根目录的路径
-    QString relativePath = QDir(repoPath).relativeFilePath(file);
+    // 计算相对路径
+    QString relativePath = executor.makeRelativePath(repoPath, file);
+    if (relativePath.isEmpty()) {
+        qWarning() << "ERROR: [GitMenuPlugin::handleGitRemove] Failed to calculate relative path for:" << file;
+        return;
+    }
     
     qInfo() << "INFO: [GitMenuPlugin::handleGitRemove] Removing file:" << file
             << "relative path:" << relativePath;
@@ -280,15 +295,22 @@ void GitMenuPlugin::handleGitRemove(const std::string &filePath)
 void GitMenuPlugin::handleGitRevert(const std::string &filePath)
 {
     const QString &file = QString::fromStdString(filePath);
-    const QString &repoPath = Utils::repositoryBaseDir(file);
+    
+    // 使用GitCommandExecutor解析仓库路径
+    GitCommandExecutor executor;
+    const QString &repoPath = executor.resolveRepositoryPath(file);
 
     if (repoPath.isEmpty()) {
         qWarning() << "ERROR: [GitMenuPlugin::handleGitRevert] Repository path not found for file:" << file;
         return;
     }
 
-    // 计算相对于仓库根目录的路径
-    QString relativePath = QDir(repoPath).relativeFilePath(file);
+    // 计算相对路径
+    QString relativePath = executor.makeRelativePath(repoPath, file);
+    if (relativePath.isEmpty()) {
+        qWarning() << "ERROR: [GitMenuPlugin::handleGitRevert] Failed to calculate relative path for:" << file;
+        return;
+    }
     
     qInfo() << "INFO: [GitMenuPlugin::handleGitRevert] Reverting file:" << file
             << "relative path:" << relativePath;
@@ -383,11 +405,23 @@ void GitMenuPlugin::executeGitOperation(const QString &operation, const QString 
 
     auto *opDialog = new GitOperationDialog(operation);
     opDialog->setAttribute(Qt::WA_DeleteOnClose);
+    
+    // 设置操作描述
+    QString description = QObject::tr("Preparing to execute %1 operation in repository").arg(operation);
+    opDialog->setOperationDescription(description);
+    
+    // 异步执行命令
     opDialog->executeCommand(workingDir, arguments);
-
-    if (opDialog->exec() == QDialog::Accepted) {
-        refreshFileManager();
-    }
+    
+    // 显示对话框
+    opDialog->show();
+    
+    // 连接完成信号以便在成功时刷新
+    QObject::connect(opDialog, &QDialog::accepted, [this, opDialog]() {
+        if (opDialog->getExecutionResult() == GitCommandExecutor::Result::Success) {
+            refreshFileManager();
+        }
+    });
 }
 
 void GitMenuPlugin::refreshFileManager()
