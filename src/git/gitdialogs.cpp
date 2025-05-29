@@ -564,9 +564,28 @@ void GitOperationDialog::updateUIState(bool isExecuting)
     m_isExecuting = isExecuting;
 
     m_progressBar->setVisible(isExecuting);
-    m_cancelButton->setText(isExecuting ? tr("Cancel") : tr("Close"));
-    m_retryButton->setVisible(!isExecuting && m_executionResult != GitCommandExecutor::Result::Success);
-    m_closeButton->setVisible(!isExecuting && m_executionResult == GitCommandExecutor::Result::Success);
+    
+    if (isExecuting) {
+        // 执行期间：显示取消按钮，隐藏其他按钮
+        m_cancelButton->setText(tr("Cancel"));
+        m_cancelButton->setVisible(true);
+        m_retryButton->setVisible(false);
+        m_closeButton->setVisible(false);
+    } else {
+        // 执行完成后：根据结果显示相应按钮
+        if (m_executionResult == GitCommandExecutor::Result::Success) {
+            // 成功：只显示关闭按钮
+            m_cancelButton->setVisible(false);
+            m_retryButton->setVisible(false);
+            m_closeButton->setVisible(true);
+        } else {
+            // 失败：显示重试和关闭按钮
+            m_cancelButton->setText(tr("Close"));
+            m_cancelButton->setVisible(true);
+            m_retryButton->setVisible(true);
+            m_closeButton->setVisible(false);
+        }
+    }
 
     // 在执行期间禁用部分控件
     m_retryButton->setEnabled(!isExecuting);
