@@ -41,11 +41,16 @@ private:
     // 工具函数
     void executeGitOperation(const QString &operation, const QString &workingDir, const QStringList &arguments);
     void refreshFileManager();
-
+    
+    // Git操作执行策略函数
+    void executeSilentGitOperation(const QString &operation, const QString &workingDir, const QStringList &arguments);
+    void executeInteractiveGitOperation(const QString &operation, const QString &workingDir, const QStringList &arguments);
+    void showSuccessNotification(const QString &operation);
+    
     // 新增的菜单辅助函数
     QStringList getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList);
-    bool buildMultiFileMenu(dfmext::DFMExtMenu *gitSubmenu, const std::list<std::string> &pathList,
-                            bool &hasValidAction, dfmext::DFMExtMenu *main, dfmext::DFMExtAction *rootAction);
+    bool buildMultiFileMenu(dfmext::DFMExtMenu *gitSubmenu, const std::list<std::string> &pathList, 
+                           bool &hasValidAction, dfmext::DFMExtMenu *main, dfmext::DFMExtAction *rootAction);
 
 private:
     DFMEXT::DFMExtMenuProxy *m_proxy { nullptr };

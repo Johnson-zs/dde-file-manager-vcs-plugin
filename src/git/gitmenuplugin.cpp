@@ -328,7 +328,7 @@ void GitMenuPlugin::handleGitAdd(const std::string &filePath)
             << "relative path:" << relativePath;
 
     QStringList args { "add", relativePath };
-    executeGitOperation("Add", repoPath, args);
+    executeSilentGitOperation("Add", repoPath, args);
 }
 
 void GitMenuPlugin::handleGitRemove(const std::string &filePath)
@@ -373,7 +373,7 @@ void GitMenuPlugin::handleGitRemove(const std::string &filePath)
              << "--cached" << relativePath;
     }
 
-    executeGitOperation("Remove", repoPath, args);
+    executeSilentGitOperation("Remove", repoPath, args);
 }
 
 void GitMenuPlugin::handleGitRevert(const std::string &filePath)
@@ -423,7 +423,7 @@ void GitMenuPlugin::handleGitRevert(const std::string &filePath)
              << "--" << relativePath;
     }
 
-    executeGitOperation("Revert", repoPath, args);
+    executeSilentGitOperation("Revert", repoPath, args);
 }
 
 void GitMenuPlugin::handleGitLog(const std::string &repositoryPath, const std::string &filePath)
@@ -525,6 +525,63 @@ void GitMenuPlugin::executeGitOperation(const QString &operation, const QString 
         return;
     }
 
+    // 判断是否为静默操作（基础文件操作成功时不弹窗）
+    bool isSilentOperation = (operation == "Add" || operation == "Remove" || operation == "Revert");
+    
+    if (isSilentOperation) {
+        // 对于基础操作，使用同步执行，成功时静默，失败时弹窗
+        executeSilentGitOperation(operation, workingDir, arguments);
+    } else {
+        // 对于复杂操作（Push/Pull/Commit等），显示进度对话框
+        executeInteractiveGitOperation(operation, workingDir, arguments);
+    }
+}
+
+void GitMenuPlugin::executeSilentGitOperation(const QString &operation, const QString &workingDir, const QStringList &arguments)
+{
+    // 显示简短的状态提示（可选：可以通过系统通知或状态栏显示）
+    qInfo() << "INFO: [GitMenuPlugin::executeSilentGitOperation] Starting" << operation << "operation...";
+    
+    GitCommandExecutor executor;
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = operation;
+    cmd.arguments = arguments;
+    cmd.workingDirectory = workingDir;
+    cmd.timeout = 10000; // 10秒超时
+
+    QString output, error;
+    GitCommandExecutor::Result result = executor.executeCommand(cmd, output, error);
+
+    if (result == GitCommandExecutor::Result::Success) {
+        // 成功时静默执行，只记录日志和刷新文件管理器
+        qInfo() << "INFO: [GitMenuPlugin::executeSilentGitOperation] Operation" << operation << "completed successfully";
+        refreshFileManager();
+        
+        // 可选：显示简短的成功提示（通过系统通知，不阻塞用户）
+        // 这里可以集成系统通知API，比如libnotify（Linux）
+        showSuccessNotification(operation);
+    } else {
+        // 失败时使用交互式对话框显示错误信息（复用现有代码）
+        qWarning() << "WARNING: [GitMenuPlugin::executeSilentGitOperation] Operation" << operation << "failed, showing interactive dialog";
+        executeInteractiveGitOperation(operation, workingDir, arguments);
+    }
+}
+
+void GitMenuPlugin::showSuccessNotification(const QString &operation)
+{
+    // 这里可以实现系统通知，目前只记录日志
+    // 在实际部署时，可以集成libnotify或其他系统通知API
+    qInfo() << "INFO: [GitMenuPlugin::showSuccessNotification] Git" << operation << "operation completed successfully";
+    
+    // TODO: 集成系统通知
+    // 示例代码（需要libnotify支持）：
+    // notify_notification_new("Git Operation", 
+    //                        QString("Git %1 completed successfully").arg(operation).toUtf8().data(),
+    //                        "vcs-normal");
+}
+
+void GitMenuPlugin::executeInteractiveGitOperation(const QString &operation, const QString &workingDir, const QStringList &arguments)
+{
     // 获取当前活动窗口作为父窗口，避免崩溃
     QWidget *parentWidget = QApplication::activeWindow();
     if (!parentWidget) {
@@ -540,17 +597,17 @@ void GitMenuPlugin::executeGitOperation(const QString &operation, const QString 
 
     auto *opDialog = new GitOperationDialog(operation, parentWidget);
     opDialog->setAttribute(Qt::WA_DeleteOnClose);
-
+    
     // 设置操作描述
     QString description = QObject::tr("Preparing to execute %1 operation in repository").arg(operation);
     opDialog->setOperationDescription(description);
-
+    
     // 异步执行命令
     opDialog->executeCommand(workingDir, arguments);
-
+    
     // 显示对话框
     opDialog->show();
-
+    
     // 连接完成信号以便在成功时刷新
     QObject::connect(opDialog, &QDialog::accepted, [this, opDialog]() {
         if (opDialog->getExecutionResult() == GitCommandExecutor::Result::Success) {
@@ -779,7 +836,7 @@ void GitMenuPlugin::handleMultiFileAdd(const std::list<std::string> &pathList)
     }
 
     QStringList args { "add" };
-
+    
     // 添加所有文件的相对路径
     for (const auto &pathStr : pathList) {
         const QString filePath = QString::fromStdString(pathStr);
@@ -791,7 +848,7 @@ void GitMenuPlugin::handleMultiFileAdd(const std::list<std::string> &pathList)
 
     if (args.size() > 1) {   // 确保有文件被添加
         qInfo() << "INFO: [GitMenuPlugin::handleMultiFileAdd] Adding" << (args.size() - 1) << "files";
-        executeGitOperation("Add", repoPath, args);
+        executeSilentGitOperation("Add", repoPath, args);
     }
 }
 
@@ -809,7 +866,7 @@ void GitMenuPlugin::handleMultiFileRemove(const std::list<std::string> &pathList
     }
 
     QStringList args { "rm", "--cached" };
-
+    
     for (const auto &pathStr : pathList) {
         const QString filePath = QString::fromStdString(pathStr);
         QString relativePath = executor.makeRelativePath(repoPath, filePath);
@@ -820,7 +877,7 @@ void GitMenuPlugin::handleMultiFileRemove(const std::list<std::string> &pathList
 
     if (args.size() > 2) {
         qInfo() << "INFO: [GitMenuPlugin::handleMultiFileRemove] Removing" << (args.size() - 2) << "files";
-        executeGitOperation("Remove", repoPath, args);
+        executeSilentGitOperation("Remove", repoPath, args);
     }
 }
 
@@ -838,7 +895,7 @@ void GitMenuPlugin::handleMultiFileRevert(const std::list<std::string> &pathList
     }
 
     QStringList args { "restore", "--staged", "--worktree" };
-
+    
     for (const auto &pathStr : pathList) {
         const QString filePath = QString::fromStdString(pathStr);
         QString relativePath = executor.makeRelativePath(repoPath, filePath);
@@ -849,6 +906,6 @@ void GitMenuPlugin::handleMultiFileRevert(const std::list<std::string> &pathList
 
     if (args.size() > 3) {
         qInfo() << "INFO: [GitMenuPlugin::handleMultiFileRevert] Reverting" << (args.size() - 3) << "files";
-        executeGitOperation("Revert", repoPath, args);
+        executeSilentGitOperation("Revert", repoPath, args);
     }
 }
