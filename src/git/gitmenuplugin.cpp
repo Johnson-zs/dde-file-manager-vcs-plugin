@@ -345,7 +345,16 @@ void GitMenuPlugin::handleGitLog(const std::string &repositoryPath, const std::s
     qInfo() << "INFO: [GitMenuPlugin::handleGitLog] Opening log for repository:" << repoPath
             << "file:" << (file.isEmpty() ? "all" : file);
 
-    auto *logDialog = new GitLogDialog(repoPath, file);
+    // 检查应用程序状态
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitMenuPlugin::handleGitLog] No QApplication instance found";
+        return;
+    }
+
+    // 获取合适的父窗口
+    QWidget *parentWidget = QApplication::activeWindow();
+    
+    auto *logDialog = new GitLogDialog(repoPath, file, parentWidget);
     logDialog->setAttribute(Qt::WA_DeleteOnClose);
     logDialog->show();
 }
@@ -356,7 +365,16 @@ void GitMenuPlugin::handleGitCheckout(const std::string &repositoryPath)
 
     qInfo() << "INFO: [GitMenuPlugin::handleGitCheckout] Opening checkout dialog for:" << repoPath;
 
-    auto *checkoutDialog = new GitCheckoutDialog(repoPath);
+    // 检查应用程序状态
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitMenuPlugin::handleGitCheckout] No QApplication instance found";
+        return;
+    }
+
+    // 获取合适的父窗口
+    QWidget *parentWidget = QApplication::activeWindow();
+    
+    auto *checkoutDialog = new GitCheckoutDialog(repoPath, parentWidget);
     checkoutDialog->setAttribute(Qt::WA_DeleteOnClose);
 
     if (checkoutDialog->exec() == QDialog::Accepted) {
@@ -390,7 +408,16 @@ void GitMenuPlugin::handleGitCommit(const std::string &repositoryPath)
 
     qInfo() << "INFO: [GitMenuPlugin::handleGitCommit] Opening commit dialog for:" << repoPath;
 
-    auto *commitDialog = new GitCommitDialog(repoPath, QStringList());
+    // 检查应用程序状态
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitMenuPlugin::handleGitCommit] No QApplication instance found";
+        return;
+    }
+
+    // 获取合适的父窗口
+    QWidget *parentWidget = QApplication::activeWindow();
+    
+    auto *commitDialog = new GitCommitDialog(repoPath, QStringList(), parentWidget);
     commitDialog->setAttribute(Qt::WA_DeleteOnClose);
 
     if (commitDialog->exec() == QDialog::Accepted) {
@@ -403,7 +430,26 @@ void GitMenuPlugin::executeGitOperation(const QString &operation, const QString 
     qInfo() << "INFO: [GitMenuPlugin::executeGitOperation] Executing git" << arguments.join(' ')
             << "in directory:" << workingDir;
 
-    auto *opDialog = new GitOperationDialog(operation);
+    // 检查应用程序状态
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitMenuPlugin::executeGitOperation] No QApplication instance found";
+        return;
+    }
+
+    // 获取当前活动窗口作为父窗口，避免崩溃
+    QWidget *parentWidget = QApplication::activeWindow();
+    if (!parentWidget) {
+        // 如果没有活动窗口，尝试获取主窗口
+        auto widgets = QApplication::topLevelWidgets();
+        for (auto *widget : widgets) {
+            if (widget->isVisible() && widget->windowType() == Qt::Window) {
+                parentWidget = widget;
+                break;
+            }
+        }
+    }
+
+    auto *opDialog = new GitOperationDialog(operation, parentWidget);
     opDialog->setAttribute(Qt::WA_DeleteOnClose);
     
     // 设置操作描述

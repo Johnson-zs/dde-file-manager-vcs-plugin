@@ -138,6 +138,7 @@ private:
     QPushButton *m_closeButton;
     QPushButton *m_detailsButton;
     QWidget *m_outputWidget;
+    QWidget *m_buttonWidget;
 
     // 核心组件
     GitCommandExecutor *m_executor;
