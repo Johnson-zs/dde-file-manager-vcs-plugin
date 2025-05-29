@@ -2,6 +2,7 @@
 #define GITMENUPLUGIN_H
 
 #include <dfm-extension/menu/dfmextmenuplugin.h>
+#include <dfm-extension/menu/dfmextaction.h>
 
 #include <QString>
 
@@ -29,9 +30,22 @@ private:
     void handleGitPull(const std::string &repositoryPath);
     void handleGitCommit(const std::string &repositoryPath);
 
+    // 新增的Git操作函数
+    void handleGitDiff(const std::string &filePath);
+    void handleGitBlame(const std::string &filePath);
+    void handleGitStatus(const std::string &repositoryPath);
+    void handleMultiFileAdd(const std::list<std::string> &pathList);
+    void handleMultiFileRemove(const std::list<std::string> &pathList);
+    void handleMultiFileRevert(const std::list<std::string> &pathList);
+
     // 工具函数
     void executeGitOperation(const QString &operation, const QString &workingDir, const QStringList &arguments);
     void refreshFileManager();
+
+    // 新增的菜单辅助函数
+    QStringList getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList);
+    bool buildMultiFileMenu(dfmext::DFMExtMenu *gitSubmenu, const std::list<std::string> &pathList,
+                            bool &hasValidAction, dfmext::DFMExtMenu *main, dfmext::DFMExtAction *rootAction);
 
 private:
     DFMEXT::DFMExtMenuProxy *m_proxy { nullptr };

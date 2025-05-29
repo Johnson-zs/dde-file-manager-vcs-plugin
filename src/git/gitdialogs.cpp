@@ -12,6 +12,7 @@
 #include <QCheckBox>
 #include <QScrollArea>
 
+#include "utils.h"
 #include "gitcommandexecutor.h"
 
 // ============================================================================
@@ -564,7 +565,7 @@ void GitOperationDialog::updateUIState(bool isExecuting)
     m_isExecuting = isExecuting;
 
     m_progressBar->setVisible(isExecuting);
-    
+
     if (isExecuting) {
         // 执行期间：显示取消按钮，隐藏其他按钮
         m_cancelButton->setText(tr("Cancel"));
@@ -922,4 +923,332 @@ void GitCommitDialog::onCancelClicked()
 void GitCommitDialog::onMessageChanged()
 {
     m_commitButton->setEnabled(!m_messageEdit->toPlainText().isEmpty());
+}
+
+// ============================================================================
+// GitDiffDialog Implementation
+// ============================================================================
+
+GitDiffDialog::GitDiffDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent)
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_filePath(filePath)
+{
+    setupUI();
+    loadFileDiff();
+}
+
+void GitDiffDialog::setupUI()
+{
+    setWindowTitle(tr("Git Diff - %1").arg(QFileInfo(m_filePath).fileName()));
+    setModal(false);
+    resize(900, 600);
+
+    auto *layout = new QVBoxLayout(this);
+
+    // 文件信息标签
+    m_fileInfoLabel = new QLabel;
+    m_fileInfoLabel->setWordWrap(true);
+    m_fileInfoLabel->setStyleSheet("QLabel { background-color: #f0f0f0; padding: 8px; border-radius: 4px; }");
+    layout->addWidget(m_fileInfoLabel);
+
+    // 工具栏
+    auto *toolbarLayout = new QHBoxLayout;
+    m_refreshButton = new QPushButton(tr("Refresh"));
+    connect(m_refreshButton, &QPushButton::clicked, this, &GitDiffDialog::onRefreshClicked);
+    toolbarLayout->addWidget(m_refreshButton);
+    toolbarLayout->addStretch();
+    layout->addLayout(toolbarLayout);
+
+    // 差异视图
+    m_diffView = new QTextEdit;
+    m_diffView->setReadOnly(true);
+    m_diffView->setFont(QFont("Consolas", 10));
+    m_diffView->setLineWrapMode(QTextEdit::NoWrap);
+    layout->addWidget(m_diffView);
+
+    // 关闭按钮
+    auto *buttonLayout = new QHBoxLayout;
+    buttonLayout->addStretch();
+    auto *closeButton = new QPushButton(tr("Close"));
+    connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    layout->addLayout(buttonLayout);
+}
+
+void GitDiffDialog::loadFileDiff()
+{
+    QProcess process;
+    process.setWorkingDirectory(m_repositoryPath);
+
+    // 计算相对路径
+    QDir repoDir(m_repositoryPath);
+    QString relativePath = repoDir.relativeFilePath(m_filePath);
+
+    QStringList args { "diff", "HEAD", "--", relativePath };
+    process.start("git", args);
+
+    if (process.waitForFinished(5000)) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        QString error = QString::fromUtf8(process.readAllStandardError());
+
+        if (process.exitCode() == 0) {
+            if (output.isEmpty()) {
+                m_diffView->setPlainText(tr("No changes found in this file."));
+            } else {
+                m_diffView->setPlainText(output);
+                applySyntaxHighlighting();
+            }
+
+            // 更新文件信息
+            QString statusText = Utils::getFileStatusDescription(m_filePath);
+            m_fileInfoLabel->setText(tr("File: %1\nStatus: %2\nRepository: %3")
+                                             .arg(relativePath, statusText, m_repositoryPath));
+        } else {
+            m_diffView->setPlainText(tr("Error loading diff:\n%1").arg(error));
+        }
+    } else {
+        m_diffView->setPlainText(tr("Failed to execute git diff command."));
+    }
+}
+
+void GitDiffDialog::applySyntaxHighlighting()
+{
+    // 简单的差异语法高亮
+    QTextDocument *doc = m_diffView->document();
+    QTextCursor cursor(doc);
+
+    cursor.beginEditBlock();
+    cursor.movePosition(QTextCursor::Start);
+
+    QTextCharFormat addedFormat;
+    addedFormat.setBackground(QColor(220, 255, 220));
+
+    QTextCharFormat removedFormat;
+    removedFormat.setBackground(QColor(255, 220, 220));
+
+    QTextCharFormat headerFormat;
+    headerFormat.setForeground(QColor(128, 128, 128));
+    headerFormat.setFontWeight(QFont::Bold);
+
+    while (!cursor.atEnd()) {
+        cursor.select(QTextCursor::LineUnderCursor);
+        QString line = cursor.selectedText();
+
+        if (line.startsWith('+') && !line.startsWith("+++")) {
+            cursor.setCharFormat(addedFormat);
+        } else if (line.startsWith('-') && !line.startsWith("---")) {
+            cursor.setCharFormat(removedFormat);
+        } else if (line.startsWith("@@") || line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("+++") || line.startsWith("---")) {
+            cursor.setCharFormat(headerFormat);
+        }
+
+        cursor.movePosition(QTextCursor::NextBlock);
+    }
+
+    cursor.endEditBlock();
+}
+
+void GitDiffDialog::onRefreshClicked()
+{
+    loadFileDiff();
+}
+
+// ============================================================================
+// GitStatusDialog Implementation
+// ============================================================================
+
+GitStatusDialog::GitStatusDialog(const QString &repositoryPath, QWidget *parent)
+    : QDialog(parent), m_repositoryPath(repositoryPath)
+{
+    setupUI();
+    loadRepositoryStatus();
+}
+
+void GitStatusDialog::setupUI()
+{
+    setWindowTitle(tr("Git Status - %1").arg(QFileInfo(m_repositoryPath).fileName()));
+    setModal(false);
+    resize(800, 600);
+
+    auto *layout = new QVBoxLayout(this);
+
+    // 顶部信息区域
+    auto *infoLayout = new QVBoxLayout;
+
+    m_branchLabel = new QLabel;
+    m_branchLabel->setStyleSheet("QLabel { font-weight: bold; color: #2c3e50; }");
+    infoLayout->addWidget(m_branchLabel);
+
+    m_statusSummary = new QLabel;
+    m_statusSummary->setStyleSheet("QLabel { color: #7f8c8d; }");
+    infoLayout->addWidget(m_statusSummary);
+
+    layout->addLayout(infoLayout);
+
+    // 工具栏
+    auto *toolbarLayout = new QHBoxLayout;
+    m_refreshButton = new QPushButton(tr("Refresh"));
+    connect(m_refreshButton, &QPushButton::clicked, this, &GitStatusDialog::onRefreshClicked);
+    toolbarLayout->addWidget(m_refreshButton);
+    toolbarLayout->addStretch();
+    layout->addLayout(toolbarLayout);
+
+    // 文件列表区域
+    auto *listsLayout = new QVBoxLayout;
+
+    // 暂存区文件
+    listsLayout->addWidget(new QLabel(tr("Staged files:")));
+    m_stagedFilesList = new QListWidget;
+    m_stagedFilesList->setMaximumHeight(150);
+    connect(m_stagedFilesList, &QListWidget::itemDoubleClicked, this, &GitStatusDialog::onFileDoubleClicked);
+    listsLayout->addWidget(m_stagedFilesList);
+
+    // 未暂存文件
+    listsLayout->addWidget(new QLabel(tr("Unstaged files:")));
+    m_unstagedFilesList = new QListWidget;
+    m_unstagedFilesList->setMaximumHeight(150);
+    connect(m_unstagedFilesList, &QListWidget::itemDoubleClicked, this, &GitStatusDialog::onFileDoubleClicked);
+    listsLayout->addWidget(m_unstagedFilesList);
+
+    // 未跟踪文件
+    listsLayout->addWidget(new QLabel(tr("Untracked files:")));
+    m_untrackedFilesList = new QListWidget;
+    m_untrackedFilesList->setMaximumHeight(150);
+    connect(m_untrackedFilesList, &QListWidget::itemDoubleClicked, this, &GitStatusDialog::onFileDoubleClicked);
+    listsLayout->addWidget(m_untrackedFilesList);
+
+    layout->addLayout(listsLayout);
+
+    // 关闭按钮
+    auto *buttonLayout = new QHBoxLayout;
+    buttonLayout->addStretch();
+    auto *closeButton = new QPushButton(tr("Close"));
+    connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    layout->addLayout(buttonLayout);
+}
+
+void GitStatusDialog::loadRepositoryStatus()
+{
+    // 清空现有列表
+    m_stagedFilesList->clear();
+    m_unstagedFilesList->clear();
+    m_untrackedFilesList->clear();
+
+    // 获取分支信息
+    QString branchName = Utils::getBranchName(m_repositoryPath);
+    m_branchLabel->setText(tr("Current branch: %1").arg(branchName));
+
+    // 获取状态信息
+    QProcess process;
+    process.setWorkingDirectory(m_repositoryPath);
+    process.start("git", { "status", "--porcelain" });
+
+    if (process.waitForFinished(5000) && process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+
+        int stagedCount = 0, unstagedCount = 0, untrackedCount = 0;
+
+        for (const QString &line : lines) {
+            if (line.length() < 3) continue;
+
+            char indexStatus = line[0].toLatin1();
+            char workTreeStatus = line[1].toLatin1();
+            QString fileName = line.mid(3);
+
+            QString statusIcon;
+            if (indexStatus != ' ' && indexStatus != '?') {
+                // 暂存区有变化
+                switch (indexStatus) {
+                case 'A':
+                    statusIcon = "🆕 ";
+                    break;
+                case 'M':
+                    statusIcon = "📝 ";
+                    break;
+                case 'D':
+                    statusIcon = "🗑️ ";
+                    break;
+                case 'R':
+                    statusIcon = "📋 ";
+                    break;
+                case 'C':
+                    statusIcon = "📄 ";
+                    break;
+                default:
+                    statusIcon = "❓ ";
+                    break;
+                }
+
+                auto *item = new QListWidgetItem(statusIcon + fileName);
+                item->setData(Qt::UserRole, fileName);
+                m_stagedFilesList->addItem(item);
+                stagedCount++;
+            }
+
+            if (workTreeStatus != ' ') {
+                if (workTreeStatus == '?') {
+                    // 未跟踪文件
+                    auto *item = new QListWidgetItem("❓ " + fileName);
+                    item->setData(Qt::UserRole, fileName);
+                    m_untrackedFilesList->addItem(item);
+                    untrackedCount++;
+                } else {
+                    // 工作区有变化
+                    switch (workTreeStatus) {
+                    case 'M':
+                        statusIcon = "📝 ";
+                        break;
+                    case 'D':
+                        statusIcon = "🗑️ ";
+                        break;
+                    default:
+                        statusIcon = "❓ ";
+                        break;
+                    }
+
+                    auto *item = new QListWidgetItem(statusIcon + fileName);
+                    item->setData(Qt::UserRole, fileName);
+                    m_unstagedFilesList->addItem(item);
+                    unstagedCount++;
+                }
+            }
+        }
+
+        updateStatusSummary();
+    } else {
+        m_statusSummary->setText(tr("Failed to load repository status"));
+    }
+}
+
+void GitStatusDialog::updateStatusSummary()
+{
+    int staged = m_stagedFilesList->count();
+    int unstaged = m_unstagedFilesList->count();
+    int untracked = m_untrackedFilesList->count();
+
+    m_statusSummary->setText(tr("Status: %1 staged, %2 unstaged, %3 untracked")
+                                     .arg(staged)
+                                     .arg(unstaged)
+                                     .arg(untracked));
+}
+
+void GitStatusDialog::onRefreshClicked()
+{
+    loadRepositoryStatus();
+}
+
+void GitStatusDialog::onFileDoubleClicked(QListWidgetItem *item)
+{
+    if (!item) return;
+
+    QString fileName = item->data(Qt::UserRole).toString();
+    QString fullPath = QDir(m_repositoryPath).absoluteFilePath(fileName);
+
+    // 为双击的文件打开差异查看器
+    if (QFileInfo(fullPath).exists()) {
+        auto *diffDialog = new GitDiffDialog(m_repositoryPath, fullPath, this);
+        diffDialog->setAttribute(Qt::WA_DeleteOnClose);
+        diffDialog->show();
+    }
 }

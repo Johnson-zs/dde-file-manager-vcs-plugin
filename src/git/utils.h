@@ -26,6 +26,12 @@ bool canRemoveFile(const QString &filePath);
 bool canRevertFile(const QString &filePath);
 bool canShowFileLog(const QString &filePath);
 Global::ItemVersion getFileGitStatus(const QString &filePath);
+
+// 新增的操作状态检查函数
+bool canShowFileDiff(const QString &filePath);
+bool canShowFileBlame(const QString &filePath);
+QString getFileStatusDescription(const QString &filePath);
+QString getBranchName(const QString &repositoryPath);
 }   // namespace Utils
 
 #endif   // UTILS_H

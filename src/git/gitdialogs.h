@@ -205,4 +205,59 @@ private:
     QPushButton *m_cancelButton;
 };
 
+/**
+ * @brief Git文件差异查看器对话框
+ */
+class GitDiffDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit GitDiffDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
+
+private Q_SLOTS:
+    void onRefreshClicked();
+
+private:
+    void setupUI();
+    void loadFileDiff();
+    void applySyntaxHighlighting();
+
+    QString m_repositoryPath;
+    QString m_filePath;
+
+    QTextEdit *m_diffView;
+    QPushButton *m_refreshButton;
+    QLabel *m_fileInfoLabel;
+};
+
+/**
+ * @brief Git仓库状态查看器对话框
+ */
+class GitStatusDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit GitStatusDialog(const QString &repositoryPath, QWidget *parent = nullptr);
+
+private Q_SLOTS:
+    void onRefreshClicked();
+    void onFileDoubleClicked(QListWidgetItem *item);
+
+private:
+    void setupUI();
+    void loadRepositoryStatus();
+    void updateStatusSummary();
+
+    QString m_repositoryPath;
+
+    QLabel *m_branchLabel;
+    QLabel *m_statusSummary;
+    QListWidget *m_stagedFilesList;
+    QListWidget *m_unstagedFilesList;
+    QListWidget *m_untrackedFilesList;
+    QPushButton *m_refreshButton;
+};
+
 #endif   // GITDIALOGS_H

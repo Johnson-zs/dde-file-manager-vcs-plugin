@@ -211,4 +211,90 @@ bool canShowFileLog(const QString &filePath)
            && status != ItemVersion::IgnoredVersion;
 }
 
+bool canShowFileDiff(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath))
+        return false;
+    
+    auto status = getFileGitStatus(filePath);
+    using Global::ItemVersion;
+    
+    // 可以查看差异的文件状态：有修改的文件
+    return status == ItemVersion::LocallyModifiedVersion
+           || status == ItemVersion::LocallyModifiedUnstagedVersion
+           || status == ItemVersion::ConflictingVersion;
+}
+
+bool canShowFileBlame(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath))
+        return false;
+    
+    auto status = getFileGitStatus(filePath);
+    using Global::ItemVersion;
+    
+    // 可以查看blame的文件状态：已在版本控制中的文件（除了新添加的文件）
+    return status == ItemVersion::NormalVersion 
+           || status == ItemVersion::LocallyModifiedVersion
+           || status == ItemVersion::LocallyModifiedUnstagedVersion
+           || status == ItemVersion::ConflictingVersion
+           || status == ItemVersion::UpdateRequiredVersion;
+}
+
+QString getFileStatusDescription(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath))
+        return QObject::tr("Not in Git repository");
+    
+    auto status = getFileGitStatus(filePath);
+    using Global::ItemVersion;
+    
+    switch (status) {
+    case ItemVersion::UnversionedVersion:
+        return QObject::tr("Untracked file");
+    case ItemVersion::NormalVersion:
+        return QObject::tr("No changes");
+    case ItemVersion::UpdateRequiredVersion:
+        return QObject::tr("Update required");
+    case ItemVersion::LocallyModifiedVersion:
+        return QObject::tr("Modified (staged)");
+    case ItemVersion::LocallyModifiedUnstagedVersion:
+        return QObject::tr("Modified (unstaged)");
+    case ItemVersion::AddedVersion:
+        return QObject::tr("Added");
+    case ItemVersion::RemovedVersion:
+        return QObject::tr("Removed");
+    case ItemVersion::ConflictingVersion:
+        return QObject::tr("Conflicted");
+    case ItemVersion::IgnoredVersion:
+        return QObject::tr("Ignored");
+    case ItemVersion::MissingVersion:
+        return QObject::tr("Missing");
+    default:
+        return QObject::tr("Unknown status");
+    }
+}
+
+QString getBranchName(const QString &repositoryPath)
+{
+    QProcess process;
+    process.setWorkingDirectory(repositoryPath);
+    process.start("git", { "branch", "--show-current" });
+    
+    if (process.waitForFinished(3000) && process.exitCode() == 0) {
+        QString branchName = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!branchName.isEmpty()) {
+            return branchName;
+        }
+    }
+    
+    // 如果上面的命令失败，尝试使用rev-parse
+    process.start("git", { "rev-parse", "--abbrev-ref", "HEAD" });
+    if (process.waitForFinished(3000) && process.exitCode() == 0) {
+        return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+    }
+    
+    return QObject::tr("Unknown branch");
+}
+
 }   // namespace Utils
