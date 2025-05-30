@@ -14,6 +14,10 @@
 #include <QMenu>
 #include <QAction>
 
+// Forward declarations
+class GitStatusParser;
+class GitOperationUtils;
+
 /**
  * @brief Git仓库状态查看器对话框
  * 

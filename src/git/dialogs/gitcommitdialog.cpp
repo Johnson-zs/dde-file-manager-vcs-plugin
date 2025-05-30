@@ -2,6 +2,8 @@
 #include "gitoperationdialog.h"
 #include "gitdialogs.h"
 #include "../gitcommandexecutor.h"
+#include "../gitstatusparser.h"
+#include "../gitoperationutils.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -708,114 +710,57 @@ void GitCommitDialog::setupContextMenu()
 
 void GitCommitDialog::loadChangedFiles()
 {
-    QProcess process;
-    process.setWorkingDirectory(m_repositoryPath);
-
-    // Get all changed files (staged, modified, untracked)
-    // Use -z option to get null-terminated output for better handling of special characters
-    process.start("git", QStringList() << "status"
-                                       << "--porcelain"
-                                       << "-z");
-    if (process.waitForFinished(5000)) {
-        const QByteArray output = process.readAllStandardOutput();
-        auto files = parseGitStatus(QString::fromUtf8(output));
-
-        m_fileModel->setFiles(files);
-        updateFileCountLabels();
-        updateButtonStates();
-
-        qDebug() << "[GitCommitDialog] Loaded" << files.size() << "changed files";
-    } else {
-        qWarning() << "[GitCommitDialog] Failed to load changed files:" << process.errorString();
-        updateFileCountLabels();
-    }
-}
-
-QList<std::shared_ptr<GitFileItem>> GitCommitDialog::parseGitStatus(const QString &gitStatusOutput)
-{
-    QList<std::shared_ptr<GitFileItem>> files;
+    // 使用新的GitStatusParser来加载文件状态
+    auto files = GitStatusParser::getRepositoryStatus(m_repositoryPath);
     
-    // Handle null-terminated output from git status -z
-    QStringList lines;
-    if (gitStatusOutput.contains('\0')) {
-        // Split by null character for -z output
-        lines = gitStatusOutput.split('\0', Qt::SkipEmptyParts);
-    } else {
-        // Fallback to newline split for regular output
-        lines = gitStatusOutput.split('\n', Qt::SkipEmptyParts);
+    // 转换GitFileInfo到GitFileItem
+    QList<std::shared_ptr<GitFileItem>> gitFileItems;
+    for (const auto &fileInfo : files) {
+        GitFileItem::Status status;
+        
+        // 将GitFileStatus转换为GitFileItem::Status
+        switch (fileInfo->status) {
+        case GitFileStatus::Modified:
+            status = GitFileItem::Status::Modified;
+            break;
+        case GitFileStatus::Staged:
+            status = GitFileItem::Status::Staged;
+            break;
+        case GitFileStatus::StagedModified:
+            status = GitFileItem::Status::StagedModified;
+            break;
+        case GitFileStatus::StagedAdded:
+            status = GitFileItem::Status::StagedAdded;
+            break;
+        case GitFileStatus::StagedDeleted:
+            status = GitFileItem::Status::StagedDeleted;
+            break;
+        case GitFileStatus::Deleted:
+            status = GitFileItem::Status::Deleted;
+            break;
+        case GitFileStatus::Untracked:
+            status = GitFileItem::Status::Untracked;
+            break;
+        case GitFileStatus::Renamed:
+            status = GitFileItem::Status::Renamed;
+            break;
+        case GitFileStatus::Copied:
+            status = GitFileItem::Status::Copied;
+            break;
+        default:
+            status = GitFileItem::Status::Modified;
+            break;
+        }
+        
+        auto gitFileItem = std::make_shared<GitFileItem>(fileInfo->filePath, status, fileInfo->statusText);
+        gitFileItems.append(gitFileItem);
     }
 
-    for (const QString &line : lines) {
-        if (line.length() > 3) {
-            const QString indexStatus = line.mid(0, 1);
-            const QString workingStatus = line.mid(1, 1);
-            QString filePath = line.mid(3);
-            
-            // Handle quoted filenames (Git quotes filenames with special characters)
-            if (filePath.startsWith('"') && filePath.endsWith('"')) {
-                // Remove quotes and process escape sequences
-                filePath = filePath.mid(1, filePath.length() - 2);
-                
-                // Process common escape sequences
-                filePath = filePath.replace("\\\"", "\"");
-                filePath = filePath.replace("\\\\", "\\");
-                filePath = filePath.replace("\\n", "\n");
-                filePath = filePath.replace("\\t", "\t");
-                
-                // Process octal escape sequences (like \346\226\260)
-                QRegularExpression octalRegex("\\\\([0-7]{3})");
-                QRegularExpressionMatchIterator it = octalRegex.globalMatch(filePath);
-                while (it.hasNext()) {
-                    QRegularExpressionMatch match = it.next();
-                    QString octalStr = match.captured(1);
-                    bool ok;
-                    int octalValue = octalStr.toInt(&ok, 8);
-                    if (ok) {
-                        QChar replacement = QChar(octalValue);
-                        filePath = filePath.replace(match.captured(0), replacement);
-                    }
-                }
-            }
+    m_fileModel->setFiles(gitFileItems);
+    updateFileCountLabels();
+    updateButtonStates();
 
-            auto status = parseFileStatus(indexStatus, workingStatus);
-            auto file = std::make_shared<GitFileItem>(filePath, status);
-            files.append(file);
-        }
-    }
-
-    return files;
-}
-
-GitFileItem::Status GitCommitDialog::parseFileStatus(const QString &indexStatus, const QString &workingStatus)
-{
-    // Parse git status codes to our enum
-    if (indexStatus != " " && indexStatus != "?") {
-        // File is staged
-        if (indexStatus == "A") {
-            return GitFileItem::Status::StagedAdded;
-        } else if (indexStatus == "M") {
-            return GitFileItem::Status::StagedModified;
-        } else if (indexStatus == "D") {
-            return GitFileItem::Status::StagedDeleted;
-        } else if (indexStatus == "R") {
-            return GitFileItem::Status::Renamed;
-        } else if (indexStatus == "C") {
-            return GitFileItem::Status::Copied;
-        } else {
-            return GitFileItem::Status::Staged;
-        }
-    } else if (workingStatus == "?") {
-        return GitFileItem::Status::Untracked;
-    } else {
-        // File is modified but not staged
-        if (workingStatus == "M") {
-            return GitFileItem::Status::Modified;
-        } else if (workingStatus == "D") {
-            return GitFileItem::Status::Deleted;
-        } else {
-            return GitFileItem::Status::Modified;
-        }
-    }
+    qDebug() << "[GitCommitDialog] Loaded" << gitFileItems.size() << "changed files using GitStatusParser";
 }
 
 void GitCommitDialog::updateFileCountLabels()
@@ -1012,42 +957,31 @@ void GitCommitDialog::commitChanges()
 
 void GitCommitDialog::stageFile(const QString &filePath)
 {
-    QProcess process;
-    process.setWorkingDirectory(m_repositoryPath);
-    process.start("git", QStringList() << "add" << filePath);
-
-    if (process.waitForFinished(5000)) {
+    auto result = GitOperationUtils::stageFile(m_repositoryPath, filePath);
+    if (result.success) {
         qDebug() << "[GitCommitDialog] Successfully staged file:" << filePath;
     } else {
-        qWarning() << "[GitCommitDialog] Failed to stage file:" << filePath << process.errorString();
+        qWarning() << "[GitCommitDialog] Failed to stage file:" << filePath << result.error;
     }
 }
 
 void GitCommitDialog::unstageFile(const QString &filePath)
 {
-    QProcess process;
-    process.setWorkingDirectory(m_repositoryPath);
-    process.start("git", QStringList() << "reset"
-                                       << "HEAD" << filePath);
-
-    if (process.waitForFinished(5000)) {
+    auto result = GitOperationUtils::unstageFile(m_repositoryPath, filePath);
+    if (result.success) {
         qDebug() << "[GitCommitDialog] Successfully unstaged file:" << filePath;
     } else {
-        qWarning() << "[GitCommitDialog] Failed to unstage file:" << filePath << process.errorString();
+        qWarning() << "[GitCommitDialog] Failed to unstage file:" << filePath << result.error;
     }
 }
 
 void GitCommitDialog::discardFile(const QString &filePath)
 {
-    QProcess process;
-    process.setWorkingDirectory(m_repositoryPath);
-    process.start("git", QStringList() << "checkout"
-                                       << "HEAD" << filePath);
-
-    if (process.waitForFinished(5000)) {
+    auto result = GitOperationUtils::discardFile(m_repositoryPath, filePath);
+    if (result.success) {
         qDebug() << "[GitCommitDialog] Successfully discarded changes for file:" << filePath;
     } else {
-        qWarning() << "[GitCommitDialog] Failed to discard changes for file:" << filePath << process.errorString();
+        qWarning() << "[GitCommitDialog] Failed to discard changes for file:" << filePath << result.error;
     }
 }
 

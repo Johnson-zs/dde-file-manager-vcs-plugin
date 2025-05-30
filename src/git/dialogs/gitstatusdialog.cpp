@@ -1,6 +1,8 @@
 #include "gitstatusdialog.h"
 #include "gitdialogs.h"
 #include "../gitcommandexecutor.h"
+#include "../gitstatusparser.h"
+#include "../gitoperationutils.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -36,15 +38,15 @@ public:
         // 设置添加行格式（绿色）
         m_addedFormat.setForeground(QColor(0, 128, 0));
         m_addedFormat.setBackground(QColor(220, 255, 220));
-        
+
         // 设置删除行格式（红色）
         m_removedFormat.setForeground(QColor(128, 0, 0));
         m_removedFormat.setBackground(QColor(255, 220, 220));
-        
+
         // 设置文件头格式（蓝色）
         m_headerFormat.setForeground(QColor(0, 0, 128));
         m_headerFormat.setFontWeight(QFont::Bold);
-        
+
         // 设置行号格式（灰色）
         m_lineNumberFormat.setForeground(QColor(128, 128, 128));
     }
@@ -57,8 +59,7 @@ protected:
             setFormat(0, text.length(), m_addedFormat);
         } else if (text.startsWith('-') && !text.startsWith("---")) {
             setFormat(0, text.length(), m_removedFormat);
-        } else if (text.startsWith("@@") || text.startsWith("+++") || 
-                   text.startsWith("---") || text.startsWith("diff ")) {
+        } else if (text.startsWith("@@") || text.startsWith("+++") || text.startsWith("---") || text.startsWith("diff ")) {
             setFormat(0, text.length(), m_headerFormat);
         } else if (text.startsWith("\\")) {
             setFormat(0, text.length(), m_lineNumberFormat);
@@ -97,13 +98,13 @@ void GitStatusDialog::setupUI()
 
     // === 仓库信息区域 ===
     auto *infoGroup = new QGroupBox(tr("Repository Information"), this);
-    infoGroup->setMaximumHeight(80);  // 限制最大高度，保持紧凑
-    auto *infoLayout = new QHBoxLayout(infoGroup);  // 使用水平布局更紧凑
+    infoGroup->setMaximumHeight(80);   // 限制最大高度，保持紧凑
+    auto *infoLayout = new QHBoxLayout(infoGroup);   // 使用水平布局更紧凑
     infoLayout->setContentsMargins(8, 4, 8, 4);
 
     auto *infoLeftLayout = new QVBoxLayout();
     infoLeftLayout->setSpacing(2);
-    
+
     m_branchLabel = new QLabel(this);
     m_branchLabel->setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12px;");
     infoLeftLayout->addWidget(m_branchLabel);
@@ -112,9 +113,9 @@ void GitStatusDialog::setupUI()
     m_statusSummary->setWordWrap(true);
     m_statusSummary->setStyleSheet("color: #666; font-size: 11px;");
     infoLeftLayout->addWidget(m_statusSummary);
-    
+
     infoLayout->addLayout(infoLeftLayout);
-    infoLayout->addStretch();  // 添加弹性空间
+    infoLayout->addStretch();   // 添加弹性空间
 
     mainLayout->addWidget(infoGroup);
 
@@ -210,10 +211,10 @@ void GitStatusDialog::setupUI()
     m_mainSplitter->addWidget(previewGroup);
 
     // 设置主分割器比例和属性
-    m_mainSplitter->setSizes({ 800, 600 });  // 调整初始比例，给文件列表更多空间
-    m_mainSplitter->setStretchFactor(0, 1);  // 文件列表区域可拉伸
-    m_mainSplitter->setStretchFactor(1, 1);  // 预览区域也可拉伸
-    m_mainSplitter->setChildrenCollapsible(false);  // 防止子窗口被完全折叠
+    m_mainSplitter->setSizes({ 800, 600 });   // 调整初始比例，给文件列表更多空间
+    m_mainSplitter->setStretchFactor(0, 1);   // 文件列表区域可拉伸
+    m_mainSplitter->setStretchFactor(1, 1);   // 预览区域也可拉伸
+    m_mainSplitter->setChildrenCollapsible(false);   // 防止子窗口被完全折叠
     mainLayout->addWidget(m_mainSplitter);
 
     // === 底部按钮区域 ===
@@ -271,25 +272,25 @@ void GitStatusDialog::setupContextMenu()
     m_stageAction = m_contextMenu->addAction(QIcon::fromTheme("go-up"), tr("Stage"));
     m_unstageAction = m_contextMenu->addAction(QIcon::fromTheme("go-down"), tr("Unstage"));
     m_contextMenu->addSeparator();
-    
+
     m_revertAction = m_contextMenu->addAction(QIcon::fromTheme("edit-undo"), tr("Revert Changes"));
     m_removeAction = m_contextMenu->addAction(QIcon::fromTheme("list-remove"), tr("Remove from Git"));
     m_diffAction = m_contextMenu->addAction(QIcon::fromTheme("document-properties"), tr("View Diff"));
-    
+
     m_contextMenu->addSeparator();
-    
+
     // === File Management Actions ===
     auto *openFileAction = m_contextMenu->addAction(QIcon::fromTheme("document-open"), tr("Open File"));
     auto *showFolderAction = m_contextMenu->addAction(QIcon::fromTheme("folder-open"), tr("Show in Folder"));
-    
+
     m_contextMenu->addSeparator();
-    
+
     // === Git History Actions ===
     auto *showLogAction = m_contextMenu->addAction(QIcon::fromTheme("view-list-details"), tr("Show File Log"));
     auto *showBlameAction = m_contextMenu->addAction(QIcon::fromTheme("view-list-tree"), tr("Show File Blame"));
-    
+
     m_contextMenu->addSeparator();
-    
+
     // === Advanced Actions ===
     auto *copyPathAction = m_contextMenu->addAction(QIcon::fromTheme("edit-copy"), tr("Copy File Path"));
     auto *copyNameAction = m_contextMenu->addAction(QIcon::fromTheme("edit-copy"), tr("Copy File Name"));
@@ -300,7 +301,7 @@ void GitStatusDialog::setupContextMenu()
     connect(m_stageAction, &QAction::triggered, this, &GitStatusDialog::stageSelectedFiles);
     connect(m_unstageAction, &QAction::triggered, this, &GitStatusDialog::unstageSelectedFiles);
     connect(m_revertAction, &QAction::triggered, this, &GitStatusDialog::resetSelectedFiles);
-    
+
     // Updated diff action to use GitDialogManager
     connect(m_diffAction, &QAction::triggered, [this]() {
         auto selectedFiles = getSelectedFiles();
@@ -309,7 +310,7 @@ void GitStatusDialog::setupContextMenu()
             GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
         }
     });
-    
+
     // === Connect new actions ===
     // File management actions
     connect(openFileAction, &QAction::triggered, this, [this]() {
@@ -320,7 +321,7 @@ void GitStatusDialog::setupContextMenu()
             GitDialogManager::instance()->openFile(absolutePath, this);
         }
     });
-    
+
     connect(showFolderAction, &QAction::triggered, this, [this]() {
         auto selectedFiles = getSelectedFiles();
         if (!selectedFiles.isEmpty()) {
@@ -329,7 +330,7 @@ void GitStatusDialog::setupContextMenu()
             GitDialogManager::instance()->showFileInFolder(absolutePath, this);
         }
     });
-    
+
     // Git history actions
     connect(showLogAction, &QAction::triggered, this, [this]() {
         auto selectedFiles = getSelectedFiles();
@@ -338,7 +339,7 @@ void GitStatusDialog::setupContextMenu()
             GitDialogManager::instance()->showLogDialog(m_repositoryPath, filePath, this);
         }
     });
-    
+
     connect(showBlameAction, &QAction::triggered, this, [this]() {
         auto selectedFiles = getSelectedFiles();
         if (!selectedFiles.isEmpty()) {
@@ -347,7 +348,7 @@ void GitStatusDialog::setupContextMenu()
             GitDialogManager::instance()->showBlameDialog(m_repositoryPath, absolutePath, this);
         }
     });
-    
+
     // Advanced actions
     connect(copyPathAction, &QAction::triggered, this, [this]() {
         auto selectedFiles = getSelectedFiles();
@@ -358,7 +359,7 @@ void GitStatusDialog::setupContextMenu()
             qDebug() << "[GitStatusDialog] Copied file path to clipboard:" << absolutePath;
         }
     });
-    
+
     connect(copyNameAction, &QAction::triggered, this, [this]() {
         auto selectedFiles = getSelectedFiles();
         if (!selectedFiles.isEmpty()) {
@@ -368,7 +369,7 @@ void GitStatusDialog::setupContextMenu()
             qDebug() << "[GitStatusDialog] Copied file name to clipboard:" << fileName;
         }
     });
-    
+
     connect(deleteFileAction, &QAction::triggered, this, [this]() {
         auto selectedFiles = getSelectedFiles();
         if (!selectedFiles.isEmpty()) {
@@ -395,103 +396,81 @@ void GitStatusDialog::loadRepositoryStatus()
     m_stagingAreaWidget->clear();
     m_diffPreviewWidget->clear();
 
-    QProcess process;
-    process.setWorkingDirectory(m_repositoryPath);
-
     // === 获取当前分支信息 ===
-    process.start("git", QStringList() << "branch"
-                                       << "--show-current");
-    if (process.waitForFinished(3000)) {
-        QString branch = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
-        if (branch.isEmpty()) {
-            branch = tr("(detached HEAD)");
-        }
-        m_branchLabel->setText(tr("Current Branch: %1").arg(branch));
-    } else {
-        m_branchLabel->setText(tr("Current Branch: Unknown"));
-        qWarning() << "[GitStatusDialog] Failed to get current branch:" << process.errorString();
-    }
+    QString currentBranch = GitOperationUtils::getCurrentBranch(m_repositoryPath);
+    m_branchLabel->setText(tr("Current Branch: %1").arg(currentBranch));
 
-    // === 获取文件状态 ===
-    process.start("git", QStringList() << "status"
-                                       << "--porcelain"
-                                       << "-z");
-    if (!process.waitForFinished(5000)) {
-        QMessageBox::critical(this, tr("Error"),
-                              tr("Failed to get repository status: %1").arg(process.errorString()));
-        return;
-    }
+    // === 使用GitStatusParser获取文件状态 ===
+    auto files = GitStatusParser::getRepositoryStatus(m_repositoryPath);
 
-    const QByteArray output = process.readAllStandardOutput();
-    
-    // Handle null-terminated output from git status -z
-    QStringList lines;
-    QString outputStr = QString::fromUtf8(output);
-    if (outputStr.contains('\0')) {
-        // Split by null character for -z output
-        lines = outputStr.split('\0', Qt::SkipEmptyParts);
-    } else {
-        // Fallback to newline split for regular output
-        lines = outputStr.split('\n', Qt::SkipEmptyParts);
-    }
+    for (const auto &fileInfo : files) {
+        // 构建状态字符串（兼容现有的显示逻辑）
+        QString statusCode;
+        bool addToStaging = false;
+        bool addToWorking = false;
 
-    for (const QString &line : lines) {
-        if (line.length() < 3) continue;
-
-        const QString status = line.left(2);
-        QString filePath = line.mid(3);
-        
-        // Handle quoted filenames (Git quotes filenames with special characters)
-        if (filePath.startsWith('"') && filePath.endsWith('"')) {
-            // Remove quotes and process escape sequences
-            filePath = filePath.mid(1, filePath.length() - 2);
-            
-            // Process common escape sequences
-            filePath = filePath.replace("\\\"", "\"");
-            filePath = filePath.replace("\\\\", "\\");
-            filePath = filePath.replace("\\n", "\n");
-            filePath = filePath.replace("\\t", "\t");
-            
-            // Process octal escape sequences (like \346\226\260)
-            QRegularExpression octalRegex("\\\\([0-7]{3})");
-            QRegularExpressionMatchIterator it = octalRegex.globalMatch(filePath);
-            while (it.hasNext()) {
-                QRegularExpressionMatch match = it.next();
-                QString octalStr = match.captured(1);
-                bool ok;
-                int octalValue = octalStr.toInt(&ok, 8);
-                if (ok) {
-                    QChar replacement = QChar(octalValue);
-                    filePath = filePath.replace(match.captured(0), replacement);
-                }
-            }
+        switch (fileInfo->status) {
+        case GitFileStatus::StagedAdded:
+            statusCode = "A ";
+            addToStaging = true;
+            break;
+        case GitFileStatus::StagedModified:
+            statusCode = "M ";
+            addToStaging = true;
+            break;
+        case GitFileStatus::StagedDeleted:
+            statusCode = "D ";
+            addToStaging = true;
+            break;
+        case GitFileStatus::Renamed:
+            statusCode = "R ";
+            addToStaging = true;
+            break;
+        case GitFileStatus::Copied:
+            statusCode = "C ";
+            addToStaging = true;
+            break;
+        case GitFileStatus::Modified:
+            statusCode = " M";
+            addToWorking = true;
+            break;
+        case GitFileStatus::Deleted:
+            statusCode = " D";
+            addToWorking = true;
+            break;
+        case GitFileStatus::Untracked:
+            statusCode = "??";
+            addToWorking = true;
+            break;
+        default:
+            continue; // 跳过未知状态
         }
 
-        if (status.at(0) != ' ' && status.at(0) != '?') {
+        if (addToStaging) {
             // 已暂存的文件
             auto *item = new QTreeWidgetItem(m_stagingAreaWidget);
-            item->setText(0, filePath);
-            item->setText(1, getStatusDescription(status));
-            item->setIcon(0, getStatusIcon(status));
-            item->setData(0, Qt::UserRole, status);   // 存储状态信息
-            item->setToolTip(0, tr("Status: %1\nRight-click for options").arg(getStatusDescription(status)));
+            item->setText(0, fileInfo->filePath);
+            item->setText(1, GitStatusParser::getStatusDescription(statusCode));
+            item->setIcon(0, GitStatusParser::getStatusIcon(statusCode));
+            item->setData(0, Qt::UserRole, statusCode);
+            item->setToolTip(0, tr("Status: %1\nRight-click for options").arg(GitStatusParser::getStatusDescription(statusCode)));
         }
 
-        if (status.at(1) != ' ' || status == "??") {
-            // 工作区文件（已修改但未暂存或未跟踪）
+        if (addToWorking) {
+            // 工作区文件
             auto *item = new QTreeWidgetItem(m_workingTreeWidget);
-            item->setText(0, filePath);
-            item->setText(1, getStatusDescription(status));
-            item->setIcon(0, getStatusIcon(status));
-            item->setData(0, Qt::UserRole, status);
-            item->setToolTip(0, tr("Status: %1\nRight-click for options").arg(getStatusDescription(status)));
+            item->setText(0, fileInfo->filePath);
+            item->setText(1, GitStatusParser::getStatusDescription(statusCode));
+            item->setIcon(0, GitStatusParser::getStatusIcon(statusCode));
+            item->setData(0, Qt::UserRole, statusCode);
+            item->setToolTip(0, tr("Status: %1\nRight-click for options").arg(GitStatusParser::getStatusDescription(statusCode)));
         }
     }
 
     updateStatusSummary();
     updateButtonStates();
 
-    qDebug() << "[GitStatusDialog] Repository status loaded successfully";
+    qDebug() << "[GitStatusDialog] Repository status loaded successfully using GitStatusParser";
 }
 
 void GitStatusDialog::updateStatusSummary()
@@ -643,46 +622,16 @@ void GitStatusDialog::addSelectedFiles()
         return;
     }
 
-    bool success = true;
-    QString errorMessage;
-
-    auto *progressDialog = new QProgressDialog(tr("Adding files to Git..."), tr("Cancel"), 0, filePaths.size(), this);
-    progressDialog->setWindowModality(Qt::WindowModal);
-    progressDialog->show();
-
-    for (int i = 0; i < filePaths.size(); ++i) {
-        if (progressDialog->wasCanceled()) {
-            break;
-        }
-
-        const QString &filePath = filePaths.at(i);
-        progressDialog->setLabelText(tr("Adding: %1").arg(filePath));
-        progressDialog->setValue(i);
-
-        // 使用QProcess直接执行git add命令
-        QProcess process;
-        process.setWorkingDirectory(m_repositoryPath);
-        process.start("git", QStringList() << "add" << filePath);
-        
-        if (!process.waitForFinished(5000) || process.exitCode() != 0) {
-            success = false;
-            errorMessage = tr("Failed to add file: %1\nError: %2").arg(filePath, QString::fromUtf8(process.readAllStandardError()));
-            break;
-        }
-
-        QApplication::processEvents();
-    }
-
-    progressDialog->deleteLater();
-
-    if (success) {
+    auto result = GitOperationUtils::addFiles(m_repositoryPath, filePaths);
+    
+    if (result.success) {
         QMessageBox::information(this, tr("Success"), tr("Files added to Git successfully."));
         onRefreshClicked();
     } else {
-        QMessageBox::critical(this, tr("Error"), errorMessage);
+        QMessageBox::critical(this, tr("Error"), tr("Failed to add files: %1").arg(result.error));
     }
 
-    qDebug() << "[GitStatusDialog] Add operation completed for" << filePaths.size() << "files, success:" << success;
+    qDebug() << "[GitStatusDialog] Add operation completed for" << filePaths.size() << "files, success:" << result.success;
 }
 
 void GitStatusDialog::stageSelectedFiles()
@@ -698,46 +647,16 @@ void GitStatusDialog::stageSelectedFiles()
         filePaths << item->text(0);
     }
 
-    bool success = true;
-    QString errorMessage;
-
-    auto *progressDialog = new QProgressDialog(tr("Staging files..."), tr("Cancel"), 0, filePaths.size(), this);
-    progressDialog->setWindowModality(Qt::WindowModal);
-    progressDialog->show();
-
-    for (int i = 0; i < filePaths.size(); ++i) {
-        if (progressDialog->wasCanceled()) {
-            break;
-        }
-
-        const QString &filePath = filePaths.at(i);
-        progressDialog->setLabelText(tr("Staging: %1").arg(filePath));
-        progressDialog->setValue(i);
-
-        // 使用QProcess直接执行git add命令
-        QProcess process;
-        process.setWorkingDirectory(m_repositoryPath);
-        process.start("git", QStringList() << "add" << filePath);
-        
-        if (!process.waitForFinished(5000) || process.exitCode() != 0) {
-            success = false;
-            errorMessage = tr("Failed to stage file: %1\nError: %2").arg(filePath, QString::fromUtf8(process.readAllStandardError()));
-            break;
-        }
-
-        QApplication::processEvents();
-    }
-
-    progressDialog->deleteLater();
-
-    if (success) {
+    auto result = GitOperationUtils::stageFiles(m_repositoryPath, filePaths);
+    
+    if (result.success) {
         QMessageBox::information(this, tr("Success"), tr("Files staged successfully."));
         onRefreshClicked();
     } else {
-        QMessageBox::critical(this, tr("Error"), errorMessage);
+        QMessageBox::critical(this, tr("Error"), tr("Failed to stage files: %1").arg(result.error));
     }
 
-    qDebug() << "[GitStatusDialog] Stage operation completed for" << filePaths.size() << "files, success:" << success;
+    qDebug() << "[GitStatusDialog] Stage operation completed for" << filePaths.size() << "files, success:" << result.success;
 }
 
 void GitStatusDialog::unstageSelectedFiles()
@@ -753,46 +672,16 @@ void GitStatusDialog::unstageSelectedFiles()
         filePaths << item->text(0);
     }
 
-    bool success = true;
-    QString errorMessage;
-
-    auto *progressDialog = new QProgressDialog(tr("Unstaging files..."), tr("Cancel"), 0, filePaths.size(), this);
-    progressDialog->setWindowModality(Qt::WindowModal);
-    progressDialog->show();
-
-    for (int i = 0; i < filePaths.size(); ++i) {
-        if (progressDialog->wasCanceled()) {
-            break;
-        }
-
-        const QString &filePath = filePaths.at(i);
-        progressDialog->setLabelText(tr("Unstaging: %1").arg(filePath));
-        progressDialog->setValue(i);
-
-        // 使用QProcess直接执行git reset HEAD命令
-        QProcess process;
-        process.setWorkingDirectory(m_repositoryPath);
-        process.start("git", QStringList() << "reset" << "HEAD" << filePath);
-        
-        if (!process.waitForFinished(5000) || process.exitCode() != 0) {
-            success = false;
-            errorMessage = tr("Failed to unstage file: %1\nError: %2").arg(filePath, QString::fromUtf8(process.readAllStandardError()));
-            break;
-        }
-
-        QApplication::processEvents();
-    }
-
-    progressDialog->deleteLater();
-
-    if (success) {
+    auto result = GitOperationUtils::unstageFiles(m_repositoryPath, filePaths);
+    
+    if (result.success) {
         QMessageBox::information(this, tr("Success"), tr("Files unstaged successfully."));
         onRefreshClicked();
     } else {
-        QMessageBox::critical(this, tr("Error"), errorMessage);
+        QMessageBox::critical(this, tr("Error"), tr("Failed to unstage files: %1").arg(result.error));
     }
 
-    qDebug() << "[GitStatusDialog] Unstage operation completed for" << filePaths.size() << "files, success:" << success;
+    qDebug() << "[GitStatusDialog] Unstage operation completed for" << filePaths.size() << "files, success:" << result.success;
 }
 
 void GitStatusDialog::resetSelectedFiles()
@@ -816,46 +705,16 @@ void GitStatusDialog::resetSelectedFiles()
         filePaths << item->text(0);
     }
 
-    bool success = true;
-    QString errorMessage;
-
-    auto *progressDialog = new QProgressDialog(tr("Resetting files..."), tr("Cancel"), 0, filePaths.size(), this);
-    progressDialog->setWindowModality(Qt::WindowModal);
-    progressDialog->show();
-
-    for (int i = 0; i < filePaths.size(); ++i) {
-        if (progressDialog->wasCanceled()) {
-            break;
-        }
-
-        const QString &filePath = filePaths.at(i);
-        progressDialog->setLabelText(tr("Resetting: %1").arg(filePath));
-        progressDialog->setValue(i);
-
-        // 使用QProcess直接执行git checkout HEAD命令
-        QProcess process;
-        process.setWorkingDirectory(m_repositoryPath);
-        process.start("git", QStringList() << "checkout" << "HEAD" << "--" << filePath);
-        
-        if (!process.waitForFinished(5000) || process.exitCode() != 0) {
-            success = false;
-            errorMessage = tr("Failed to reset file: %1\nError: %2").arg(filePath, QString::fromUtf8(process.readAllStandardError()));
-            break;
-        }
-
-        QApplication::processEvents();
-    }
-
-    progressDialog->deleteLater();
-
-    if (success) {
+    auto operationResult = GitOperationUtils::resetFiles(m_repositoryPath, filePaths);
+    
+    if (operationResult.success) {
         QMessageBox::information(this, tr("Success"), tr("Files reset successfully."));
         onRefreshClicked();
     } else {
-        QMessageBox::critical(this, tr("Error"), errorMessage);
+        QMessageBox::critical(this, tr("Error"), tr("Failed to reset files: %1").arg(operationResult.error));
     }
 
-    qDebug() << "[GitStatusDialog] Reset operation completed for" << filePaths.size() << "files, success:" << success;
+    qDebug() << "[GitStatusDialog] Reset operation completed for" << filePaths.size() << "files, success:" << operationResult.success;
 }
 
 void GitStatusDialog::commitSelectedFiles()
@@ -876,20 +735,20 @@ void GitStatusDialog::onFileDoubleClicked(QTreeWidgetItem *item, int column)
     if (!item) {
         return;
     }
-    
+
     Q_UNUSED(column)
 
     const QString filePath = item->text(0);
     const QString status = item->data(0, Qt::UserRole).toString();
-    
+
     qInfo() << "INFO: [GitStatusDialog::onFileDoubleClicked] File:" << filePath << "Status:" << status;
-    
+
     // 根据文件状态提供不同的双击行为
     if (status == "??") {
         // 未跟踪文件 - 打开文件查看内容
         QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(filePath);
         GitDialogManager::instance()->openFile(absolutePath, this);
-        
+
     } else {
         // 已跟踪文件 - 显示差异
         GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
@@ -985,5 +844,4 @@ QIcon GitStatusDialog::getStatusIcon(const QString &status) const
     }
 }
 
-// 包含MOC生成的代码以支持Q_OBJECT宏
 #include "gitstatusdialog.moc"

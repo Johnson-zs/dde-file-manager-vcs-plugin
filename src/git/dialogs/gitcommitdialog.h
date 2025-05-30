@@ -22,6 +22,8 @@
 class GitFileModel;
 class GitFileProxyModel;
 class GitFileItem;
+class GitStatusParser;
+class GitOperationUtils;
 
 /**
  * @brief Represents a file in the Git repository with its status
@@ -179,8 +181,6 @@ private:
     void unstageFile(const QString &filePath);
     void discardFile(const QString &filePath);
     void showFileDiff(const QString &filePath);
-    QList<std::shared_ptr<GitFileItem>> parseGitStatus(const QString &gitStatusOutput);
-    GitFileItem::Status parseFileStatus(const QString &indexStatus, const QString &workingStatus);
 
     // Helper methods for context menu
     QStringList getSelectedFilePaths() const;
