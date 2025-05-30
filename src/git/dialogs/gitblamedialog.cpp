@@ -17,6 +17,7 @@
 #include <QContextMenuEvent>
 #include <QKeyEvent>
 #include <QUrl>
+#include <QTimer>
 
 GitBlameDialog::GitBlameDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent)
     : QDialog(parent), m_repositoryPath(repositoryPath), m_filePath(filePath), m_fileName(QFileInfo(filePath).fileName()), m_currentSelectedLine(-1), m_contextMenu(nullptr), m_showCommitDetailsAction(nullptr), m_filePathLabel(nullptr), m_blameTextEdit(nullptr), m_refreshButton(nullptr), m_closeButton(nullptr), m_progressBar(nullptr), m_statusLabel(nullptr)
@@ -75,13 +76,16 @@ void GitBlameDialog::setupUI()
     m_blameTextEdit->setFont(QFont("Courier", 10));
     m_blameTextEdit->setLineWrapMode(QTextEdit::NoWrap);
     
+    // 禁用默认的链接打开行为，防止点击链接时清空内容
+    m_blameTextEdit->setOpenLinks(false);
+
     // 启用鼠标跟踪以便检测鼠标悬停
     m_blameTextEdit->setMouseTracking(true);
     setMouseTracking(true);
 
     // 连接超链接点击信号
     connect(m_blameTextEdit, &QTextBrowser::anchorClicked, this, &GitBlameDialog::onHashLinkClicked);
-    
+
     blameLayout->addWidget(m_blameTextEdit);
     mainLayout->addWidget(blameGroup);
 
@@ -132,11 +136,11 @@ void GitBlameDialog::contextMenuEvent(QContextMenuEvent *event)
 {
     const QPoint pos = event->pos();
     const QPoint textPos = m_blameTextEdit->mapFromParent(pos);
-    
+
     if (m_blameTextEdit->rect().contains(textPos)) {
         const int lineNumber = getLineNumberFromPosition(textPos);
         m_currentSelectedLine = lineNumber;
-        
+
         if (lineNumber >= 0 && lineNumber < m_blameData.size()) {
             const QString hash = m_blameData[lineNumber].hash;
             m_showCommitDetailsAction->setText(tr("Show Commit Details (%1)").arg(hash.left(8)));
@@ -145,7 +149,7 @@ void GitBlameDialog::contextMenuEvent(QContextMenuEvent *event)
             m_showCommitDetailsAction->setText(tr("Show Commit Details"));
             m_showCommitDetailsAction->setEnabled(false);
         }
-        
+
         m_contextMenu->exec(event->globalPos());
     }
 }
@@ -237,14 +241,14 @@ void GitBlameDialog::loadBlameData()
     }
 
     formatBlameDisplay();
-    
+
     // 默认选中第一行
     if (!m_blameData.isEmpty()) {
         m_currentSelectedLine = 0;
     }
-    
+
     m_statusLabel->setText(tr("Blame information loaded successfully. %1 lines processed.").arg(m_blameData.size()));
-    
+
     qDebug() << "[GitBlameDialog] Blame data loaded successfully," << m_blameData.size() << "lines";
 }
 
@@ -297,75 +301,75 @@ BlameLineInfo GitBlameDialog::parseBlameLineInfo(const QStringList &blameLines, 
 void GitBlameDialog::formatBlameDisplay()
 {
     QStringList displayLines;
-    
+
     // 初始化作者颜色映射
     QHash<QString, QColor> authorColors;
     QList<QColor> colorPalette = {
-        QColor(255, 239, 219),  // 浅橙色
-        QColor(219, 255, 239),  // 浅绿色  
-        QColor(239, 219, 255),  // 浅紫色
-        QColor(255, 219, 239),  // 浅粉色
-        QColor(219, 239, 255),  // 浅蓝色
-        QColor(255, 255, 219),  // 浅黄色
-        QColor(239, 255, 219),  // 浅青色
-        QColor(255, 219, 219),  // 浅红色
+        QColor(255, 239, 219),   // 浅橙色
+        QColor(219, 255, 239),   // 浅绿色
+        QColor(239, 219, 255),   // 浅紫色
+        QColor(255, 219, 239),   // 浅粉色
+        QColor(219, 239, 255),   // 浅蓝色
+        QColor(255, 255, 219),   // 浅黄色
+        QColor(239, 255, 219),   // 浅青色
+        QColor(255, 219, 219),   // 浅红色
     };
-    
+
     QSet<QString> authors;
     for (const auto &info : m_blameData) {
         authors.insert(info.author);
     }
-    
+
     int colorIndex = 0;
     for (const QString &author : authors) {
         authorColors[author] = colorPalette[colorIndex % colorPalette.size()];
         colorIndex++;
     }
-    
+
     for (int i = 0; i < m_blameData.size(); ++i) {
         const BlameLineInfo &info = m_blameData[i];
-        
+
         // 格式化显示：行号 | 哈希(超链接) | 作者 | 时间 | 代码
         QString hashDisplay = info.hash.left(HASH_DISPLAY_LENGTH);
         QString authorDisplay = info.author.left(AUTHOR_DISPLAY_LENGTH);
         if (authorDisplay.length() < AUTHOR_DISPLAY_LENGTH) {
             authorDisplay = authorDisplay.leftJustified(AUTHOR_DISPLAY_LENGTH, ' ');
         }
-        
+
         QString timeDisplay = info.timestamp.toString("MM-dd hh:mm");
         if (timeDisplay.length() < TIME_DISPLAY_LENGTH) {
             timeDisplay = timeDisplay.leftJustified(TIME_DISPLAY_LENGTH, ' ');
         }
-        
+
         // 创建超链接格式的哈希
         QString hashLink = QString("<a href=\"%1\" style=\"color: #0066cc; text-decoration: underline;\">%2</a>")
-                          .arg(info.hash)  // 完整哈希作为链接
-                          .arg(hashDisplay); // 显示的短哈希
-        
+                                   .arg(info.hash)   // 完整哈希作为链接
+                                   .arg(hashDisplay);   // 显示的短哈希
+
         // 获取作者背景色
         QColor bgColor = authorColors.value(info.author, QColor(240, 240, 240));
-        
+
         // 如果是选中行，使用高亮颜色
         if (i == m_currentSelectedLine) {
-            bgColor = QColor(255, 255, 0, 120); // 半透明黄色高亮
+            bgColor = QColor(255, 255, 0, 120);   // 半透明黄色高亮
         }
-        
+
         QString bgColorStr = QString("rgb(%1, %2, %3)")
-                            .arg(bgColor.red())
-                            .arg(bgColor.green())
-                            .arg(bgColor.blue());
-        
+                                     .arg(bgColor.red())
+                                     .arg(bgColor.green())
+                                     .arg(bgColor.blue());
+
         QString line = QString("<div style=\"background-color: %6; font-family: 'Courier', monospace; padding: 2px; margin: 0; white-space: pre;\">%1 | %2 | %3 | %4 | %5</div>")
-                       .arg(info.lineNumber, 4)
-                       .arg(hashLink)
-                       .arg(authorDisplay.toHtmlEscaped())
-                       .arg(timeDisplay)
-                       .arg(info.lineContent.toHtmlEscaped())
-                       .arg(bgColorStr);
-        
+                               .arg(info.lineNumber, 4)
+                               .arg(hashLink)
+                               .arg(authorDisplay.toHtmlEscaped())
+                               .arg(timeDisplay)
+                               .arg(info.lineContent.toHtmlEscaped())
+                               .arg(bgColorStr);
+
         displayLines.append(line);
     }
-    
+
     // 使用HTML格式设置内容，不包装额外的容器
     QString htmlContent = displayLines.join("");
     m_blameTextEdit->setHtml(htmlContent);
@@ -383,7 +387,7 @@ void GitBlameDialog::keyPressEvent(QKeyEvent *event)
     if (m_currentSelectedLine < 0 && !m_blameData.isEmpty()) {
         m_currentSelectedLine = 0;
     }
-    
+
     switch (event->key()) {
     case Qt::Key_Up:
         if (m_currentSelectedLine > 0) {
@@ -420,7 +424,7 @@ void GitBlameDialog::highlightSelectedLine()
     if (m_currentSelectedLine >= 0 && m_currentSelectedLine < m_blameData.size()) {
         // 重新格式化显示，带选中行高亮
         formatBlameDisplay();
-        
+
         // 滚动到选中行
         QTextCursor cursor = m_blameTextEdit->textCursor();
         cursor.movePosition(QTextCursor::Start);
@@ -437,18 +441,32 @@ void GitBlameDialog::showCommitDetails(const QString &hash)
     if (hash.isEmpty()) {
         return;
     }
-    
+
     qDebug() << "[GitBlameDialog] Showing commit details for:" << hash;
-    
-    // 保存当前的显示状态
+
+    // 保存当前的显示状态 - 使用更可靠的方法
     QString currentHtml = m_blameTextEdit->toHtml();
+    QTextDocument *doc = m_blameTextEdit->document();
     
+    // 确保有备份内容
+    if (currentHtml.isEmpty() && !m_blameData.isEmpty()) {
+        qDebug() << "[GitBlameDialog] Current HTML is empty, regenerating from blame data";
+        formatBlameDisplay();
+        currentHtml = m_blameTextEdit->toHtml();
+    }
+
+    qDebug() << "[GitBlameDialog] Backup HTML length:" << currentHtml.length();
+
     showCommitDetailsDialog(hash);
+
+    // 检查内容是否被意外清空，如果是则恢复
+    QString afterHtml = m_blameTextEdit->toHtml();
+    qDebug() << "[GitBlameDialog] After dialog HTML length:" << afterHtml.length();
     
-    // 恢复显示状态，防止数据被清空
-    if (m_blameTextEdit->toHtml().isEmpty() && !currentHtml.isEmpty()) {
+    if (afterHtml.isEmpty() || afterHtml.length() < currentHtml.length() / 2) {
+        qDebug() << "[GitBlameDialog] Content appears to be cleared, restoring...";
         m_blameTextEdit->setHtml(currentHtml);
-        qDebug() << "[GitBlameDialog] Restored blame content after commit details dialog";
+        qInfo() << "INFO: [GitBlameDialog::showCommitDetails] Restored blame content after commit details dialog";
     }
 }
 
@@ -570,12 +588,12 @@ void GitBlameDialog::applyDiffSyntaxHighlighting(QTextEdit *textEdit)
         // 不要对主blame显示区域应用语法高亮
         return;
     }
-    
+
     QTextDocument *doc = textEdit->document();
     if (!doc) {
         return;
     }
-    
+
     QTextCursor cursor(doc);
 
     cursor.beginEditBlock();
@@ -661,6 +679,14 @@ void GitBlameDialog::onHashLinkClicked(const QUrl &url)
 {
     QString hash = url.toString();
     if (!hash.isEmpty()) {
-        showCommitDetails(hash);
+        qDebug() << "[GitBlameDialog] Hash link clicked:" << hash.left(8);
+        
+        // 确保链接点击不会触发QTextBrowser的默认导航行为
+        // 通过延迟调用showCommitDetails来避免与QTextBrowser的内部处理冲突
+        QTimer::singleShot(0, this, [this, hash]() {
+            showCommitDetails(hash);
+        });
+    } else {
+        qWarning() << "WARNING: [GitBlameDialog::onHashLinkClicked] Empty hash from link click";
     }
 }
