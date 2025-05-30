@@ -67,6 +67,7 @@ private:
     QString m_lastCommitMessage;
     bool m_isAmendMode;
     bool m_isAllowEmpty;
+    bool m_isUpdating;  // 防止递归更新的标志
 
     // UI组件
     QSplitter *m_mainSplitter;

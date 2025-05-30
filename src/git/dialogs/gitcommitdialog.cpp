@@ -14,12 +14,14 @@
 #include <QApplication>
 #include <QHeaderView>
 #include <QFileInfo>
+#include <QTimer>
 
 GitCommitDialog::GitCommitDialog(const QString &repositoryPath, QWidget *parent)
     : QDialog(parent)
     , m_repositoryPath(repositoryPath)
     , m_isAmendMode(false)
     , m_isAllowEmpty(false)
+    , m_isUpdating(false)
     , m_mainSplitter(nullptr)
     , m_optionsGroup(nullptr)
     , m_amendCheckBox(nullptr)
@@ -228,6 +230,17 @@ void GitCommitDialog::setupUI()
 
 void GitCommitDialog::loadChangedFiles()
 {
+    // 防止递归更新
+    if (m_isUpdating) {
+        qDebug() << "[GitCommitDialog] Update already in progress, skipping";
+        return;
+    }
+    
+    m_isUpdating = true;
+    
+    // 防止在更新过程中触发信号导致递归调用
+    m_changedFilesList->blockSignals(true);
+    
     m_changedFilesList->clear();
     m_files.clear();
     
@@ -329,11 +342,16 @@ void GitCommitDialog::loadChangedFiles()
         updateFileCountLabels(0, 0, 0);
     }
     
+    // 恢复信号处理
+    m_changedFilesList->blockSignals(false);
+    
     // 应用当前过滤器
     applyFileFilter();
     updateButtonStates();
     
     qDebug() << "[GitCommitDialog] Loaded" << m_changedFilesList->topLevelItemCount() << "changed files";
+    
+    m_isUpdating = false;
 }
 
 void GitCommitDialog::updateFileCountLabels(int stagedCount, int modifiedCount, int untrackedCount)
@@ -616,19 +634,37 @@ void GitCommitDialog::onCancelClicked()
 
 void GitCommitDialog::onFileItemChanged(QTreeWidgetItem *item, int column)
 {
-    if (column == 0) {
+    if (column == 0 && item && !m_isUpdating) {
         const QString filePath = item->data(1, Qt::UserRole).toString();
         const bool shouldStage = item->checkState(0) == Qt::Checked;
         const bool isCurrentlyStaged = item->data(0, Qt::UserRole).toBool();
         
+        // 防止在处理状态变更时触发额外的信号
+        m_changedFilesList->blockSignals(true);
+        
+        qDebug() << "[GitCommitDialog] File item changed:" << filePath 
+                 << "shouldStage:" << shouldStage 
+                 << "isCurrentlyStaged:" << isCurrentlyStaged;
+        
+        bool operationSucceeded = false;
+        
         if (shouldStage && !isCurrentlyStaged) {
             stageFile(filePath);
+            operationSucceeded = true;
         } else if (!shouldStage && isCurrentlyStaged) {
             unstageFile(filePath);
+            operationSucceeded = true;
         }
         
-        // 重新加载文件列表以更新状态
-        loadChangedFiles();
+        // 恢复信号
+        m_changedFilesList->blockSignals(false);
+        
+        // 使用延迟更新避免在事件处理过程中删除item导致崩溃
+        if (operationSucceeded) {
+            QTimer::singleShot(0, this, [this]() {
+                loadChangedFiles();
+            });
+        }
     }
 }
 
@@ -659,8 +695,10 @@ void GitCommitDialog::onStageSelected()
         }
     }
     
-    // 重新加载文件列表以更新状态
-    loadChangedFiles();
+    // 使用延迟更新避免崩溃
+    QTimer::singleShot(0, this, [this]() {
+        loadChangedFiles();
+    });
 }
 
 void GitCommitDialog::onUnstageSelected()
@@ -675,8 +713,10 @@ void GitCommitDialog::onUnstageSelected()
         }
     }
     
-    // 重新加载文件列表以更新状态
-    loadChangedFiles();
+    // 使用延迟更新避免崩溃
+    QTimer::singleShot(0, this, [this]() {
+        loadChangedFiles();
+    });
 }
 
 void GitCommitDialog::onSelectAll()
