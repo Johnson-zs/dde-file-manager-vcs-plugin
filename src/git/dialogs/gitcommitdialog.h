@@ -3,7 +3,6 @@
 
 #include <QDialog>
 #include <QTextEdit>
-#include <QListWidget>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QPushButton>
@@ -13,11 +12,127 @@
 #include <QSplitter>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QMenu>
+#include <QStandardItemModel>
+#include <QTreeView>
+#include <QSortFilterProxyModel>
+#include <memory>
+
+// Forward declarations
+class GitFileModel;
+class GitFileProxyModel;
+class GitFileItem;
 
 /**
- * @brief Git提交信息输入对话框
- *
- * 支持普通提交、amend提交和空提交等功能，支持文件选择和预览
+ * @brief Represents a file in the Git repository with its status
+ */
+class GitFileItem
+{
+public:
+    enum class Status {
+        Modified,       // Modified but not staged
+        Staged,         // Staged for commit
+        Untracked,      // Not tracked by Git
+        Deleted,        // Deleted but not staged
+        StagedDeleted,  // Staged for deletion
+        StagedModified, // Staged modification
+        StagedAdded,    // Staged addition
+        Renamed,        // Renamed file
+        Copied          // Copied file
+    };
+
+    explicit GitFileItem(const QString &filePath, Status status, const QString &statusText = QString());
+
+    QString filePath() const { return m_filePath; }
+    QString fileName() const;
+    QString displayPath() const { return m_filePath; }
+    Status status() const { return m_status; }
+    QString statusText() const { return m_statusText; }
+    bool isStaged() const;
+    bool isChecked() const { return m_checked; }
+    void setChecked(bool checked) { m_checked = checked; }
+
+    QIcon statusIcon() const;
+    QString statusDisplayText() const;
+
+private:
+    QString m_filePath;
+    Status m_status;
+    QString m_statusText;
+    bool m_checked;
+};
+
+/**
+ * @brief Model for managing Git files in the commit dialog
+ */
+class GitFileModel : public QStandardItemModel
+{
+    Q_OBJECT
+
+public:
+    enum Roles {
+        FileItemRole = Qt::UserRole + 1,
+        FilePathRole,
+        StatusRole,
+        IsCheckedRole
+    };
+
+    explicit GitFileModel(QObject *parent = nullptr);
+
+    void setFiles(const QList<std::shared_ptr<GitFileItem>> &files);
+    void addFile(std::shared_ptr<GitFileItem> file);
+    void updateFile(const QString &filePath, GitFileItem::Status status);
+    void removeFile(const QString &filePath);
+    void clear();
+
+    std::shared_ptr<GitFileItem> getFileItem(const QString &filePath) const;
+    QList<std::shared_ptr<GitFileItem>> getCheckedFiles() const;
+    QList<std::shared_ptr<GitFileItem>> getAllFiles() const;
+
+    // QStandardItemModel overrides
+    bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
+    Qt::ItemFlags flags(const QModelIndex &index) const override;
+
+Q_SIGNALS:
+    void fileCheckStateChanged(const QString &filePath, bool checked);
+
+private:
+    void updateModelItem(QStandardItem *item, std::shared_ptr<GitFileItem> fileItem);
+    QStandardItem *findItemByPath(const QString &filePath) const;
+
+    QList<std::shared_ptr<GitFileItem>> m_files;
+};
+
+/**
+ * @brief Proxy model for filtering and sorting Git files
+ */
+class GitFileProxyModel : public QSortFilterProxyModel
+{
+    Q_OBJECT
+
+public:
+    enum FilterType {
+        AllFiles,
+        StagedFiles,
+        ModifiedFiles,
+        UntrackedFiles
+    };
+
+    explicit GitFileProxyModel(QObject *parent = nullptr);
+
+    void setFilterType(FilterType type);
+    void setSearchText(const QString &text);
+
+protected:
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
+
+private:
+    FilterType m_filterType;
+    QString m_searchText;
+};
+
+/**
+ * @brief Modern Git commit dialog with proper architecture
  */
 class GitCommitDialog : public QDialog
 {
@@ -38,7 +153,7 @@ private Q_SLOTS:
     void onMessageChanged();
     void onAmendToggled(bool enabled);
     void onAllowEmptyToggled(bool enabled);
-    void onFileItemChanged(QTreeWidgetItem *item, int column);
+    void onFileCheckStateChanged(const QString &filePath, bool checked);
     void onFileSelectionChanged();
     void onFilterChanged();
     void onRefreshFiles();
@@ -46,61 +161,79 @@ private Q_SLOTS:
     void onUnstageSelected();
     void onSelectAll();
     void onSelectNone();
+    void onShowContextMenu(const QPoint &pos);
 
 private:
     void setupUI();
+    void setupFileView();
+    void setupContextMenu();
+    QWidget *createFileViewPlaceholder();
     void loadChangedFiles();
     void loadLastCommitMessage();
     bool validateCommitMessage();
     void commitChanges();
-    void refreshFilesList();
-    void updateFileCountLabels(int stagedCount, int modifiedCount, int untrackedCount);
+    void updateFileCountLabels();
     void updateButtonStates();
     void stageFile(const QString &filePath);
     void unstageFile(const QString &filePath);
-    QString getFileStatus(const QString &filePath) const;
-    QIcon getStatusIcon(const QString &status) const;
-    void applyFileFilter();
+    void discardFile(const QString &filePath);
+    void showFileDiff(const QString &filePath);
+    QList<std::shared_ptr<GitFileItem>> parseGitStatus(const QString &gitStatusOutput);
+    GitFileItem::Status parseFileStatus(const QString &indexStatus, const QString &workingStatus);
+
+    // Context menu actions
+    void stageSelectedFiles();
+    void unstageSelectedFiles();
+    void discardSelectedFiles();
+    void showSelectedFilesDiff();
 
     QString m_repositoryPath;
-    QStringList m_files;
     QString m_lastCommitMessage;
     bool m_isAmendMode;
     bool m_isAllowEmpty;
-    bool m_isUpdating;  // 防止递归更新的标志
 
-    // UI组件
+    // Models
+    std::unique_ptr<GitFileModel> m_fileModel;
+    std::unique_ptr<GitFileProxyModel> m_proxyModel;
+
+    // UI Components
     QSplitter *m_mainSplitter;
 
-    // 选项区域
+    // Options section
     QGroupBox *m_optionsGroup;
     QCheckBox *m_amendCheckBox;
     QCheckBox *m_allowEmptyCheckBox;
     QLabel *m_optionsLabel;
 
-    // 消息区域
+    // Message section
     QGroupBox *m_messageGroup;
     QTextEdit *m_messageEdit;
     QLabel *m_messageHintLabel;
 
-    // 文件选择区域
+    // Files section
     QGroupBox *m_filesGroup;
     QComboBox *m_fileFilterCombo;
     QLineEdit *m_fileSearchEdit;
-    QTreeWidget *m_changedFilesList;
+    QTreeView *m_fileView;
     QLabel *m_stagedCountLabel;
     QLabel *m_modifiedCountLabel;
     QLabel *m_untrackedCountLabel;
 
-    // 操作按钮
+    // Context menu
+    QMenu *m_contextMenu;
+    QAction *m_stageAction;
+    QAction *m_unstageAction;
+    QAction *m_discardAction;
+    QAction *m_showDiffAction;
+
+    // Action buttons
     QPushButton *m_refreshButton;
     QPushButton *m_stageSelectedButton;
     QPushButton *m_unstageSelectedButton;
     QPushButton *m_selectAllButton;
     QPushButton *m_selectNoneButton;
-
     QPushButton *m_commitButton;
     QPushButton *m_cancelButton;
 };
 
-#endif   // GITCOMMITDIALOG_H
+#endif // GITCOMMITDIALOG_H
