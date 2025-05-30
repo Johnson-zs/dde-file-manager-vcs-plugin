@@ -24,6 +24,7 @@
 #include <QFile>
 #include <QDir>
 #include <QClipboard>
+#include <QRegularExpression>
 
 // ============================================================================
 // GitFileItem Implementation
@@ -364,7 +365,6 @@ GitCommitDialog::GitCommitDialog(const QString &repositoryPath, QWidget *parent)
     : QDialog(parent), m_repositoryPath(repositoryPath), m_isAmendMode(false), m_isAllowEmpty(false), m_fileModel(std::make_unique<GitFileModel>(this)), m_proxyModel(std::make_unique<GitFileProxyModel>(this))
 {
     setWindowTitle(tr("Git Commit"));
-    setModal(true);
     setMinimumSize(800, 700);
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
     resize(1200, 800);
@@ -600,6 +600,8 @@ void GitCommitDialog::setupFileView()
             this, &GitCommitDialog::onFileSelectionChanged);
     connect(m_fileView, &QTreeView::customContextMenuRequested,
             this, &GitCommitDialog::onShowContextMenu);
+    connect(m_fileView, &QTreeView::doubleClicked,
+            this, &GitCommitDialog::onFileDoubleClicked);
 }
 
 void GitCommitDialog::setupContextMenu()
@@ -710,11 +712,13 @@ void GitCommitDialog::loadChangedFiles()
     process.setWorkingDirectory(m_repositoryPath);
 
     // Get all changed files (staged, modified, untracked)
+    // Use -z option to get null-terminated output for better handling of special characters
     process.start("git", QStringList() << "status"
-                                       << "--porcelain");
+                                       << "--porcelain"
+                                       << "-z");
     if (process.waitForFinished(5000)) {
-        const QString output = QString::fromUtf8(process.readAllStandardOutput());
-        auto files = parseGitStatus(output);
+        const QByteArray output = process.readAllStandardOutput();
+        auto files = parseGitStatus(QString::fromUtf8(output));
 
         m_fileModel->setFiles(files);
         updateFileCountLabels();
@@ -730,13 +734,48 @@ void GitCommitDialog::loadChangedFiles()
 QList<std::shared_ptr<GitFileItem>> GitCommitDialog::parseGitStatus(const QString &gitStatusOutput)
 {
     QList<std::shared_ptr<GitFileItem>> files;
-    const QStringList lines = gitStatusOutput.split('\n', Qt::SkipEmptyParts);
+    
+    // Handle null-terminated output from git status -z
+    QStringList lines;
+    if (gitStatusOutput.contains('\0')) {
+        // Split by null character for -z output
+        lines = gitStatusOutput.split('\0', Qt::SkipEmptyParts);
+    } else {
+        // Fallback to newline split for regular output
+        lines = gitStatusOutput.split('\n', Qt::SkipEmptyParts);
+    }
 
     for (const QString &line : lines) {
         if (line.length() > 3) {
             const QString indexStatus = line.mid(0, 1);
             const QString workingStatus = line.mid(1, 1);
-            const QString filePath = line.mid(3);
+            QString filePath = line.mid(3);
+            
+            // Handle quoted filenames (Git quotes filenames with special characters)
+            if (filePath.startsWith('"') && filePath.endsWith('"')) {
+                // Remove quotes and process escape sequences
+                filePath = filePath.mid(1, filePath.length() - 2);
+                
+                // Process common escape sequences
+                filePath = filePath.replace("\\\"", "\"");
+                filePath = filePath.replace("\\\\", "\\");
+                filePath = filePath.replace("\\n", "\n");
+                filePath = filePath.replace("\\t", "\t");
+                
+                // Process octal escape sequences (like \346\226\260)
+                QRegularExpression octalRegex("\\\\([0-7]{3})");
+                QRegularExpressionMatchIterator it = octalRegex.globalMatch(filePath);
+                while (it.hasNext()) {
+                    QRegularExpressionMatch match = it.next();
+                    QString octalStr = match.captured(1);
+                    bool ok;
+                    int octalValue = octalStr.toInt(&ok, 8);
+                    if (ok) {
+                        QChar replacement = QChar(octalValue);
+                        filePath = filePath.replace(match.captured(0), replacement);
+                    }
+                }
+            }
 
             auto status = parseFileStatus(indexStatus, workingStatus);
             auto file = std::make_shared<GitFileItem>(filePath, status);
@@ -1207,6 +1246,23 @@ void GitCommitDialog::onShowContextMenu(const QPoint &pos)
     }
 
     m_contextMenu->exec(m_fileView->mapToGlobal(pos));
+}
+
+void GitCommitDialog::onFileDoubleClicked(const QModelIndex &index)
+{
+    auto sourceIndex = m_proxyModel->mapToSource(index);
+    auto file = sourceIndex.data(GitFileModel::FileItemRole).value<std::shared_ptr<GitFileItem>>();
+    if (file) {
+        // 根据文件状态决定双击行为
+        if (file->status() == GitFileItem::Status::Untracked) {
+            // 未跟踪文件 - 直接打开文件查看内容
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(file->filePath());
+            GitDialogManager::instance()->openFile(absolutePath, this);
+        } else {
+            // 已跟踪文件（修改、暂存等）- 显示差异
+            showFileDiff(file->filePath());
+        }
+    }
 }
 
 // ============================================================================

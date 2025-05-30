@@ -29,7 +29,7 @@ public:
 
 private Q_SLOTS:
     void onRefreshClicked();
-    void onFileDoubleClicked(QListWidgetItem *item);
+    void onFileDoubleClicked(QTreeWidgetItem *item, int column);
     void onFileSelectionChanged();
     void showFileContextMenu(const QPoint &pos);
     void stageSelectedFiles();

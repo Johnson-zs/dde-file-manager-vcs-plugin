@@ -75,7 +75,7 @@ void GitBlameDialog::setupUI()
     m_blameTextEdit->setReadOnly(true);
     m_blameTextEdit->setFont(QFont("Courier", 10));
     m_blameTextEdit->setLineWrapMode(QTextEdit::NoWrap);
-    
+
     // 禁用默认的链接打开行为，防止点击链接时清空内容
     m_blameTextEdit->setOpenLinks(false);
 
@@ -447,7 +447,7 @@ void GitBlameDialog::showCommitDetails(const QString &hash)
     // 保存当前的显示状态 - 使用更可靠的方法
     QString currentHtml = m_blameTextEdit->toHtml();
     QTextDocument *doc = m_blameTextEdit->document();
-    
+
     // 确保有备份内容
     if (currentHtml.isEmpty() && !m_blameData.isEmpty()) {
         qDebug() << "[GitBlameDialog] Current HTML is empty, regenerating from blame data";
@@ -462,7 +462,7 @@ void GitBlameDialog::showCommitDetails(const QString &hash)
     // 检查内容是否被意外清空，如果是则恢复
     QString afterHtml = m_blameTextEdit->toHtml();
     qDebug() << "[GitBlameDialog] After dialog HTML length:" << afterHtml.length();
-    
+
     if (afterHtml.isEmpty() || afterHtml.length() < currentHtml.length() / 2) {
         qDebug() << "[GitBlameDialog] Content appears to be cleared, restoring...";
         m_blameTextEdit->setHtml(currentHtml);
@@ -475,7 +475,6 @@ void GitBlameDialog::showCommitDetailsDialog(const QString &hash)
     // 创建提交详情对话框
     QDialog *commitDialog = new QDialog(this);
     commitDialog->setWindowTitle(tr("Commit Details - %1").arg(hash.left(8)));
-    commitDialog->setModal(true);
     commitDialog->resize(1000, 700);
     commitDialog->setAttribute(Qt::WA_DeleteOnClose);
 
@@ -680,7 +679,7 @@ void GitBlameDialog::onHashLinkClicked(const QUrl &url)
     QString hash = url.toString();
     if (!hash.isEmpty()) {
         qDebug() << "[GitBlameDialog] Hash link clicked:" << hash.left(8);
-        
+
         // 确保链接点击不会触发QTextBrowser的默认导航行为
         // 通过延迟调用showCommitDetails来避免与QTextBrowser的内部处理冲突
         QTimer::singleShot(0, this, [this, hash]() {

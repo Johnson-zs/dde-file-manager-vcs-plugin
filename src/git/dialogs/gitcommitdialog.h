@@ -162,6 +162,7 @@ private Q_SLOTS:
     void onSelectAll();
     void onSelectNone();
     void onShowContextMenu(const QPoint &pos);
+    void onFileDoubleClicked(const QModelIndex &index);
 
 private:
     void setupUI();

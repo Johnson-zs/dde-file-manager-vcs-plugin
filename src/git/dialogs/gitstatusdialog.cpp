@@ -240,6 +240,12 @@ void GitStatusDialog::setupUI()
     connect(m_stagingAreaWidget, &QTreeWidget::itemSelectionChanged,
             this, &GitStatusDialog::onFileSelectionChanged);
 
+    // 双击事件
+    connect(m_workingTreeWidget, &QTreeWidget::itemDoubleClicked,
+            this, &GitStatusDialog::onFileDoubleClicked);
+    connect(m_stagingAreaWidget, &QTreeWidget::itemDoubleClicked,
+            this, &GitStatusDialog::onFileDoubleClicked);
+
     // 右键菜单
     connect(m_workingTreeWidget, &QTreeWidget::customContextMenuRequested,
             this, &GitStatusDialog::showFileContextMenu);
@@ -408,21 +414,58 @@ void GitStatusDialog::loadRepositoryStatus()
 
     // === 获取文件状态 ===
     process.start("git", QStringList() << "status"
-                                       << "--porcelain");
+                                       << "--porcelain"
+                                       << "-z");
     if (!process.waitForFinished(5000)) {
         QMessageBox::critical(this, tr("Error"),
                               tr("Failed to get repository status: %1").arg(process.errorString()));
         return;
     }
 
-    const QString output = QString::fromUtf8(process.readAllStandardOutput());
-    const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    const QByteArray output = process.readAllStandardOutput();
+    
+    // Handle null-terminated output from git status -z
+    QStringList lines;
+    QString outputStr = QString::fromUtf8(output);
+    if (outputStr.contains('\0')) {
+        // Split by null character for -z output
+        lines = outputStr.split('\0', Qt::SkipEmptyParts);
+    } else {
+        // Fallback to newline split for regular output
+        lines = outputStr.split('\n', Qt::SkipEmptyParts);
+    }
 
     for (const QString &line : lines) {
         if (line.length() < 3) continue;
 
         const QString status = line.left(2);
-        const QString filePath = line.mid(3);
+        QString filePath = line.mid(3);
+        
+        // Handle quoted filenames (Git quotes filenames with special characters)
+        if (filePath.startsWith('"') && filePath.endsWith('"')) {
+            // Remove quotes and process escape sequences
+            filePath = filePath.mid(1, filePath.length() - 2);
+            
+            // Process common escape sequences
+            filePath = filePath.replace("\\\"", "\"");
+            filePath = filePath.replace("\\\\", "\\");
+            filePath = filePath.replace("\\n", "\n");
+            filePath = filePath.replace("\\t", "\t");
+            
+            // Process octal escape sequences (like \346\226\260)
+            QRegularExpression octalRegex("\\\\([0-7]{3})");
+            QRegularExpressionMatchIterator it = octalRegex.globalMatch(filePath);
+            while (it.hasNext()) {
+                QRegularExpressionMatch match = it.next();
+                QString octalStr = match.captured(1);
+                bool ok;
+                int octalValue = octalStr.toInt(&ok, 8);
+                if (ok) {
+                    QChar replacement = QChar(octalValue);
+                    filePath = filePath.replace(match.captured(0), replacement);
+                }
+            }
+        }
 
         if (status.at(0) != ' ' && status.at(0) != '?') {
             // 已暂存的文件
@@ -828,13 +871,27 @@ void GitStatusDialog::onRefreshClicked()
     loadRepositoryStatus();
 }
 
-void GitStatusDialog::onFileDoubleClicked(QListWidgetItem *item)
+void GitStatusDialog::onFileDoubleClicked(QTreeWidgetItem *item, int column)
 {
-    if (item) {
-        const QString filePath = item->text();
+    if (!item) {
+        return;
+    }
+    
+    Q_UNUSED(column)
+
+    const QString filePath = item->text(0);
+    const QString status = item->data(0, Qt::UserRole).toString();
+    
+    qInfo() << "INFO: [GitStatusDialog::onFileDoubleClicked] File:" << filePath << "Status:" << status;
+    
+    // 根据文件状态提供不同的双击行为
+    if (status == "??") {
+        // 未跟踪文件 - 打开文件查看内容
+        QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(filePath);
+        GitDialogManager::instance()->openFile(absolutePath, this);
         
-        qInfo() << "INFO: [GitStatusDialog::onFileDoubleClicked] Opening diff dialog for file:" << filePath;
-        
+    } else {
+        // 已跟踪文件 - 显示差异
         GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
     }
 }

@@ -15,10 +15,20 @@
 #include <QFile>
 #include <QDebug>
 #include <QProcess>
+#include <QMimeDatabase>
+#include <QMimeType>
+#include <QMenu>
+#include <QInputDialog>
+#include <QStandardPaths>
+#include <QCursor>
+#include <QLineEdit>
+#include <QFileDialog>
+#include <QRegularExpression>
+#include <QSettings>
 
-GitDialogManager* GitDialogManager::s_instance = nullptr;
+GitDialogManager *GitDialogManager::s_instance = nullptr;
 
-GitDialogManager* GitDialogManager::instance()
+GitDialogManager *GitDialogManager::instance()
 {
     if (!s_instance) {
         s_instance = new GitDialogManager();
@@ -89,32 +99,32 @@ void GitDialogManager::showOperationDialog(const QString &operation, QWidget *pa
     qDebug() << "[GitDialogManager] Opened operation dialog for:" << operation;
 }
 
-void GitDialogManager::showOperationDialog(const QString &operation, const QString &workingDir, 
+void GitDialogManager::showOperationDialog(const QString &operation, const QString &workingDir,
                                            const QStringList &arguments, QWidget *parent)
 {
     auto *dialog = new GitOperationDialog(operation, parent);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
-    
+
     QString description = QObject::tr("Preparing to execute %1 operation in repository").arg(operation);
     dialog->setOperationDescription(description);
-    
+
     // Connect completion signal for potential future use
     QObject::connect(dialog, &QDialog::finished, [operation](int result) {
-        qDebug() << "[GitDialogManager] Operation dialog finished:" << operation 
+        qDebug() << "[GitDialogManager] Operation dialog finished:" << operation
                  << "result:" << (result == QDialog::Accepted ? "accepted" : "rejected");
     });
-    
+
     dialog->executeCommand(workingDir, arguments);
     dialog->show();
-    
-    qDebug() << "[GitDialogManager] Opened operation dialog for:" << operation 
+
+    qDebug() << "[GitDialogManager] Opened operation dialog for:" << operation
              << "with arguments:" << arguments;
 }
 
 void GitDialogManager::openFile(const QString &filePath, QWidget *parent)
 {
     QFileInfo fileInfo(filePath);
-    
+
     if (!fileInfo.exists()) {
         QMessageBox::warning(parent, QObject::tr("File Not Found"),
                              QObject::tr("The file '%1' does not exist.").arg(filePath));
@@ -133,7 +143,7 @@ void GitDialogManager::openFile(const QString &filePath, QWidget *parent)
 void GitDialogManager::showFileInFolder(const QString &filePath, QWidget *parent)
 {
     QFileInfo fileInfo(filePath);
-    
+
     if (!fileInfo.exists()) {
         QMessageBox::warning(parent, QObject::tr("File Not Found"),
                              QObject::tr("The file '%1' does not exist.").arg(filePath));
@@ -141,30 +151,30 @@ void GitDialogManager::showFileInFolder(const QString &filePath, QWidget *parent
     }
 
     QString dirPath = fileInfo.absoluteDir().absolutePath();
-    
-#ifdef Q_OS_WIN
-    // On Windows, use Explorer to show the file
-    QProcess::startDetached("explorer.exe", QStringList() << "/select," << QDir::toNativeSeparators(filePath));
-#elif defined(Q_OS_MAC)
-    // On macOS, use Finder
-    QProcess::startDetached("open", QStringList() << "-R" << filePath);
-#else
-    // On Linux, try various file managers
-    QStringList fileManagers = {"nautilus", "dolphin", "thunar", "pcmanfm", "caja"};
-    bool opened = false;
-    
-    for (const QString &fm : fileManagers) {
-        if (QProcess::startDetached(fm, QStringList() << dirPath)) {
-            opened = true;
-            break;
+
+    if (QStandardPaths::findExecutable("dbus-send").isEmpty() == false) {
+        // Try using D-Bus to show file in file manager
+        QStringList args;
+        args << "--session"
+             << "--dest=org.freedesktop.FileManager1"
+             << "--type=method_call"
+             << "/org/freedesktop/FileManager1"
+             << "org.freedesktop.FileManager1.ShowItems"
+             << QString("array:string:file://%1").arg(filePath) << "string:";
+
+        if (QProcess::startDetached("dbus-send", args)) {
+            qDebug() << "[GitDialogManager] Showed file in folder using D-Bus:" << filePath;
+            return;
         }
     }
-    
-    if (!opened) {
-        // Fallback: just open the directory
-        QDesktopServices::openUrl(QUrl::fromLocalFile(dirPath));
+
+    // Fallback: use QDesktopServices to open the containing directory
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dirPath))) {
+        QMessageBox::warning(parent, QObject::tr("Open Failed"),
+                             QObject::tr("Failed to open file manager for directory '%1'.").arg(dirPath));
+    } else {
+        qDebug() << "[GitDialogManager] Showed directory in file manager:" << dirPath;
     }
-#endif
 
     qDebug() << "[GitDialogManager] Showed file in folder:" << filePath;
 }
@@ -172,7 +182,7 @@ void GitDialogManager::showFileInFolder(const QString &filePath, QWidget *parent
 void GitDialogManager::deleteFile(const QString &filePath, QWidget *parent)
 {
     QFileInfo fileInfo(filePath);
-    
+
     if (!fileInfo.exists()) {
         QMessageBox::warning(parent, QObject::tr("File Not Found"),
                              QObject::tr("The file '%1' does not exist.").arg(filePath));
@@ -181,7 +191,8 @@ void GitDialogManager::deleteFile(const QString &filePath, QWidget *parent)
 
     int ret = QMessageBox::warning(parent, QObject::tr("Delete File"),
                                    QObject::tr("Are you sure you want to delete the file?\n\n%1\n\n"
-                                              "This action cannot be undone.").arg(filePath),
+                                               "This action cannot be undone.")
+                                           .arg(filePath),
                                    QMessageBox::Yes | QMessageBox::No,
                                    QMessageBox::No);
 
@@ -196,4 +207,4 @@ void GitDialogManager::deleteFile(const QString &filePath, QWidget *parent)
             qWarning() << "[GitDialogManager] Failed to delete file:" << filePath;
         }
     }
-} 
+}
