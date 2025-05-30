@@ -245,77 +245,284 @@
 **优先级**: P1 - 重要
 
 #### 任务描述
-完善现有的Git操作对话框，改进用户体验和错误处理。
+完善现有的Git操作对话框，在保持基本布局的基础上改进用户体验和交互功能，重点解决用户反馈的三个核心问题。
 
 #### 子任务清单
-1. **GitCommitDialog改进**
-   - 实现暂存区和工作区文件的分别显示
-   - 添加提交消息模板支持
-   - 实现文件差异预览功能
+1. **GitStatusDialog操作化增强**
+   - 在现有布局基础上添加文件差异预览区域
+   - 为文件列表添加右键菜单支持（Git Add、Remove、Revert等）
+   - 实现多选操作和批量Git操作功能
+   - 添加快捷操作按钮（暂存选中、重置选中等）
 
-2. **GitCheckoutDialog增强**
-   - 显示分支的详细信息(最后提交时间、作者)
-   - 添加新建分支时的基于分支选择
-   - 实现分支状态可视化(当前、已合并、远程)
+2. **GitBlameDialog完全重构**
+   - 实现类似GitHub blame界面的内联显示
+   - 代码行与blame信息（作者、时间、哈希）在同一行显示
+   - 支持鼠标悬浮显示完整提交详情
+   - 实现点击提交哈希查看提交详情功能
 
-3. **统一错误处理**
-   - 标准化错误消息格式
-   - 添加操作失败后的恢复建议
-   - 实现错误日志的详细记录
+3. **GitCommitDialog实用功能扩展**
+   - 添加"Amend last commit"选项支持
+   - 添加"Allow empty commit"选项支持
+   - Amend模式下自动加载最后一次提交消息
+   - 改进提交验证和错误处理机制
+
+4. **统一用户体验优化**
+   - 标准化所有对话框的错误处理和用户反馈
+   - 优化键盘导航和快捷键支持
+   - 改进操作后的状态刷新机制
+
+#### 详细实施计划
+
+##### 阶段一：GitStatusDialog增强 (3-4天)
+
+**文件修改**：
+- `src/dialogs/gitstatusdialog.h`
+- `src/dialogs/gitstatusdialog.cpp`
+
+**实现步骤**：
+1. **布局调整**：
+   - 保持现有的工作区/暂存区文件列表结构
+   - 在底部添加QSplitter分割的差异预览区域
+   - 使用QTextEdit显示文件差异内容
+
+2. **右键菜单集成**：
+   - 为QTreeWidget添加contextMenuPolicy设置
+   - 实现showFileContextMenu()槽函数
+   - 根据文件状态动态创建菜单项（Add、Remove、Revert等）
+
+3. **多选操作支持**：
+   - 启用QTreeWidget的多选模式
+   - 实现批量操作函数：addSelectedFiles()、resetSelectedFiles()等
+   - 添加快捷操作按钮到界面底部
+
+4. **差异预览功能**：
+   - 实现onFileSelectionChanged()槽函数
+   - 使用git diff命令获取文件差异
+   - 在预览区域显示语法高亮的差异内容
+
+**关键代码结构**：
+```cpp
+class GitStatusDialog : public QDialog {
+private:
+    QTreeWidget *m_workingTreeWidget;    // 工作区文件列表
+    QTreeWidget *m_stagingAreaWidget;    // 暂存区文件列表  
+    QTextEdit *m_diffPreviewWidget;      // 差异预览区域
+    QSplitter *m_mainSplitter;           // 主分割器
+    QPushButton *m_stageSelectedBtn;     // 暂存选中按钮
+    QPushButton *m_unstageSelectedBtn;   // 取消暂存按钮
+    
+private slots:
+    void onFileSelectionChanged();
+    void showFileContextMenu(const QPoint &pos);
+    void stageSelectedFiles();
+    void unstageSelectedFiles();
+    void addSelectedFiles();
+    void resetSelectedFiles();
+    void refreshDiffPreview(const QString &filePath);
+};
+```
+
+##### 阶段二：GitBlameDialog重构 (4-5天)
+
+**文件修改**：
+- `src/dialogs/gitblamedialog.h`
+- `src/dialogs/gitblamedialog.cpp`
+- 新增：`src/dialogs/gitblamesyntaxhighlighter.h`
+- 新增：`src/dialogs/gitblamesyntaxhighlighter.cpp`
+
+**实现步骤**：
+1. **界面重新设计**：
+   - 使用QTextEdit作为主要显示控件
+   - 设计表格式布局：行号|作者|时间|哈希|代码内容
+   - 实现自定义的字体和间距设置
+
+2. **自定义语法高亮器**：
+   - 继承QSyntaxHighlighter创建GitBlameSyntaxHighlighter
+   - 为不同作者设置不同的背景色
+   - 为Git哈希、时间戳等设置特殊样式
+
+3. **交互功能实现**：
+   - 重写QTextEdit的mousePressEvent处理点击事件
+   - 实现鼠标悬浮时的QToolTip显示
+   - 点击提交哈希时弹出提交详情对话框
+
+4. **数据解析和显示**：
+   - 解析`git blame --porcelain`命令输出
+   - 构建每行的blame信息数据结构
+   - 格式化显示到QTextEdit中
+
+**关键代码结构**：
+```cpp
+struct BlameLineInfo {
+    QString hash;
+    QString author;
+    QDateTime timestamp;
+    QString lineContent;
+    QString fullCommitMessage;
+};
+
+class GitBlameSyntaxHighlighter : public QSyntaxHighlighter {
+public:
+    void setBlameData(const QVector<BlameLineInfo> &blameData);
+    
+protected:
+    void highlightBlock(const QString &text) override;
+    
+private:
+    QVector<BlameLineInfo> m_blameData;
+    QHash<QString, QColor> m_authorColors;  // 作者颜色映射
+};
+
+class GitBlameDialog : public QDialog {
+private:
+    QTextEdit *m_blameTextEdit;
+    GitBlameSyntaxHighlighter *m_highlighter;
+    QVector<BlameLineInfo> m_blameData;
+    
+protected:
+    void mousePressEvent(QMouseEvent *event) override;
+    bool event(QEvent *event) override;  // 处理ToolTip事件
+    
+private slots:
+    void showCommitDetails(const QString &hash);
+};
+```
+
+##### 阶段三：GitCommitDialog功能扩展 (2-3天)
+
+**文件修改**：
+- `src/dialogs/gitcommitdialog.h`
+- `src/dialogs/gitcommitdialog.cpp`
+
+**实现步骤**：
+1. **界面布局调整**：
+   - 在提交消息区域上方添加选项区域
+   - 添加"Amend last commit"复选框
+   - 添加"Allow empty commit"复选框
+
+2. **Amend功能实现**：
+   - 实现onAmendToggled()槽函数
+   - Amend模式下自动加载最后一次提交消息
+   - 调整界面提示文字和按钮状态
+
+3. **提交逻辑增强**：
+   - 修改commitChanges()函数支持不同提交模式
+   - 添加--amend和--allow-empty参数支持
+   - 改进错误处理和用户反馈
+
+**关键代码结构**：
+```cpp
+class GitCommitDialog : public QDialog {
+private:
+    QCheckBox *m_amendCheckBox;
+    QCheckBox *m_allowEmptyCheckBox;
+    QTextEdit *m_commitMessageEdit;
+    QString m_lastCommitMessage;
+    bool m_isAmendMode;
+    
+private slots:
+    void onAmendToggled(bool enabled);
+    void loadLastCommitMessage();
+    bool validateCommitMessage();
+    void commitChanges();
+};
+```
+
+##### 阶段四：集成测试和优化 (1-2天)
+
+**测试重点**：
+1. **GitStatusDialog测试**：
+   - 多选操作的正确性
+   - 右键菜单的智能启用/禁用
+   - 差异预览的性能和准确性
+   - 批量操作后的状态刷新
+
+2. **GitBlameDialog测试**：
+   - 大文件的显示性能
+   - 悬浮提示的准确性
+   - 点击跳转功能的稳定性
+   - 不同作者的颜色区分效果
+
+3. **GitCommitDialog测试**：
+   - Amend模式的消息加载
+   - 空提交的正确执行
+   - 错误情况的处理
+   - 提交后的状态同步
 
 #### 验收标准
-- [ ] 提交对话框支持分别查看暂存区和工作区文件
-- [ ] 分支切换对话框显示丰富的分支信息
-- [ ] 错误处理友好且提供有用的解决建议
-- [ ] 所有对话框支持键盘导航
+
+##### GitStatusDialog验收标准
+- [ ] 保持原有布局基础上成功添加差异预览区域
+- [ ] 文件列表支持Ctrl+Click和Shift+Click多选
+- [ ] 右键菜单根据文件状态智能显示可用操作
+- [ ] 选中文件时差异预览自动更新且内容准确
+- [ ] 批量操作（暂存、取消暂存、重置）功能正常
+- [ ] 操作完成后文件状态和预览区域自动刷新
+
+##### GitBlameDialog验收标准  
+- [ ] 代码行与blame信息在同一行内联显示
+- [ ] 不同作者使用明显不同的背景色区分
+- [ ] 鼠标悬浮时显示完整的提交详情信息
+- [ ] 点击提交哈希能正确显示提交详情对话框
+- [ ] 1000+行文件的显示和交互性能良好
+- [ ] 界面清晰易读，信息层次分明
+
+##### GitCommitDialog验收标准
+- [ ] Amend复选框勾选时自动加载最后一次提交消息
+- [ ] Allow empty复选框支持空提交操作
+- [ ] Amend模式下的Git命令参数正确
+- [ ] 提交消息验证和错误提示用户友好
+- [ ] 所有提交模式执行后状态正确更新
+
+#### 技术风险和缓解措施
+
+**风险1：GitBlameDialog性能问题**
+- **缓解措施**：实现虚拟滚动或分页加载机制
+- **备选方案**：大文件时限制显示行数并提供导航功能
+
+**风险2：多选操作的Git命令执行**
+- **缓解措施**：使用QProgressDialog显示操作进度，支持取消
+- **错误处理**：单个文件操作失败不影响其他文件的处理
+
+**风险3：差异预览的内存占用**
+- **缓解措施**：限制预览内容大小，大文件时显示截断提示
+- **优化策略**：使用QTextEdit的滚动加载机制
+
+#### 注意事项
+- 确保所有修改保持向后兼容性
+- Git命令执行必须在工作线程中进行，避免UI冻结
+- 所有用户交互都要有明确的视觉反馈
+- 错误处理要提供有用的解决建议
+- 添加详细的英文日志记录便于调试
 
 #### AI编程助手提示词
 ```
-你是Qt对话框设计专家，擅长创建用户友好的界面。任务是改进Git操作对话框的用户体验。
+你是一个资深的Qt对话框开发专家，专精用户体验设计和交互优化。当前任务是在保持现有基础架构的前提下，显著改进Git操作对话框的用户体验。
 
-**GitCommitDialog改进要求**:
-```
-┌─────────────────────────────────┐
-│ Git Commit                   × │
-├─────────────────────────────────┤
-│ 提交消息:                       │
-│ ┌─────────────────────────────┐ │
-│ │ feat: 新功能描述            │ │
-│ ├─────────────────────────────┤ │
-│ │ 详细描述...                 │ │
-│ └─────────────────────────────┘ │
-├─────────────────────────────────┤
-│ 暂存区文件 (3) [全选][反选]    │
-│ ☑ src/main.cpp      [M] 修改   │
-│ ☑ src/utils.h       [A] 新增   │
-├─────────────────────────────────┤
-│ 工作区文件 (2) [添加到暂存区]  │
-│ ☐ test/test.cpp     [M] 修改   │
-│ ☐ docs/README.md    [M] 修改   │
-├─────────────────────────────────┤
-│              [取消] [提交]     │
-└─────────────────────────────────┘
-```
+**技术要求**:
+- 基于现有的GitStatusDialog、GitBlameDialog、GitCommitDialog进行渐进式改进
+- 使用Qt6 Widgets技术栈，避免过度技术化
+- 确保线程安全，Git操作在工作线程中执行
+- 遵循现代C++17标准和Qt最佳实践
 
-**关键功能**:
-1. 使用QListWidget分别显示暂存区和工作区文件
-2. 双击文件显示差异预览对话框
-3. 提交消息支持模板(存储在用户配置中)
-4. 实现Conventional Commits规范验证
+**用户体验目标**:
+1. GitStatusDialog：从"查看器"升级为"操作台"，支持直接操作
+2. GitBlameDialog：实现GitHub风格的内联blame显示
+3. GitCommitDialog：支持常用的amend和empty commit操作
 
-**GitCheckoutDialog改进要求**:
-- 显示分支的最后提交信息和时间
-- 区分本地分支、远程分支、已合并分支
-- 新建分支时支持选择基于的分支
-- 添加分支删除和重命名功能
+**实现约束**:
+- 保持现有对话框的基本布局结构
+- 专注于文件管理器场景的实用功能
+- 避免IDE级别的复杂功能
+- 确保操作的直观性和可预见性
 
-**错误处理标准**:
-- 使用QMessageBox显示友好的错误信息
-- 提供"复制错误信息"按钮便于报告问题
-- 记录详细的错误日志到qDebug()
-- 对常见错误提供解决建议
+**代码质量要求**:
+- 使用现代C++17特性和RAII
+- 添加完整的错误处理和用户反馈
+- 包含详细的英文注释和日志记录
+- 遵循Qt信号槽最佳实践
 
-请提供改进后的对话框实现代码。
+请提供完整的实现方案，包括头文件声明、源文件实现和关键交互逻辑。
 ```
 
 ---
