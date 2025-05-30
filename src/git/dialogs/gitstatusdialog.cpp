@@ -1,73 +1,67 @@
 #include "gitstatusdialog.h"
-#include "gitdiffdialog.h"
-#include "gitcommitdialog.h"
-#include "utils.h"
-#include "gitcommandexecutor.h"
+#include "gitdialogs.h"
+#include "../gitcommandexecutor.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QGridLayout>
-#include <QGroupBox>
+#include <QSplitter>
 #include <QHeaderView>
+#include <QProcess>
 #include <QMessageBox>
 #include <QApplication>
-#include <QProcess>
-#include <QDir>
-#include <QFileInfo>
-#include <QDebug>
 #include <QProgressDialog>
-#include <QSyntaxHighlighter>
-#include <QTextCharFormat>
+#include <QDebug>
 #include <QRegularExpression>
+#include <QFileInfo>
+#include <QDir>
+#include <QClipboard>
+#include <QTimer>
+#include <QTextDocument>
+#include <QTextCharFormat>
+#include <QSyntaxHighlighter>
+#include <QGroupBox>
 
 /**
- * @brief 简单的Git差异语法高亮器
+ * @brief Git差异语法高亮器
+ * 为diff输出提供颜色高亮，增强可读性
  */
 class GitDiffHighlighter : public QSyntaxHighlighter
 {
+    Q_OBJECT
+
 public:
     explicit GitDiffHighlighter(QTextDocument *parent = nullptr)
         : QSyntaxHighlighter(parent)
     {
-        // 设置格式
-        m_addedFormat.setForeground(QColor(46, 160, 67));   // 绿色 - 新增行
-        m_addedFormat.setBackground(QColor(230, 255, 237));
-
-        m_removedFormat.setForeground(QColor(203, 36, 49));   // 红色 - 删除行
-        m_removedFormat.setBackground(QColor(255, 235, 233));
-
-        m_headerFormat.setForeground(QColor(101, 109, 118));   // 灰色 - 头部信息
+        // 设置添加行格式（绿色）
+        m_addedFormat.setForeground(QColor(0, 128, 0));
+        m_addedFormat.setBackground(QColor(220, 255, 220));
+        
+        // 设置删除行格式（红色）
+        m_removedFormat.setForeground(QColor(128, 0, 0));
+        m_removedFormat.setBackground(QColor(255, 220, 220));
+        
+        // 设置文件头格式（蓝色）
+        m_headerFormat.setForeground(QColor(0, 0, 128));
         m_headerFormat.setFontWeight(QFont::Bold);
-
-        m_lineNumberFormat.setForeground(QColor(88, 166, 255));   // 蓝色 - 行号
-        m_lineNumberFormat.setFontWeight(QFont::Bold);
+        
+        // 设置行号格式（灰色）
+        m_lineNumberFormat.setForeground(QColor(128, 128, 128));
     }
 
 protected:
     void highlightBlock(const QString &text) override
     {
-        // 新增行（以+开头）
+        // 根据行的开头字符进行高亮
         if (text.startsWith('+') && !text.startsWith("+++")) {
             setFormat(0, text.length(), m_addedFormat);
-            return;
-        }
-
-        // 删除行（以-开头）
-        if (text.startsWith('-') && !text.startsWith("---")) {
+        } else if (text.startsWith('-') && !text.startsWith("---")) {
             setFormat(0, text.length(), m_removedFormat);
-            return;
-        }
-
-        // 差异头部信息
-        if (text.startsWith("diff --git") || text.startsWith("index ") || text.startsWith("+++") || text.startsWith("---")) {
+        } else if (text.startsWith("@@") || text.startsWith("+++") || 
+                   text.startsWith("---") || text.startsWith("diff ")) {
             setFormat(0, text.length(), m_headerFormat);
-            return;
-        }
-
-        // 行号信息（@@...@@）
-        if (text.startsWith("@@") && text.contains("@@")) {
+        } else if (text.startsWith("\\")) {
             setFormat(0, text.length(), m_lineNumberFormat);
-            return;
         }
     }
 
@@ -266,26 +260,119 @@ void GitStatusDialog::setupContextMenu()
 {
     m_contextMenu = new QMenu(this);
 
+    // === Git Operations ===
     m_addAction = m_contextMenu->addAction(QIcon::fromTheme("list-add"), tr("Add to Git"));
     m_stageAction = m_contextMenu->addAction(QIcon::fromTheme("go-up"), tr("Stage"));
     m_unstageAction = m_contextMenu->addAction(QIcon::fromTheme("go-down"), tr("Unstage"));
     m_contextMenu->addSeparator();
+    
     m_revertAction = m_contextMenu->addAction(QIcon::fromTheme("edit-undo"), tr("Revert Changes"));
     m_removeAction = m_contextMenu->addAction(QIcon::fromTheme("list-remove"), tr("Remove from Git"));
+    m_diffAction = m_contextMenu->addAction(QIcon::fromTheme("document-properties"), tr("View Diff"));
+    
     m_contextMenu->addSeparator();
-    m_diffAction = m_contextMenu->addAction(QIcon::fromTheme("document-properties"), tr("View Diff..."));
+    
+    // === File Management Actions ===
+    auto *openFileAction = m_contextMenu->addAction(QIcon::fromTheme("document-open"), tr("Open File"));
+    auto *showFolderAction = m_contextMenu->addAction(QIcon::fromTheme("folder-open"), tr("Show in Folder"));
+    
+    m_contextMenu->addSeparator();
+    
+    // === Git History Actions ===
+    auto *showLogAction = m_contextMenu->addAction(QIcon::fromTheme("view-list-details"), tr("Show File Log"));
+    auto *showBlameAction = m_contextMenu->addAction(QIcon::fromTheme("view-list-tree"), tr("Show File Blame"));
+    
+    m_contextMenu->addSeparator();
+    
+    // === Advanced Actions ===
+    auto *copyPathAction = m_contextMenu->addAction(QIcon::fromTheme("edit-copy"), tr("Copy File Path"));
+    auto *copyNameAction = m_contextMenu->addAction(QIcon::fromTheme("edit-copy"), tr("Copy File Name"));
+    auto *deleteFileAction = m_contextMenu->addAction(QIcon::fromTheme("edit-delete"), tr("Delete File"));
 
-    // 连接菜单动作
+    // === Connect existing actions ===
     connect(m_addAction, &QAction::triggered, this, &GitStatusDialog::addSelectedFiles);
     connect(m_stageAction, &QAction::triggered, this, &GitStatusDialog::stageSelectedFiles);
     connect(m_unstageAction, &QAction::triggered, this, &GitStatusDialog::unstageSelectedFiles);
     connect(m_revertAction, &QAction::triggered, this, &GitStatusDialog::resetSelectedFiles);
+    
+    // Updated diff action to use GitDialogManager
     connect(m_diffAction, &QAction::triggered, [this]() {
         auto selectedFiles = getSelectedFiles();
         if (!selectedFiles.isEmpty()) {
             const QString filePath = selectedFiles.first()->text(0);
-            auto *diffDialog = new GitDiffDialog(m_repositoryPath, filePath, this);
-            diffDialog->show();
+            GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
+        }
+    });
+    
+    // === Connect new actions ===
+    // File management actions
+    connect(openFileAction, &QAction::triggered, this, [this]() {
+        auto selectedFiles = getSelectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            QString relativePath = selectedFiles.first()->text(0);
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(relativePath);
+            GitDialogManager::instance()->openFile(absolutePath, this);
+        }
+    });
+    
+    connect(showFolderAction, &QAction::triggered, this, [this]() {
+        auto selectedFiles = getSelectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            QString relativePath = selectedFiles.first()->text(0);
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(relativePath);
+            GitDialogManager::instance()->showFileInFolder(absolutePath, this);
+        }
+    });
+    
+    // Git history actions
+    connect(showLogAction, &QAction::triggered, this, [this]() {
+        auto selectedFiles = getSelectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            QString filePath = selectedFiles.first()->text(0);
+            GitDialogManager::instance()->showLogDialog(m_repositoryPath, filePath, this);
+        }
+    });
+    
+    connect(showBlameAction, &QAction::triggered, this, [this]() {
+        auto selectedFiles = getSelectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            QString relativePath = selectedFiles.first()->text(0);
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(relativePath);
+            GitDialogManager::instance()->showBlameDialog(m_repositoryPath, absolutePath, this);
+        }
+    });
+    
+    // Advanced actions
+    connect(copyPathAction, &QAction::triggered, this, [this]() {
+        auto selectedFiles = getSelectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            QString relativePath = selectedFiles.first()->text(0);
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(relativePath);
+            QApplication::clipboard()->setText(absolutePath);
+            qDebug() << "[GitStatusDialog] Copied file path to clipboard:" << absolutePath;
+        }
+    });
+    
+    connect(copyNameAction, &QAction::triggered, this, [this]() {
+        auto selectedFiles = getSelectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            QString filePath = selectedFiles.first()->text(0);
+            QString fileName = QFileInfo(filePath).fileName();
+            QApplication::clipboard()->setText(fileName);
+            qDebug() << "[GitStatusDialog] Copied file name to clipboard:" << fileName;
+        }
+    });
+    
+    connect(deleteFileAction, &QAction::triggered, this, [this]() {
+        auto selectedFiles = getSelectedFiles();
+        if (!selectedFiles.isEmpty()) {
+            QString relativePath = selectedFiles.first()->text(0);
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(relativePath);
+            GitDialogManager::instance()->deleteFile(absolutePath, this);
+            // Refresh after potential deletion
+            QTimer::singleShot(100, this, [this]() {
+                onRefreshClicked();
+            });
         }
     });
 }
@@ -730,20 +817,9 @@ void GitStatusDialog::resetSelectedFiles()
 
 void GitStatusDialog::commitSelectedFiles()
 {
-    if (m_stagingAreaWidget->topLevelItemCount() == 0) {
-        QMessageBox::information(this, tr("No Staged Files"), tr("There are no files in the staging area to commit."));
-        return;
-    }
+    qInfo() << "INFO: [GitStatusDialog::commitSelectedFiles] Opening commit dialog for repository:" << m_repositoryPath;
 
-    auto *commitDialog = new GitCommitDialog(m_repositoryPath, this);
-    commitDialog->setAttribute(Qt::WA_DeleteOnClose);
-
-    connect(commitDialog, &QDialog::accepted, [this]() {
-        onRefreshClicked();   // 刷新状态
-        QMessageBox::information(this, tr("Success"), tr("Commit completed successfully."));
-    });
-
-    commitDialog->show();
+    GitDialogManager::instance()->showCommitDialog(m_repositoryPath, this);
 }
 
 void GitStatusDialog::onRefreshClicked()
@@ -754,28 +830,12 @@ void GitStatusDialog::onRefreshClicked()
 
 void GitStatusDialog::onFileDoubleClicked(QListWidgetItem *item)
 {
-    // 保留原有的双击功能用于向后兼容
-    if (!item) return;
-
-    const QString filePath = item->text();
-    const QString fullPath = QDir(m_repositoryPath).absoluteFilePath(filePath);
-    const QString status = item->data(Qt::UserRole).toString();
-
-    qDebug() << "[GitStatusDialog] File double-clicked:" << filePath << "Status:" << status;
-
-    if (status == "??") {
-        // 未跟踪文件：直接打开文件
-        if (QFileInfo::exists(fullPath)) {
-            QProcess::startDetached("xdg-open", QStringList() << fullPath);
-        } else {
-            QMessageBox::information(this, tr("File Not Found"),
-                                     tr("The file '%1' does not exist in the working directory.").arg(filePath));
-        }
-    } else {
-        // 已修改或已暂存文件：显示diff界面
-        auto *diffDialog = new GitDiffDialog(m_repositoryPath, filePath, this);
-        diffDialog->setAttribute(Qt::WA_DeleteOnClose);
-        diffDialog->show();
+    if (item) {
+        const QString filePath = item->text();
+        
+        qInfo() << "INFO: [GitStatusDialog::onFileDoubleClicked] Opening diff dialog for file:" << filePath;
+        
+        GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
     }
 }
 
@@ -867,3 +927,6 @@ QIcon GitStatusDialog::getStatusIcon(const QString &status) const
         }
     }
 }
+
+// 包含MOC生成的代码以支持Q_OBJECT宏
+#include "gitstatusdialog.moc"

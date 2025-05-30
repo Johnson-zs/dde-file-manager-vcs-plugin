@@ -181,6 +181,9 @@ private:
     QList<std::shared_ptr<GitFileItem>> parseGitStatus(const QString &gitStatusOutput);
     GitFileItem::Status parseFileStatus(const QString &indexStatus, const QString &workingStatus);
 
+    // Helper methods for context menu
+    QStringList getSelectedFilePaths() const;
+
     // Context menu actions
     void stageSelectedFiles();
     void unstageSelectedFiles();

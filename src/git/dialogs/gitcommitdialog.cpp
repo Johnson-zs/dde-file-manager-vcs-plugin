@@ -1,6 +1,6 @@
 #include "gitcommitdialog.h"
 #include "gitoperationdialog.h"
-#include "gitdiffdialog.h"
+#include "gitdialogs.h"
 #include "../gitcommandexecutor.h"
 
 #include <QVBoxLayout>
@@ -22,6 +22,8 @@
 #include <QProgressDialog>
 #include <QThread>
 #include <QFile>
+#include <QDir>
+#include <QClipboard>
 
 // ============================================================================
 // GitFileItem Implementation
@@ -559,7 +561,7 @@ void GitCommitDialog::setupFileView()
             placeholder->deleteLater();
         }
     }
-    
+
     m_fileView = new QTreeView(this);
     m_fileView->setModel(m_proxyModel.get());
     m_fileView->setRootIsDecorated(false);
@@ -567,30 +569,36 @@ void GitCommitDialog::setupFileView()
     m_fileView->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_fileView->setSortingEnabled(true);
     m_fileView->setContextMenuPolicy(Qt::CustomContextMenu);
-    
+
     // Disable editing - files should not be editable in the list
     m_fileView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    
+
     // Configure header with better column widths
     auto *header = m_fileView->header();
-    header->setStretchLastSection(true);
-    header->setSectionResizeMode(0, QHeaderView::Interactive);  // File name - user can resize
-    header->setSectionResizeMode(1, QHeaderView::Interactive);  // Status - user can resize
-    header->setSectionResizeMode(2, QHeaderView::Stretch);      // Path - stretches to fill
-    
-    // Set better initial column widths
-    header->resizeSection(0, 200);  // File name column
-    header->resizeSection(1, 150);  // Status column
-    
+    header->setStretchLastSection(false);   // Don't stretch last section initially
+    header->setSectionResizeMode(0, QHeaderView::Interactive);   // File name - user can resize
+    header->setSectionResizeMode(1, QHeaderView::Interactive);   // Status - user can resize
+    header->setSectionResizeMode(2, QHeaderView::Stretch);   // Path - stretches to fill
+
     // Add to layout
     if (filesLayout) {
         filesLayout->insertWidget(2, m_fileView);
     }
-    
+
+    // Set initial column widths after adding to layout - delay this to ensure proper sizing
+    QTimer::singleShot(0, this, [this]() {
+        auto *header = m_fileView->header();
+        header->resizeSection(0, 250);   // File name column - increased width
+        header->resizeSection(1, 180);   // Status column - increased width
+        header->setSectionResizeMode(2, QHeaderView::Stretch);   // Path - stretches to fill
+        // Path column will stretch automatically
+        qDebug() << "[GitCommitDialog] Set initial column widths: File=250, Status=180";
+    });
+
     // Connect signals
-    connect(m_fileView->selectionModel(), &QItemSelectionModel::selectionChanged, 
+    connect(m_fileView->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &GitCommitDialog::onFileSelectionChanged);
-    connect(m_fileView, &QTreeView::customContextMenuRequested, 
+    connect(m_fileView, &QTreeView::customContextMenuRequested,
             this, &GitCommitDialog::onShowContextMenu);
 }
 
@@ -598,16 +606,102 @@ void GitCommitDialog::setupContextMenu()
 {
     m_contextMenu = new QMenu(this);
 
+    // === File Operation Actions ===
     m_stageAction = m_contextMenu->addAction(QIcon::fromTheme("list-add"), tr("Stage"));
     m_unstageAction = m_contextMenu->addAction(QIcon::fromTheme("list-remove"), tr("Unstage"));
     m_contextMenu->addSeparator();
+
     m_discardAction = m_contextMenu->addAction(QIcon::fromTheme("edit-undo"), tr("Discard Changes"));
     m_showDiffAction = m_contextMenu->addAction(QIcon::fromTheme("document-properties"), tr("Show Diff"));
 
+    m_contextMenu->addSeparator();
+
+    // === File Management Actions ===
+    auto *openFileAction = m_contextMenu->addAction(QIcon::fromTheme("document-open"), tr("Open File"));
+    auto *showFolderAction = m_contextMenu->addAction(QIcon::fromTheme("folder-open"), tr("Show in Folder"));
+
+    m_contextMenu->addSeparator();
+
+    // === Git History Actions ===
+    auto *showLogAction = m_contextMenu->addAction(QIcon::fromTheme("view-list-details"), tr("Show File Log"));
+    auto *showBlameAction = m_contextMenu->addAction(QIcon::fromTheme("view-list-tree"), tr("Show File Blame"));
+
+    m_contextMenu->addSeparator();
+
+    // === Advanced Actions ===
+    auto *copyPathAction = m_contextMenu->addAction(QIcon::fromTheme("edit-copy"), tr("Copy File Path"));
+    auto *copyNameAction = m_contextMenu->addAction(QIcon::fromTheme("edit-copy"), tr("Copy File Name"));
+    auto *deleteFileAction = m_contextMenu->addAction(QIcon::fromTheme("edit-delete"), tr("Delete File"));
+
+    // === Connect signals ===
     connect(m_stageAction, &QAction::triggered, this, &GitCommitDialog::stageSelectedFiles);
     connect(m_unstageAction, &QAction::triggered, this, &GitCommitDialog::unstageSelectedFiles);
     connect(m_discardAction, &QAction::triggered, this, &GitCommitDialog::discardSelectedFiles);
     connect(m_showDiffAction, &QAction::triggered, this, &GitCommitDialog::showSelectedFilesDiff);
+
+    // File management actions
+    connect(openFileAction, &QAction::triggered, this, [this]() {
+        auto filePaths = getSelectedFilePaths();
+        if (!filePaths.isEmpty()) {
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(filePaths.first());
+            GitDialogManager::instance()->openFile(absolutePath, this);
+        }
+    });
+
+    connect(showFolderAction, &QAction::triggered, this, [this]() {
+        auto filePaths = getSelectedFilePaths();
+        if (!filePaths.isEmpty()) {
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(filePaths.first());
+            GitDialogManager::instance()->showFileInFolder(absolutePath, this);
+        }
+    });
+
+    // Git history actions
+    connect(showLogAction, &QAction::triggered, this, [this]() {
+        auto filePaths = getSelectedFilePaths();
+        if (!filePaths.isEmpty()) {
+            GitDialogManager::instance()->showLogDialog(m_repositoryPath, filePaths.first(), this);
+        }
+    });
+
+    connect(showBlameAction, &QAction::triggered, this, [this]() {
+        auto filePaths = getSelectedFilePaths();
+        if (!filePaths.isEmpty()) {
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(filePaths.first());
+            GitDialogManager::instance()->showBlameDialog(m_repositoryPath, absolutePath, this);
+        }
+    });
+
+    // Advanced actions
+    connect(copyPathAction, &QAction::triggered, this, [this]() {
+        auto filePaths = getSelectedFilePaths();
+        if (!filePaths.isEmpty()) {
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(filePaths.first());
+            QApplication::clipboard()->setText(absolutePath);
+            qDebug() << "[GitCommitDialog] Copied file path to clipboard:" << absolutePath;
+        }
+    });
+
+    connect(copyNameAction, &QAction::triggered, this, [this]() {
+        auto filePaths = getSelectedFilePaths();
+        if (!filePaths.isEmpty()) {
+            QString fileName = QFileInfo(filePaths.first()).fileName();
+            QApplication::clipboard()->setText(fileName);
+            qDebug() << "[GitCommitDialog] Copied file name to clipboard:" << fileName;
+        }
+    });
+
+    connect(deleteFileAction, &QAction::triggered, this, [this]() {
+        auto filePaths = getSelectedFilePaths();
+        if (!filePaths.isEmpty()) {
+            QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(filePaths.first());
+            GitDialogManager::instance()->deleteFile(absolutePath, this);
+            // Refresh after potential deletion
+            QTimer::singleShot(100, this, [this]() {
+                loadChangedFiles();
+            });
+        }
+    });
 }
 
 void GitCommitDialog::loadChangedFiles()
@@ -782,15 +876,15 @@ void GitCommitDialog::commitChanges()
     if (!validateCommitMessage()) {
         return;
     }
-    
+
     // First, ensure all checked files are properly staged
     auto checkedFiles = m_fileModel->getCheckedFiles();
     if (!m_isAllowEmpty && checkedFiles.isEmpty()) {
-        QMessageBox::warning(this, tr("No Files Selected"), 
-                           tr("Please select files to commit, or enable 'Allow empty commit'."));
+        QMessageBox::warning(this, tr("No Files Selected"),
+                             tr("Please select files to commit, or enable 'Allow empty commit'."));
         return;
     }
-    
+
     // Stage checked files that are not already staged
     bool needsStaging = false;
     for (const auto &file : checkedFiles) {
@@ -799,42 +893,42 @@ void GitCommitDialog::commitChanges()
             break;
         }
     }
-    
+
     if (needsStaging) {
         QProgressDialog progress(tr("Staging files for commit..."), tr("Cancel"), 0, checkedFiles.size(), this);
         progress.setWindowModality(Qt::WindowModal);
         progress.show();
-        
+
         int count = 0;
         for (const auto &file : checkedFiles) {
             if (progress.wasCanceled()) {
                 return;
             }
-            
+
             if (!file->isStaged()) {
                 progress.setLabelText(tr("Staging: %1").arg(file->fileName()));
                 progress.setValue(count);
-                
+
                 stageFile(file->filePath());
                 QApplication::processEvents();
             }
             count++;
         }
         progress.setValue(checkedFiles.size());
-        
+
         // Small delay to ensure git operations complete
         QThread::msleep(100);
     }
-    
+
     const QString message = getCommitMessage();
-    
+
     // Check for existing git lock file and try to clean it up
     QString lockFilePath = m_repositoryPath + "/.git/index.lock";
     if (QFile::exists(lockFilePath)) {
-        int ret = QMessageBox::warning(this, tr("Git Lock File"), 
-                                     tr("A Git lock file exists. This may indicate another Git process is running.\n\n"
-                                        "Do you want to remove the lock file and continue?"),
-                                     QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        int ret = QMessageBox::warning(this, tr("Git Lock File"),
+                                       tr("A Git lock file exists. This may indicate another Git process is running.\n\n"
+                                          "Do you want to remove the lock file and continue?"),
+                                       QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
         if (ret == QMessageBox::Yes) {
             QFile::remove(lockFilePath);
             qDebug() << "[GitCommitDialog] Removed git lock file:" << lockFilePath;
@@ -842,26 +936,27 @@ void GitCommitDialog::commitChanges()
             return;
         }
     }
-    
+
     // Build Git command arguments
     QStringList args;
-    args << "commit" << "-m" << message;
-    
+    args << "commit"
+         << "-m" << message;
+
     if (m_isAmendMode) {
         args << "--amend";
     }
-    
+
     if (m_isAllowEmpty) {
         args << "--allow-empty";
     }
-    
+
     qDebug() << "[GitCommitDialog] Executing commit with args:" << args;
-    
+
     // Use GitOperationDialog to execute commit
     auto *operationDialog = new GitOperationDialog("Commit", this);
     operationDialog->setAttribute(Qt::WA_DeleteOnClose);
     operationDialog->setOperationDescription(tr("Committing changes to repository..."));
-    
+
     connect(operationDialog, &QDialog::accepted, [this, operationDialog]() {
         auto result = operationDialog->getExecutionResult();
         if (result == GitCommandExecutor::Result::Success) {
@@ -871,7 +966,7 @@ void GitCommitDialog::commitChanges()
             qWarning() << "[GitCommitDialog] Commit failed";
         }
     });
-    
+
     operationDialog->executeCommand(m_repositoryPath, args);
     operationDialog->show();
 }
@@ -923,12 +1018,10 @@ void GitCommitDialog::showFileDiff(const QString &filePath)
         QMessageBox::information(this, tr("No File"), tr("Please select a file to view diff."));
         return;
     }
-    
-    // Create and show the diff dialog
-    auto *diffDialog = new GitDiffDialog(m_repositoryPath, filePath, this);
-    diffDialog->setAttribute(Qt::WA_DeleteOnClose);
-    diffDialog->show();
-    
+
+    // Use GitDialogManager to show diff dialog
+    GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
+
     qDebug() << "[GitCommitDialog] Opened diff dialog for file:" << filePath;
 }
 
@@ -947,6 +1040,22 @@ QStringList GitCommitDialog::getSelectedFiles() const
     }
 
     return files;
+}
+
+QStringList GitCommitDialog::getSelectedFilePaths() const
+{
+    QStringList filePaths;
+    auto selectedIndexes = m_fileView->selectionModel()->selectedRows();
+
+    for (const auto &index : selectedIndexes) {
+        auto sourceIndex = m_proxyModel->mapToSource(index);
+        auto file = sourceIndex.data(GitFileModel::FileItemRole).value<std::shared_ptr<GitFileItem>>();
+        if (file) {
+            filePaths.append(file->filePath());
+        }
+    }
+
+    return filePaths;
 }
 
 bool GitCommitDialog::isAmendMode() const
@@ -1051,18 +1160,18 @@ void GitCommitDialog::onShowContextMenu(const QPoint &pos)
     if (!index.isValid()) {
         return;
     }
-    
+
     auto selectedIndexes = m_fileView->selectionModel()->selectedRows();
     if (selectedIndexes.isEmpty()) {
         return;
     }
-    
+
     // Analyze selected files to determine menu state
     bool hasStaged = false;
     bool hasUnstaged = false;
     bool hasModified = false;
     bool hasUntracked = false;
-    
+
     for (const auto &selectedIndex : selectedIndexes) {
         auto sourceIndex = m_proxyModel->mapToSource(selectedIndex);
         auto file = sourceIndex.data(GitFileModel::FileItemRole).value<std::shared_ptr<GitFileItem>>();
@@ -1079,15 +1188,15 @@ void GitCommitDialog::onShowContextMenu(const QPoint &pos)
             }
         }
     }
-    
+
     // Update menu actions based on selection analysis
     m_stageAction->setEnabled(hasUnstaged);
     m_stageAction->setText(hasUntracked ? tr("Add to Git") : tr("Stage"));
-    
+
     m_unstageAction->setEnabled(hasStaged);
-    m_discardAction->setEnabled(hasModified);  // Only enable for modified files, not untracked
-    m_showDiffAction->setEnabled(hasModified || hasStaged);  // Don't show diff for untracked files
-    
+    m_discardAction->setEnabled(hasModified);   // Only enable for modified files, not untracked
+    m_showDiffAction->setEnabled(hasModified || hasStaged);   // Don't show diff for untracked files
+
     // Update tooltips for better UX
     if (hasUntracked && hasModified) {
         m_stageAction->setToolTip(tr("Add untracked files and stage modified files"));
@@ -1096,7 +1205,7 @@ void GitCommitDialog::onShowContextMenu(const QPoint &pos)
     } else if (hasModified) {
         m_stageAction->setToolTip(tr("Stage modified files"));
     }
-    
+
     m_contextMenu->exec(m_fileView->mapToGlobal(pos));
 }
 
@@ -1107,7 +1216,7 @@ void GitCommitDialog::onShowContextMenu(const QPoint &pos)
 void GitCommitDialog::stageSelectedFiles()
 {
     auto selectedIndexes = m_fileView->selectionModel()->selectedRows();
-    
+
     QStringList filesToStage;
     for (const auto &index : selectedIndexes) {
         auto sourceIndex = m_proxyModel->mapToSource(index);
@@ -1116,33 +1225,33 @@ void GitCommitDialog::stageSelectedFiles()
             filesToStage.append(file->filePath());
         }
     }
-    
+
     if (filesToStage.isEmpty()) {
-        QMessageBox::information(this, tr("No Files to Stage"), 
-                                tr("Selected files are already staged."));
+        QMessageBox::information(this, tr("No Files to Stage"),
+                                 tr("Selected files are already staged."));
         return;
     }
-    
+
     QProgressDialog progress(tr("Staging files..."), tr("Cancel"), 0, filesToStage.size(), this);
     progress.setWindowModality(Qt::WindowModal);
     progress.show();
-    
+
     bool success = true;
     for (int i = 0; i < filesToStage.size(); ++i) {
         if (progress.wasCanceled()) {
             break;
         }
-        
+
         const QString &filePath = filesToStage.at(i);
         progress.setLabelText(tr("Staging: %1").arg(QFileInfo(filePath).fileName()));
         progress.setValue(i);
-        
+
         stageFile(filePath);
         QApplication::processEvents();
     }
-    
+
     progress.setValue(filesToStage.size());
-    
+
     if (success) {
         // Refresh file list to reflect changes
         QTimer::singleShot(200, this, [this]() {
@@ -1154,7 +1263,7 @@ void GitCommitDialog::stageSelectedFiles()
 void GitCommitDialog::unstageSelectedFiles()
 {
     auto selectedIndexes = m_fileView->selectionModel()->selectedRows();
-    
+
     QStringList filesToUnstage;
     for (const auto &index : selectedIndexes) {
         auto sourceIndex = m_proxyModel->mapToSource(index);
@@ -1163,33 +1272,33 @@ void GitCommitDialog::unstageSelectedFiles()
             filesToUnstage.append(file->filePath());
         }
     }
-    
+
     if (filesToUnstage.isEmpty()) {
-        QMessageBox::information(this, tr("No Files to Unstage"), 
-                                tr("Selected files are not staged."));
+        QMessageBox::information(this, tr("No Files to Unstage"),
+                                 tr("Selected files are not staged."));
         return;
     }
-    
+
     QProgressDialog progress(tr("Unstaging files..."), tr("Cancel"), 0, filesToUnstage.size(), this);
     progress.setWindowModality(Qt::WindowModal);
     progress.show();
-    
+
     bool success = true;
     for (int i = 0; i < filesToUnstage.size(); ++i) {
         if (progress.wasCanceled()) {
             break;
         }
-        
+
         const QString &filePath = filesToUnstage.at(i);
         progress.setLabelText(tr("Unstaging: %1").arg(QFileInfo(filePath).fileName()));
         progress.setValue(i);
-        
+
         unstageFile(filePath);
         QApplication::processEvents();
     }
-    
+
     progress.setValue(filesToUnstage.size());
-    
+
     if (success) {
         // Refresh file list to reflect changes
         QTimer::singleShot(200, this, [this]() {
@@ -1202,7 +1311,7 @@ void GitCommitDialog::discardSelectedFiles()
 {
     auto selectedIndexes = m_fileView->selectionModel()->selectedRows();
     QStringList filesToDiscard;
-    
+
     for (const auto &index : selectedIndexes) {
         auto sourceIndex = m_proxyModel->mapToSource(index);
         auto file = sourceIndex.data(GitFileModel::FileItemRole).value<std::shared_ptr<GitFileItem>>();
@@ -1210,40 +1319,40 @@ void GitCommitDialog::discardSelectedFiles()
             filesToDiscard.append(file->filePath());
         }
     }
-    
+
     if (filesToDiscard.isEmpty()) {
-        QMessageBox::information(this, tr("No Files to Discard"), 
-                                tr("No modified files selected for discarding."));
+        QMessageBox::information(this, tr("No Files to Discard"),
+                                 tr("No modified files selected for discarding."));
         return;
     }
-    
+
     int ret = QMessageBox::warning(this, tr("Discard Changes"),
-                                 tr("Are you sure you want to discard changes to %1 file(s)?\n\n"
-                                    "This action cannot be undone and will permanently lose your changes.")
-                                 .arg(filesToDiscard.size()),
-                                 QMessageBox::Yes | QMessageBox::No,
-                                 QMessageBox::No);
-    
+                                   tr("Are you sure you want to discard changes to %1 file(s)?\n\n"
+                                      "This action cannot be undone and will permanently lose your changes.")
+                                           .arg(filesToDiscard.size()),
+                                   QMessageBox::Yes | QMessageBox::No,
+                                   QMessageBox::No);
+
     if (ret == QMessageBox::Yes) {
         QProgressDialog progress(tr("Discarding changes..."), tr("Cancel"), 0, filesToDiscard.size(), this);
         progress.setWindowModality(Qt::WindowModal);
         progress.show();
-        
+
         for (int i = 0; i < filesToDiscard.size(); ++i) {
             if (progress.wasCanceled()) {
                 break;
             }
-            
+
             const QString &filePath = filesToDiscard.at(i);
             progress.setLabelText(tr("Discarding: %1").arg(QFileInfo(filePath).fileName()));
             progress.setValue(i);
-            
+
             discardFile(filePath);
             QApplication::processEvents();
         }
-        
+
         progress.setValue(filesToDiscard.size());
-        
+
         // Refresh file list to reflect changes
         QTimer::singleShot(200, this, [this]() {
             loadChangedFiles();

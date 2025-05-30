@@ -6,6 +6,7 @@
 #include <QWidget>
 #include <QFileInfo>
 #include <QDir>
+#include <QDialog>
 
 GitOperationService::GitOperationService(QObject *parent)
     : QObject(parent)
@@ -133,9 +134,7 @@ void GitOperationService::showFileDiff(const std::string &filePath)
     }
 
     QWidget *parentWidget = QApplication::activeWindow();
-    auto *diffDialog = new GitDiffDialog(repoPath, file, parentWidget);
-    diffDialog->setAttribute(Qt::WA_DeleteOnClose);
-    diffDialog->show();
+    GitDialogManager::instance()->showDiffDialog(repoPath, file, parentWidget);
 }
 
 void GitOperationService::showFileBlame(const std::string &filePath)
@@ -157,10 +156,8 @@ void GitOperationService::showFileBlame(const std::string &filePath)
 
     qInfo() << "INFO: [GitOperationService::showFileBlame] Opening enhanced blame dialog for file:" << file;
 
-    // 使用新的GitBlameDialog替代通用操作对话框
-    auto *blameDialog = new GitBlameDialog(repoPath, file, nullptr);
-    blameDialog->setAttribute(Qt::WA_DeleteOnClose);
-    blameDialog->show();
+    // Use GitDialogManager to show blame dialog
+    GitDialogManager::instance()->showBlameDialog(repoPath, file, QApplication::activeWindow());
 }
 
 void GitOperationService::showFileLog(const std::string &repositoryPath, const std::string &filePath)
@@ -177,9 +174,11 @@ void GitOperationService::showFileLog(const std::string &repositoryPath, const s
     }
 
     QWidget *parentWidget = QApplication::activeWindow();
-    auto *logDialog = new GitLogDialog(repoPath, file, parentWidget);
-    logDialog->setAttribute(Qt::WA_DeleteOnClose);
-    logDialog->show();
+    if (file.isEmpty()) {
+        GitDialogManager::instance()->showLogDialog(repoPath, parentWidget);
+    } else {
+        GitDialogManager::instance()->showLogDialog(repoPath, file, parentWidget);
+    }
 }
 
 // ============================================================================
@@ -275,9 +274,7 @@ void GitOperationService::showRepositoryStatus(const std::string &repositoryPath
     }
 
     QWidget *parentWidget = QApplication::activeWindow();
-    auto *statusDialog = new GitStatusDialog(repoPath, parentWidget);
-    statusDialog->setAttribute(Qt::WA_DeleteOnClose);
-    statusDialog->show();
+    GitDialogManager::instance()->showStatusDialog(repoPath, parentWidget);
 }
 
 void GitOperationService::checkoutBranch(const std::string &repositoryPath)
@@ -292,14 +289,10 @@ void GitOperationService::checkoutBranch(const std::string &repositoryPath)
     }
 
     QWidget *parentWidget = QApplication::activeWindow();
-    auto *checkoutDialog = new GitCheckoutDialog(repoPath, parentWidget);
-    checkoutDialog->setAttribute(Qt::WA_DeleteOnClose);
-
-    connect(checkoutDialog, &QDialog::accepted, [this]() {
-        emit fileManagerRefreshRequested();
-    });
-
-    checkoutDialog->show();
+    GitDialogManager::instance()->showCheckoutDialog(repoPath, parentWidget);
+    
+    // Note: The refresh signal should be emitted when the checkout operation actually completes
+    // This will need to be connected through the dialog's success signal in the future
 }
 
 void GitOperationService::pushRepository(const std::string &repositoryPath)
@@ -334,14 +327,10 @@ void GitOperationService::commitChanges(const std::string &repositoryPath)
     }
 
     QWidget *parentWidget = QApplication::activeWindow();
-    auto *commitDialog = new GitCommitDialog(repoPath, QStringList(), parentWidget);
-    commitDialog->setAttribute(Qt::WA_DeleteOnClose);
-
-    connect(commitDialog, &QDialog::accepted, [this]() {
-        emit fileManagerRefreshRequested();
-    });
-
-    commitDialog->show();
+    GitDialogManager::instance()->showCommitDialog(repoPath, parentWidget);
+    
+    // Note: The refresh signal should be emitted when the commit operation actually completes
+    // This will need to be connected through the dialog's success signal in the future
 }
 
 // ============================================================================
@@ -392,23 +381,11 @@ void GitOperationService::executeInteractiveOperation(const QString &operation, 
         }
     }
 
-    auto *opDialog = new GitOperationDialog(operation, parentWidget);
-    opDialog->setAttribute(Qt::WA_DeleteOnClose);
+    // Use the enhanced showOperationDialog method that actually executes the command
+    GitDialogManager::instance()->showOperationDialog(operation, workingDir, arguments, parentWidget);
     
-    QString description = tr("Preparing to execute %1 operation in repository").arg(operation);
-    opDialog->setOperationDescription(description);
-    
-    opDialog->executeCommand(workingDir, arguments);
-    opDialog->show();
-    
-    connect(opDialog, &QDialog::accepted, [this, opDialog, operation]() {
-        if (opDialog->getExecutionResult() == GitCommandExecutor::Result::Success) {
-            emit fileManagerRefreshRequested();
-            emit operationCompleted(operation, true);
-        } else {
-            emit operationCompleted(operation, false);
-        }
-    });
+    qInfo() << "INFO: [GitOperationService::executeInteractiveOperation] Started interactive operation:" 
+            << operation << "with arguments:" << arguments;
 }
 
 void GitOperationService::showSuccessNotification(const QString &operation)
