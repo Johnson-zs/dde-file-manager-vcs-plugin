@@ -431,6 +431,7 @@ void GitCommitDialog::setupUI()
     messageLayout->addWidget(m_messageHintLabel);
 
     m_messageEdit = new QTextEdit(this);
+    m_messageEdit->setAcceptRichText(false);
     m_messageEdit->setMaximumHeight(150);
     m_messageEdit->setPlaceholderText(tr("feat: add new feature\n\nDetailed description of the changes..."));
     m_messageEdit->setFont(QFont("Courier", 10));
@@ -712,12 +713,12 @@ void GitCommitDialog::loadChangedFiles()
 {
     // 使用新的GitStatusParser来加载文件状态
     auto files = GitStatusParser::getRepositoryStatus(m_repositoryPath);
-    
+
     // 转换GitFileInfo到GitFileItem
     QList<std::shared_ptr<GitFileItem>> gitFileItems;
     for (const auto &fileInfo : files) {
         GitFileItem::Status status;
-        
+
         // 将GitFileStatus转换为GitFileItem::Status
         switch (fileInfo->status) {
         case GitFileStatus::Modified:
@@ -751,7 +752,7 @@ void GitCommitDialog::loadChangedFiles()
             status = GitFileItem::Status::Modified;
             break;
         }
-        
+
         auto gitFileItem = std::make_shared<GitFileItem>(fileInfo->filePath, status, fileInfo->statusText);
         gitFileItems.append(gitFileItem);
     }

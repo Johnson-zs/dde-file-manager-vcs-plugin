@@ -443,7 +443,7 @@ void GitStatusDialog::loadRepositoryStatus()
             addToWorking = true;
             break;
         default:
-            continue; // 跳过未知状态
+            continue;   // 跳过未知状态
         }
 
         if (addToStaging) {
@@ -623,9 +623,9 @@ void GitStatusDialog::addSelectedFiles()
     }
 
     auto result = GitOperationUtils::addFiles(m_repositoryPath, filePaths);
-    
+
     if (result.success) {
-        QMessageBox::information(this, tr("Success"), tr("Files added to Git successfully."));
+        // QMessageBox::information(this, tr("Success"), tr("Files added to Git successfully."));
         onRefreshClicked();
     } else {
         QMessageBox::critical(this, tr("Error"), tr("Failed to add files: %1").arg(result.error));
@@ -648,9 +648,9 @@ void GitStatusDialog::stageSelectedFiles()
     }
 
     auto result = GitOperationUtils::stageFiles(m_repositoryPath, filePaths);
-    
+
     if (result.success) {
-        QMessageBox::information(this, tr("Success"), tr("Files staged successfully."));
+        // QMessageBox::information(this, tr("Success"), tr("Files staged successfully."));
         onRefreshClicked();
     } else {
         QMessageBox::critical(this, tr("Error"), tr("Failed to stage files: %1").arg(result.error));
@@ -673,9 +673,9 @@ void GitStatusDialog::unstageSelectedFiles()
     }
 
     auto result = GitOperationUtils::unstageFiles(m_repositoryPath, filePaths);
-    
+
     if (result.success) {
-        QMessageBox::information(this, tr("Success"), tr("Files unstaged successfully."));
+        // QMessageBox::information(this, tr("Success"), tr("Files unstaged successfully."));
         onRefreshClicked();
     } else {
         QMessageBox::critical(this, tr("Error"), tr("Failed to unstage files: %1").arg(result.error));
@@ -706,9 +706,9 @@ void GitStatusDialog::resetSelectedFiles()
     }
 
     auto operationResult = GitOperationUtils::resetFiles(m_repositoryPath, filePaths);
-    
+
     if (operationResult.success) {
-        QMessageBox::information(this, tr("Success"), tr("Files reset successfully."));
+        // QMessageBox::information(this, tr("Success"), tr("Files reset successfully."));
         onRefreshClicked();
     } else {
         QMessageBox::critical(this, tr("Error"), tr("Failed to reset files: %1").arg(operationResult.error));

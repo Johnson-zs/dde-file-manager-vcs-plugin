@@ -198,8 +198,8 @@ void GitDialogManager::deleteFile(const QString &filePath, QWidget *parent)
 
     if (ret == QMessageBox::Yes) {
         if (QFile::remove(filePath)) {
-            QMessageBox::information(parent, QObject::tr("File Deleted"),
-                                     QObject::tr("File deleted successfully."));
+            // QMessageBox::information(parent, QObject::tr("File Deleted"),
+            //                          QObject::tr("File deleted successfully."));
             qDebug() << "[GitDialogManager] Deleted file:" << filePath;
         } else {
             QMessageBox::critical(parent, QObject::tr("Delete Failed"),
