@@ -17,5 +17,6 @@
 #include "gitcommitdialog.h"
 #include "gitdiffdialog.h"
 #include "gitstatusdialog.h"
+#include "gitblamedialog.h"
 
 #endif // GITDIALOGS_H 

@@ -155,10 +155,12 @@ void GitOperationService::showFileBlame(const std::string &filePath)
         return;
     }
 
-    qInfo() << "INFO: [GitOperationService::showFileBlame] Showing blame for file:" << file;
+    qInfo() << "INFO: [GitOperationService::showFileBlame] Opening enhanced blame dialog for file:" << file;
 
-    QStringList args { "blame", "--line-porcelain", relativePath };
-    executeInteractiveOperation("Blame", repoPath, args);
+    // 使用新的GitBlameDialog替代通用操作对话框
+    auto *blameDialog = new GitBlameDialog(repoPath, file, nullptr);
+    blameDialog->setAttribute(Qt::WA_DeleteOnClose);
+    blameDialog->show();
 }
 
 void GitOperationService::showFileLog(const std::string &repositoryPath, const std::string &filePath)
