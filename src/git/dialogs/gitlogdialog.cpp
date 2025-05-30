@@ -38,9 +38,14 @@ void GitLogDialog::setupUI()
 {
     setWindowTitle(m_filePath.isEmpty() ? tr("Git Log - Repository") : tr("Git Log - %1").arg(QFileInfo(m_filePath).fileName()));
     setModal(false);
-    resize(1200, 800);
+    setMinimumSize(1000, 700);
+    // Enable maximize button and better default size
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
+    resize(1400, 900);
+    setAttribute(Qt::WA_DeleteOnClose);
 
     auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(8);
 
     // 顶部工具栏
     auto *toolbarLayout = new QHBoxLayout;

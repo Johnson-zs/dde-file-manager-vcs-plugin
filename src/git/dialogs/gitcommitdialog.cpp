@@ -12,12 +12,15 @@
 #include <QDebug>
 #include <QSplitter>
 #include <QApplication>
+#include <QHeaderView>
+#include <QFileInfo>
 
 GitCommitDialog::GitCommitDialog(const QString &repositoryPath, QWidget *parent)
     : QDialog(parent)
     , m_repositoryPath(repositoryPath)
     , m_isAmendMode(false)
     , m_isAllowEmpty(false)
+    , m_mainSplitter(nullptr)
     , m_optionsGroup(nullptr)
     , m_amendCheckBox(nullptr)
     , m_allowEmptyCheckBox(nullptr)
@@ -26,18 +29,30 @@ GitCommitDialog::GitCommitDialog(const QString &repositoryPath, QWidget *parent)
     , m_messageEdit(nullptr)
     , m_messageHintLabel(nullptr)
     , m_filesGroup(nullptr)
-    , m_fileList(nullptr)
-    , m_filesCountLabel(nullptr)
+    , m_fileFilterCombo(nullptr)
+    , m_fileSearchEdit(nullptr)
+    , m_changedFilesList(nullptr)
+    , m_stagedCountLabel(nullptr)
+    , m_modifiedCountLabel(nullptr)
+    , m_untrackedCountLabel(nullptr)
+    , m_refreshButton(nullptr)
+    , m_stageSelectedButton(nullptr)
+    , m_unstageSelectedButton(nullptr)
+    , m_selectAllButton(nullptr)
+    , m_selectNoneButton(nullptr)
     , m_commitButton(nullptr)
     , m_cancelButton(nullptr)
 {
     setWindowTitle(tr("Git Commit"));
     setModal(true);
-    setMinimumSize(700, 600);
+    setMinimumSize(800, 700);
+    // Enable maximize button and better default size
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
+    resize(1200, 800);
     setAttribute(Qt::WA_DeleteOnClose);
     
     setupUI();
-    loadStagedFiles();
+    loadChangedFiles();
     
     qDebug() << "[GitCommitDialog] Initialized for repository:" << repositoryPath;
 }
@@ -46,7 +61,7 @@ GitCommitDialog::GitCommitDialog(const QString &repositoryPath, const QStringLis
     : GitCommitDialog(repositoryPath, parent)
 {
     m_files = files;
-    refreshStagedFilesDisplay();
+    refreshFilesList();
 }
 
 void GitCommitDialog::setupUI()
@@ -79,6 +94,9 @@ void GitCommitDialog::setupUI()
     
     mainLayout->addWidget(m_optionsGroup);
 
+    // === 主分割器 ===
+    m_mainSplitter = new QSplitter(Qt::Vertical, this);
+    
     // === 提交消息区域 ===
     m_messageGroup = new QGroupBox(tr("Commit Message"), this);
     auto *messageLayout = new QVBoxLayout(m_messageGroup);
@@ -93,22 +111,86 @@ void GitCommitDialog::setupUI()
     m_messageEdit->setFont(QFont("Courier", 10));
     messageLayout->addWidget(m_messageEdit);
     
-    mainLayout->addWidget(m_messageGroup);
+    m_mainSplitter->addWidget(m_messageGroup);
 
-    // === 暂存文件区域 ===
-    m_filesGroup = new QGroupBox(tr("Staged Files"), this);
+    // === 文件选择区域 ===
+    m_filesGroup = new QGroupBox(tr("Changed Files"), this);
     auto *filesLayout = new QVBoxLayout(m_filesGroup);
     
-    m_filesCountLabel = new QLabel(this);
-    m_filesCountLabel->setStyleSheet("color: #666; font-size: 11px;");
-    filesLayout->addWidget(m_filesCountLabel);
+    // 过滤和搜索工具栏
+    auto *filterLayout = new QHBoxLayout();
     
-    m_fileList = new QListWidget(this);
-    m_fileList->setAlternatingRowColors(true);
-    m_fileList->setSelectionMode(QAbstractItemView::NoSelection);
-    filesLayout->addWidget(m_fileList);
+    filterLayout->addWidget(new QLabel(tr("Filter:"), this));
+    m_fileFilterCombo = new QComboBox(this);
+    m_fileFilterCombo->addItem(tr("All files"), "all");
+    m_fileFilterCombo->addItem(tr("Staged files"), "staged");
+    m_fileFilterCombo->addItem(tr("Modified files"), "modified");
+    m_fileFilterCombo->addItem(tr("Untracked files"), "untracked");
+    filterLayout->addWidget(m_fileFilterCombo);
     
-    mainLayout->addWidget(m_filesGroup);
+    filterLayout->addSpacing(10);
+    filterLayout->addWidget(new QLabel(tr("Search:"), this));
+    m_fileSearchEdit = new QLineEdit(this);
+    m_fileSearchEdit->setPlaceholderText(tr("Search files..."));
+    filterLayout->addWidget(m_fileSearchEdit);
+    
+    m_refreshButton = new QPushButton(tr("Refresh"), this);
+    m_refreshButton->setIcon(QIcon::fromTheme("view-refresh"));
+    filterLayout->addWidget(m_refreshButton);
+    
+    filterLayout->addStretch();
+    filesLayout->addLayout(filterLayout);
+    
+    // 状态统计标签
+    auto *statsLayout = new QHBoxLayout();
+    m_stagedCountLabel = new QLabel(this);
+    m_modifiedCountLabel = new QLabel(this);
+    m_untrackedCountLabel = new QLabel(this);
+    statsLayout->addWidget(m_stagedCountLabel);
+    statsLayout->addWidget(m_modifiedCountLabel);
+    statsLayout->addWidget(m_untrackedCountLabel);
+    statsLayout->addStretch();
+    filesLayout->addLayout(statsLayout);
+    
+    // 文件列表
+    m_changedFilesList = new QTreeWidget(this);
+    m_changedFilesList->setHeaderLabels({tr("File"), tr("Status"), tr("Path")});
+    m_changedFilesList->setRootIsDecorated(false);
+    m_changedFilesList->setAlternatingRowColors(true);
+    m_changedFilesList->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_changedFilesList->header()->setStretchLastSection(true);
+    m_changedFilesList->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_changedFilesList->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    filesLayout->addWidget(m_changedFilesList);
+    
+    // 文件操作按钮
+    auto *fileButtonLayout = new QHBoxLayout();
+    m_stageSelectedButton = new QPushButton(tr("Stage Selected"), this);
+    m_stageSelectedButton->setIcon(QIcon::fromTheme("list-add"));
+    fileButtonLayout->addWidget(m_stageSelectedButton);
+    
+    m_unstageSelectedButton = new QPushButton(tr("Unstage Selected"), this);
+    m_unstageSelectedButton->setIcon(QIcon::fromTheme("list-remove"));
+    fileButtonLayout->addWidget(m_unstageSelectedButton);
+    
+    fileButtonLayout->addSpacing(10);
+    
+    m_selectAllButton = new QPushButton(tr("Select All"), this);
+    fileButtonLayout->addWidget(m_selectAllButton);
+    
+    m_selectNoneButton = new QPushButton(tr("Select None"), this);
+    fileButtonLayout->addWidget(m_selectNoneButton);
+    
+    fileButtonLayout->addStretch();
+    filesLayout->addLayout(fileButtonLayout);
+    
+    m_mainSplitter->addWidget(m_filesGroup);
+    
+    // 设置分割器比例
+    m_mainSplitter->setStretchFactor(0, 0);  // 消息区域固定高度
+    m_mainSplitter->setStretchFactor(1, 1);  // 文件区域可拉伸
+    
+    mainLayout->addWidget(m_mainSplitter);
 
     // === 按钮区域 ===
     auto *buttonLayout = new QHBoxLayout();
@@ -129,78 +211,245 @@ void GitCommitDialog::setupUI()
     connect(m_messageEdit, &QTextEdit::textChanged, this, &GitCommitDialog::onMessageChanged);
     connect(m_amendCheckBox, &QCheckBox::toggled, this, &GitCommitDialog::onAmendToggled);
     connect(m_allowEmptyCheckBox, &QCheckBox::toggled, this, &GitCommitDialog::onAllowEmptyToggled);
+    connect(m_changedFilesList, &QTreeWidget::itemChanged, this, &GitCommitDialog::onFileItemChanged);
+    connect(m_changedFilesList, &QTreeWidget::itemSelectionChanged, this, &GitCommitDialog::onFileSelectionChanged);
+    connect(m_fileFilterCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &GitCommitDialog::onFilterChanged);
+    connect(m_fileSearchEdit, &QLineEdit::textChanged, this, &GitCommitDialog::onFilterChanged);
+    connect(m_refreshButton, &QPushButton::clicked, this, &GitCommitDialog::onRefreshFiles);
+    connect(m_stageSelectedButton, &QPushButton::clicked, this, &GitCommitDialog::onStageSelected);
+    connect(m_unstageSelectedButton, &QPushButton::clicked, this, &GitCommitDialog::onUnstageSelected);
+    connect(m_selectAllButton, &QPushButton::clicked, this, &GitCommitDialog::onSelectAll);
+    connect(m_selectNoneButton, &QPushButton::clicked, this, &GitCommitDialog::onSelectNone);
     connect(m_cancelButton, &QPushButton::clicked, this, &GitCommitDialog::onCancelClicked);
     connect(m_commitButton, &QPushButton::clicked, this, &GitCommitDialog::onCommitClicked);
     
-    qDebug() << "[GitCommitDialog] UI setup completed";
+    qDebug() << "[GitCommitDialog] Enhanced UI setup completed";
 }
 
-void GitCommitDialog::loadStagedFiles()
+void GitCommitDialog::loadChangedFiles()
 {
-    m_fileList->clear();
+    m_changedFilesList->clear();
     m_files.clear();
     
     QProcess process;
     process.setWorkingDirectory(m_repositoryPath);
     
-    // 获取暂存区文件
-    process.start("git", QStringList() << "diff" << "--cached" << "--name-status");
+    // 获取所有变更的文件 (包括已暂存、已修改、未跟踪)
+    process.start("git", QStringList() << "status" << "--porcelain");
     if (process.waitForFinished(5000)) {
         const QString output = QString::fromUtf8(process.readAllStandardOutput());
         const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
         
+        int stagedCount = 0, modifiedCount = 0, untrackedCount = 0;
+        
         for (const QString &line : lines) {
-            if (line.length() > 2) {
-                const QString status = line.left(1);
-                const QString filePath = line.mid(2);
-                m_files.append(filePath);
+            if (line.length() > 3) {
+                const QString indexStatus = line.mid(0, 1);  // 暂存区状态
+                const QString workingStatus = line.mid(1, 1); // 工作区状态
+                const QString filePath = line.mid(3);
                 
-                auto *item = new QListWidgetItem();
-                QString statusText;
+                auto *item = new QTreeWidgetItem();
+                item->setText(0, QFileInfo(filePath).fileName());  // 文件名
+                item->setText(2, filePath);  // 完整路径
+                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                
+                QString status;
                 QIcon icon;
+                bool isStaged = false;
                 
-                if (status == "A") {
-                    statusText = tr("Added");
-                    icon = QIcon::fromTheme("list-add");
-                } else if (status == "M") {
-                    statusText = tr("Modified");
-                    icon = QIcon::fromTheme("document-edit");
-                } else if (status == "D") {
-                    statusText = tr("Deleted");
-                    icon = QIcon::fromTheme("list-remove");
+                // 根据git status输出确定文件状态
+                if (indexStatus != " " && indexStatus != "?") {
+                    // 文件已暂存
+                    isStaged = true;
+                    stagedCount++;
+                    item->setCheckState(0, Qt::Checked);
+                    
+                    if (indexStatus == "A") {
+                        status = tr("Staged (Added)");
+                        icon = QIcon::fromTheme("list-add");
+                    } else if (indexStatus == "M") {
+                        status = tr("Staged (Modified)");
+                        icon = QIcon::fromTheme("document-edit");
+                    } else if (indexStatus == "D") {
+                        status = tr("Staged (Deleted)");
+                        icon = QIcon::fromTheme("list-remove");
+                    } else if (indexStatus == "R") {
+                        status = tr("Staged (Renamed)");
+                        icon = QIcon::fromTheme("edit-rename");
+                    } else if (indexStatus == "C") {
+                        status = tr("Staged (Copied)");
+                        icon = QIcon::fromTheme("edit-copy");
+                    } else {
+                        status = tr("Staged (%1)").arg(indexStatus);
+                        icon = QIcon::fromTheme("document-properties");
+                    }
+                } else if (workingStatus == "?") {
+                    // 未跟踪文件
+                    untrackedCount++;
+                    item->setCheckState(0, Qt::Unchecked);
+                    status = tr("Untracked");
+                    icon = QIcon::fromTheme("document-new");
                 } else {
-                    statusText = status;
-                    icon = QIcon::fromTheme("document-properties");
+                    // 已修改但未暂存
+                    modifiedCount++;
+                    item->setCheckState(0, Qt::Unchecked);
+                    
+                    if (workingStatus == "M") {
+                        status = tr("Modified");
+                        icon = QIcon::fromTheme("document-edit");
+                    } else if (workingStatus == "D") {
+                        status = tr("Deleted");
+                        icon = QIcon::fromTheme("list-remove");
+                    } else {
+                        status = tr("Changed (%1)").arg(workingStatus);
+                        icon = QIcon::fromTheme("document-properties");
+                    }
                 }
                 
-                item->setText(QString("%1 - %2").arg(filePath, statusText));
-                item->setIcon(icon);
-                item->setToolTip(tr("File: %1\nStatus: %2").arg(filePath, statusText));
+                item->setText(1, status);
+                item->setIcon(0, icon);
+                item->setIcon(1, icon);
+                item->setData(0, Qt::UserRole, isStaged);  // 存储是否已暂存的状态
+                item->setData(1, Qt::UserRole, filePath);   // 存储完整路径
+                item->setToolTip(0, tr("File: %1\nStatus: %2\nPath: %3").arg(QFileInfo(filePath).fileName(), status, filePath));
                 
-                m_fileList->addItem(item);
+                m_changedFilesList->addTopLevelItem(item);
+                
+                if (isStaged) {
+                    m_files.append(filePath);
+                }
             }
         }
+        
+        // 更新统计标签
+        updateFileCountLabels(stagedCount, modifiedCount, untrackedCount);
+        
     } else {
-        qWarning() << "[GitCommitDialog] Failed to load staged files:" << process.errorString();
+        qWarning() << "[GitCommitDialog] Failed to load changed files:" << process.errorString();
+        updateFileCountLabels(0, 0, 0);
     }
     
-    refreshStagedFilesDisplay();
+    // 应用当前过滤器
+    applyFileFilter();
+    updateButtonStates();
+    
+    qDebug() << "[GitCommitDialog] Loaded" << m_changedFilesList->topLevelItemCount() << "changed files";
 }
 
-void GitCommitDialog::refreshStagedFilesDisplay()
+void GitCommitDialog::updateFileCountLabels(int stagedCount, int modifiedCount, int untrackedCount)
 {
-    const int fileCount = m_files.size();
-    if (fileCount == 0) {
-        m_filesCountLabel->setText(tr("No files staged for commit. Stage files first using git add."));
-        m_filesCountLabel->setStyleSheet("color: #FF6B35; font-size: 11px;");
-        m_commitButton->setEnabled(false);
-    } else {
-        m_filesCountLabel->setText(tr("%1 file(s) staged for commit:").arg(fileCount));
-        m_filesCountLabel->setStyleSheet("color: #4CAF50; font-size: 11px;");
+    m_stagedCountLabel->setText(tr("Staged: %1").arg(stagedCount));
+    m_stagedCountLabel->setStyleSheet(stagedCount > 0 ? "color: #4CAF50; font-size: 11px;" : "color: #666; font-size: 11px;");
+    
+    m_modifiedCountLabel->setText(tr("Modified: %1").arg(modifiedCount));
+    m_modifiedCountLabel->setStyleSheet(modifiedCount > 0 ? "color: #FF9800; font-size: 11px;" : "color: #666; font-size: 11px;");
+    
+    m_untrackedCountLabel->setText(tr("Untracked: %1").arg(untrackedCount));
+    m_untrackedCountLabel->setStyleSheet(untrackedCount > 0 ? "color: #2196F3; font-size: 11px;" : "color: #666; font-size: 11px;");
+}
+
+void GitCommitDialog::updateButtonStates()
+{
+    const bool hasSelection = !m_changedFilesList->selectedItems().isEmpty();
+    const bool hasStaged = m_files.size() > 0;
+    const bool hasMessage = !m_messageEdit->toPlainText().trimmed().isEmpty();
+    
+    m_stageSelectedButton->setEnabled(hasSelection);
+    m_unstageSelectedButton->setEnabled(hasSelection);
+    
+    // 提交按钮启用条件：有暂存文件或允许空提交，且有提交消息
+    m_commitButton->setEnabled((hasStaged || m_isAllowEmpty) && hasMessage);
+}
+
+void GitCommitDialog::applyFileFilter()
+{
+    const QString filterType = m_fileFilterCombo->currentData().toString();
+    const QString searchText = m_fileSearchEdit->text().trimmed().toLower();
+    
+    for (int i = 0; i < m_changedFilesList->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_changedFilesList->topLevelItem(i);
+        const QString fileName = item->text(0).toLower();
+        const QString filePath = item->text(2).toLower();
+        const QString status = item->text(1);
+        const bool isStaged = item->data(0, Qt::UserRole).toBool();
+        
+        bool matchesFilter = true;
+        if (filterType == "staged") {
+            matchesFilter = isStaged;
+        } else if (filterType == "modified") {
+            matchesFilter = !isStaged && !status.contains("Untracked");
+        } else if (filterType == "untracked") {
+            matchesFilter = status.contains("Untracked");
+        }
+        // "all" 情况下 matchesFilter 保持 true
+        
+        bool matchesSearch = searchText.isEmpty() || 
+                           fileName.contains(searchText) || 
+                           filePath.contains(searchText);
+        
+        item->setHidden(!(matchesFilter && matchesSearch));
+    }
+}
+
+QString GitCommitDialog::getFileStatus(const QString &filePath) const
+{
+    QProcess process;
+    process.setWorkingDirectory(m_repositoryPath);
+    process.start("git", QStringList() << "status" << "--porcelain" << filePath);
+    
+    if (process.waitForFinished(3000)) {
+        const QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        if (!output.isEmpty()) {
+            return output.left(2);  // 返回状态代码
+        }
     }
     
-    // 更新提交按钮状态
-    onMessageChanged();
+    return QString();
+}
+
+QIcon GitCommitDialog::getStatusIcon(const QString &status) const
+{
+    if (status.startsWith('A')) {
+        return QIcon::fromTheme("list-add");
+    } else if (status.startsWith('M')) {
+        return QIcon::fromTheme("document-edit");
+    } else if (status.startsWith('D')) {
+        return QIcon::fromTheme("list-remove");
+    } else if (status.startsWith('R')) {
+        return QIcon::fromTheme("edit-rename");
+    } else if (status.startsWith('C')) {
+        return QIcon::fromTheme("edit-copy");
+    } else if (status.startsWith('?')) {
+        return QIcon::fromTheme("document-new");
+    } else {
+        return QIcon::fromTheme("document-properties");
+    }
+}
+
+void GitCommitDialog::stageFile(const QString &filePath)
+{
+    QProcess process;
+    process.setWorkingDirectory(m_repositoryPath);
+    process.start("git", QStringList() << "add" << filePath);
+    
+    if (process.waitForFinished(5000)) {
+        qDebug() << "[GitCommitDialog] Successfully staged file:" << filePath;
+    } else {
+        qWarning() << "[GitCommitDialog] Failed to stage file:" << filePath << process.errorString();
+    }
+}
+
+void GitCommitDialog::unstageFile(const QString &filePath)
+{
+    QProcess process;
+    process.setWorkingDirectory(m_repositoryPath);
+    process.start("git", QStringList() << "reset" << "HEAD" << filePath);
+    
+    if (process.waitForFinished(5000)) {
+        qDebug() << "[GitCommitDialog] Successfully unstaged file:" << filePath;
+    } else {
+        qWarning() << "[GitCommitDialog] Failed to unstage file:" << filePath << process.errorString();
+    }
 }
 
 void GitCommitDialog::loadLastCommitMessage()
@@ -248,22 +497,7 @@ bool GitCommitDialog::isAllowEmpty() const
 
 void GitCommitDialog::onMessageChanged()
 {
-    const QString message = getCommitMessage();
-    const bool hasMessage = !message.isEmpty();
-    const bool hasFiles = !m_files.isEmpty();
-    
-    // 启用提交按钮的条件：
-    // 1. 有提交消息 AND (有暂存文件 OR 允许空提交)
-    const bool canCommit = hasMessage && (hasFiles || m_isAllowEmpty);
-    
-    m_commitButton->setEnabled(canCommit);
-    
-    // 更新按钮文本
-    if (m_isAmendMode) {
-        m_commitButton->setText(tr("Amend Commit"));
-    } else {
-        m_commitButton->setText(tr("Commit"));
-    }
+    updateButtonStates();
 }
 
 void GitCommitDialog::onAmendToggled(bool enabled)
@@ -271,16 +505,16 @@ void GitCommitDialog::onAmendToggled(bool enabled)
     m_isAmendMode = enabled;
     
     if (enabled) {
+        // 加载最后一次提交的消息
         loadLastCommitMessage();
-        m_messageHintLabel->setText(tr("Modifying the last commit. Edit the message as needed:"));
-        m_messageHintLabel->setStyleSheet("color: #FF9800; font-size: 11px; font-weight: bold;");
+        m_messageEdit->setText(m_lastCommitMessage);
     } else {
+        // 清空消息编辑器
         m_messageEdit->clear();
-        m_messageHintLabel->setText(tr("Enter a clear and descriptive commit message:"));
-        m_messageHintLabel->setStyleSheet("color: #666; font-size: 11px;");
     }
     
-    onMessageChanged();
+    updateButtonStates();
+    qDebug() << "[GitCommitDialog] Amend mode:" << (enabled ? "enabled" : "disabled");
 }
 
 void GitCommitDialog::onAllowEmptyToggled(bool enabled)
@@ -288,13 +522,16 @@ void GitCommitDialog::onAllowEmptyToggled(bool enabled)
     m_isAllowEmpty = enabled;
     
     if (enabled) {
-        m_filesCountLabel->setText(tr("Empty commit allowed. No staged files required."));
-        m_filesCountLabel->setStyleSheet("color: #FF9800; font-size: 11px;");
+        // 更新状态标签提示
+        m_stagedCountLabel->setText(tr("Empty commit allowed. No staged files required."));
+        m_stagedCountLabel->setStyleSheet("color: #FF9800; font-size: 11px;");
     } else {
-        refreshStagedFilesDisplay();
+        // 重新加载文件列表以更新正确的计数
+        loadChangedFiles();
     }
     
-    onMessageChanged();
+    updateButtonStates();
+    qDebug() << "[GitCommitDialog] Allow empty commit:" << (enabled ? "enabled" : "disabled");
 }
 
 bool GitCommitDialog::validateCommitMessage()
@@ -375,4 +612,103 @@ void GitCommitDialog::onCommitClicked()
 void GitCommitDialog::onCancelClicked()
 {
     reject();
+}
+
+void GitCommitDialog::onFileItemChanged(QTreeWidgetItem *item, int column)
+{
+    if (column == 0) {
+        const QString filePath = item->data(1, Qt::UserRole).toString();
+        const bool shouldStage = item->checkState(0) == Qt::Checked;
+        const bool isCurrentlyStaged = item->data(0, Qt::UserRole).toBool();
+        
+        if (shouldStage && !isCurrentlyStaged) {
+            stageFile(filePath);
+        } else if (!shouldStage && isCurrentlyStaged) {
+            unstageFile(filePath);
+        }
+        
+        // 重新加载文件列表以更新状态
+        loadChangedFiles();
+    }
+}
+
+void GitCommitDialog::onFileSelectionChanged()
+{
+    updateButtonStates();
+}
+
+void GitCommitDialog::onFilterChanged()
+{
+    applyFileFilter();
+}
+
+void GitCommitDialog::onRefreshFiles()
+{
+    loadChangedFiles();
+}
+
+void GitCommitDialog::onStageSelected()
+{
+    const QList<QTreeWidgetItem*> selectedItems = m_changedFilesList->selectedItems();
+    for (QTreeWidgetItem *item : selectedItems) {
+        const QString filePath = item->data(1, Qt::UserRole).toString();
+        const bool isStaged = item->data(0, Qt::UserRole).toBool();
+        
+        if (!isStaged) {
+            stageFile(filePath);
+        }
+    }
+    
+    // 重新加载文件列表以更新状态
+    loadChangedFiles();
+}
+
+void GitCommitDialog::onUnstageSelected()
+{
+    const QList<QTreeWidgetItem*> selectedItems = m_changedFilesList->selectedItems();
+    for (QTreeWidgetItem *item : selectedItems) {
+        const QString filePath = item->data(1, Qt::UserRole).toString();
+        const bool isStaged = item->data(0, Qt::UserRole).toBool();
+        
+        if (isStaged) {
+            unstageFile(filePath);
+        }
+    }
+    
+    // 重新加载文件列表以更新状态
+    loadChangedFiles();
+}
+
+void GitCommitDialog::onSelectAll()
+{
+    for (int i = 0; i < m_changedFilesList->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_changedFilesList->topLevelItem(i);
+        if (!item->isHidden()) {
+            item->setSelected(true);
+        }
+    }
+}
+
+void GitCommitDialog::onSelectNone()
+{
+    m_changedFilesList->clearSelection();
+}
+
+void GitCommitDialog::refreshFilesList()
+{
+    // 重新计算已暂存的文件列表
+    m_files.clear();
+    
+    for (int i = 0; i < m_changedFilesList->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_changedFilesList->topLevelItem(i);
+        const bool isStaged = item->data(0, Qt::UserRole).toBool();
+        
+        if (isStaged) {
+            const QString filePath = item->data(1, Qt::UserRole).toString();
+            m_files.append(filePath);
+        }
+    }
+    
+    updateButtonStates();
+    qDebug() << "[GitCommitDialog] Refreshed files list, staged files count:" << m_files.size();
 } 

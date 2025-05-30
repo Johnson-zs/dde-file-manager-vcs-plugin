@@ -83,6 +83,10 @@ GitStatusDialog::GitStatusDialog(const QString &repositoryPath, QWidget *parent)
 {
     setWindowTitle(tr("Git Repository Status"));
     setMinimumSize(1000, 700);
+    // Enable maximize button and window resizing
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
+    // Set initial size larger to better utilize screen space
+    resize(1400, 900);
     setAttribute(Qt::WA_DeleteOnClose);
     setupUI();
     setupContextMenu();
@@ -99,16 +103,24 @@ void GitStatusDialog::setupUI()
 
     // === 仓库信息区域 ===
     auto *infoGroup = new QGroupBox(tr("Repository Information"), this);
-    auto *infoLayout = new QVBoxLayout(infoGroup);
+    infoGroup->setMaximumHeight(80);  // 限制最大高度，保持紧凑
+    auto *infoLayout = new QHBoxLayout(infoGroup);  // 使用水平布局更紧凑
+    infoLayout->setContentsMargins(8, 4, 8, 4);
 
+    auto *infoLeftLayout = new QVBoxLayout();
+    infoLeftLayout->setSpacing(2);
+    
     m_branchLabel = new QLabel(this);
     m_branchLabel->setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12px;");
-    infoLayout->addWidget(m_branchLabel);
+    infoLeftLayout->addWidget(m_branchLabel);
 
     m_statusSummary = new QLabel(this);
     m_statusSummary->setWordWrap(true);
     m_statusSummary->setStyleSheet("color: #666; font-size: 11px;");
-    infoLayout->addWidget(m_statusSummary);
+    infoLeftLayout->addWidget(m_statusSummary);
+    
+    infoLayout->addLayout(infoLeftLayout);
+    infoLayout->addStretch();  // 添加弹性空间
 
     mainLayout->addWidget(infoGroup);
 
@@ -203,8 +215,11 @@ void GitStatusDialog::setupUI()
     previewLayout->addWidget(m_diffPreviewWidget);
     m_mainSplitter->addWidget(previewGroup);
 
-    // 设置主分割器比例
-    m_mainSplitter->setSizes({ 600, 400 });
+    // 设置主分割器比例和属性
+    m_mainSplitter->setSizes({ 800, 600 });  // 调整初始比例，给文件列表更多空间
+    m_mainSplitter->setStretchFactor(0, 1);  // 文件列表区域可拉伸
+    m_mainSplitter->setStretchFactor(1, 1);  // 预览区域也可拉伸
+    m_mainSplitter->setChildrenCollapsible(false);  // 防止子窗口被完全折叠
     mainLayout->addWidget(m_mainSplitter);
 
     // === 底部按钮区域 ===

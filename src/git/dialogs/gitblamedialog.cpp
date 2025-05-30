@@ -169,12 +169,15 @@ GitBlameDialog::GitBlameDialog(const QString &repositoryPath, const QString &fil
     m_fileName = QFileInfo(filePath).fileName();
     setWindowTitle(tr("Git Blame - %1").arg(m_fileName));
     setMinimumSize(1200, 800);
+    // Enable maximize button and better default size
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
+    resize(1400, 900);
     setAttribute(Qt::WA_DeleteOnClose);
     
     setupUI();
     loadBlameData();
     
-    qDebug() << "[GitBlameDialog] Initialized for file:" << filePath;
+    qDebug() << "[GitBlameDialog] Initialized with enhanced layout for file:" << filePath;
 }
 
 void GitBlameDialog::setupUI()
