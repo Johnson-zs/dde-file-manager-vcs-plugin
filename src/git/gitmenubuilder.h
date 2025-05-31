@@ -56,10 +56,8 @@ private:
                                    const QString &currentPath);
     void addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
                                          DFMEXT::DFMExtAction *beforeAction = nullptr);
-    void addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
-                                     DFMEXT::DFMExtAction *beforeAction = nullptr);
-    void addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
-                                   DFMEXT::DFMExtAction *beforeAction = nullptr);
+    void addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath);
+    void addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath);
 
     // === 多文件操作辅助 ===
     QStringList getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList);

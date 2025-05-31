@@ -81,7 +81,38 @@ bool GitMenuBuilder::buildRepositoryMenuItems(DFMEXT::DFMExtMenu *main,
     // 获取当前分支信息
     const QString branchName = Utils::getBranchName(repositoryPath);
 
-    // === 查看操作组 ===
+    // === Git More...二级菜单（包含分支操作和同步操作） ===
+    auto gitMoreAction = m_proxy->createAction();
+    gitMoreAction->setText("Git More...");
+    gitMoreAction->setToolTip(QString("More Git operations\nCurrent branch: %1").arg(branchName).toStdString());
+
+    auto gitMoreSubmenu = m_proxy->createMenu();
+    gitMoreAction->setMenu(gitMoreSubmenu);
+
+    // === 分支操作组（在二级菜单中） ===
+    addBranchOperationMenuItems(gitMoreSubmenu, repositoryPath);
+
+    auto subSeparator0 = createSeparator();
+    gitMoreSubmenu->addAction(subSeparator0);
+
+    // === 同步操作组（在二级菜单中） ===
+    addSyncOperationMenuItems(gitMoreSubmenu, repositoryPath);
+
+    // 将Git More...菜单添加到主菜单
+    if (beforeAction) {
+        main->insertAction(beforeAction, gitMoreAction);
+    } else {
+        main->addAction(gitMoreAction);
+    }
+
+    auto separator0 = createSeparator();
+    if (beforeAction) {
+        main->insertAction(beforeAction, separator0);
+    } else {
+        main->addAction(separator0);
+    }
+
+    // === 查看操作组（直接在主菜单中） ===
     addRepositoryOperationMenuItems(main, repositoryPath, beforeAction);
 
     auto separator1 = createSeparator();
@@ -91,9 +122,9 @@ bool GitMenuBuilder::buildRepositoryMenuItems(DFMEXT::DFMExtMenu *main,
         main->addAction(separator1);
     }
 
-    // Git Commit
+    // Git Commit（直接在主菜单中）
     auto commitAction = m_proxy->createAction();
-    commitAction->setText("Git Commit...");
+    commitAction->setText("Git Commit");
     commitAction->setIcon("vcs-commit");
     commitAction->setToolTip(QString("Commit staged changes to repository\nCurrent branch: %1").arg(branchName).toStdString());
     commitAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -108,24 +139,11 @@ bool GitMenuBuilder::buildRepositoryMenuItems(DFMEXT::DFMExtMenu *main,
         main->addAction(commitAction);
     }
 
-    // === 分支操作组 ===
-    addBranchOperationMenuItems(main, repositoryPath, beforeAction);
-
     auto separator2 = createSeparator();
     if (beforeAction) {
         main->insertAction(beforeAction, separator2);
     } else {
         main->addAction(separator2);
-    }
-
-    // === 同步操作组 ===
-    addSyncOperationMenuItems(main, repositoryPath, beforeAction);
-
-    auto separator3 = createSeparator();
-    if (beforeAction) {
-        main->insertAction(beforeAction, separator3);
-    } else {
-        main->addAction(separator3);
     }
 
     return true;
@@ -198,7 +216,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     // Git Diff
     if (Utils::canShowFileDiff(filePath)) {
         auto diffAction = m_proxy->createAction();
-        diffAction->setText("Git Diff...");
+        diffAction->setText("Git Diff");
         diffAction->setIcon("vcs-diff");
         diffAction->setToolTip(QString("View changes in '%1'\nCurrent status: %2")
                                        .arg(fileName, statusText)
@@ -214,7 +232,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     // Git Log (for file)
     if (Utils::canShowFileLog(filePath)) {
         auto logAction = m_proxy->createAction();
-        logAction->setText("Git Log...");
+        logAction->setText("Git Log");
         logAction->setIcon("vcs-normal");
         logAction->setToolTip(QString("View commit history for '%1'\nCurrent status: %2")
                                       .arg(fileName, statusText)
@@ -231,7 +249,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     // Git Blame
     if (Utils::canShowFileBlame(filePath)) {
         auto blameAction = m_proxy->createAction();
-        blameAction->setText("Git Blame...");
+        blameAction->setText("Git Blame");
         blameAction->setIcon("vcs-annotation");
         blameAction->setToolTip(QString("View line-by-line authorship for '%1'\nCurrent status: %2")
                                         .arg(fileName, statusText)
@@ -252,7 +270,7 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
 
     // Git Log (for repository)
     auto repoLogAction = m_proxy->createAction();
-    repoLogAction->setText("Git Log...");
+    repoLogAction->setText("Git Log");
     repoLogAction->setIcon("vcs-normal");
     repoLogAction->setToolTip(QString("View repository commit history\nCurrent branch: %1").arg(branchName).toStdString());
     repoLogAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -269,7 +287,7 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
 
     // Git Status
     auto statusAction = m_proxy->createAction();
-    statusAction->setText("Git Status...");
+    statusAction->setText("Git Status");
     statusAction->setIcon("vcs-status");
     statusAction->setToolTip(QString("View repository status and pending changes\nCurrent branch: %1").arg(branchName).toStdString());
     statusAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -285,14 +303,13 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
     }
 }
 
-void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
-                                                 DFMEXT::DFMExtAction *beforeAction)
+void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath)
 {
     const QString branchName = Utils::getBranchName(repositoryPath);
 
     // Git Checkout
     auto checkoutAction = m_proxy->createAction();
-    checkoutAction->setText("Git Checkout...");
+    checkoutAction->setText("Git Checkout");
     checkoutAction->setIcon("vcs-branch");
     checkoutAction->setToolTip(QString("Switch branches or create new branch\nCurrent branch: %1").arg(branchName).toStdString());
     checkoutAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -301,21 +318,16 @@ void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const
         m_operationService->checkoutBranch(repositoryPath.toStdString());
     });
 
-    if (beforeAction) {
-        menu->insertAction(beforeAction, checkoutAction);
-    } else {
-        menu->addAction(checkoutAction);
-    }
+    menu->addAction(checkoutAction);
 }
 
-void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
-                                               DFMEXT::DFMExtAction *beforeAction)
+void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath)
 {
     const QString branchName = Utils::getBranchName(repositoryPath);
 
     // Git Pull
     auto pullAction = m_proxy->createAction();
-    pullAction->setText("Git Pull...");
+    pullAction->setText("Git Pull.");
     pullAction->setIcon("vcs-pull");
     pullAction->setToolTip(QString("Pull latest changes from remote repository\nCurrent branch: %1").arg(branchName).toStdString());
     pullAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -324,15 +336,11 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
         m_operationService->pullRepository(repositoryPath.toStdString());
     });
 
-    if (beforeAction) {
-        menu->insertAction(beforeAction, pullAction);
-    } else {
-        menu->addAction(pullAction);
-    }
+    menu->addAction(pullAction);
 
     // Git Push
     auto pushAction = m_proxy->createAction();
-    pushAction->setText("Git Push...");
+    pushAction->setText("Git Push");
     pushAction->setIcon("vcs-push");
     pushAction->setToolTip(QString("Push local commits to remote repository\nCurrent branch: %1").arg(branchName).toStdString());
     pushAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -341,11 +349,7 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
         m_operationService->pushRepository(repositoryPath.toStdString());
     });
 
-    if (beforeAction) {
-        menu->insertAction(beforeAction, pushAction);
-    } else {
-        menu->addAction(pushAction);
-    }
+    menu->addAction(pushAction);
 }
 
 QStringList GitMenuBuilder::getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList)
