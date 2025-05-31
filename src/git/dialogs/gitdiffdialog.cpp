@@ -1,6 +1,7 @@
 #include "gitdiffdialog.h"
 #include "../utils.h"
 #include "../gitstatusparser.h"
+#include "../widgets/linenumbertextedit.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -69,10 +70,10 @@ void GitDiffDialog::setupSingleFileUI()
     layout->addLayout(toolbarLayout);
 
     // 差异视图
-    m_diffView = new QTextEdit;
+    m_diffView = new LineNumberTextEdit;
     m_diffView->setReadOnly(true);
     m_diffView->setFont(QFont("Consolas", 10));
-    m_diffView->setLineWrapMode(QTextEdit::NoWrap);
+    m_diffView->setLineWrapMode(QPlainTextEdit::NoWrap);
     layout->addWidget(m_diffView);
 
     // 关闭按钮
@@ -117,10 +118,10 @@ void GitDiffDialog::setupDirectoryUI()
     m_splitter->addWidget(m_fileListWidget);
 
     // 右侧差异视图
-    m_diffView = new QTextEdit;
+    m_diffView = new LineNumberTextEdit;
     m_diffView->setReadOnly(true);
     m_diffView->setFont(QFont("Consolas", 10));
-    m_diffView->setLineWrapMode(QTextEdit::NoWrap);
+    m_diffView->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_diffView->setPlainText(tr("Select a file from the list to view its changes."));
     m_splitter->addWidget(m_diffView);
 

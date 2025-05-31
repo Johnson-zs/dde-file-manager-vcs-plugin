@@ -3,6 +3,7 @@
 #include "../gitcommandexecutor.h"
 #include "../gitstatusparser.h"
 #include "../gitoperationutils.h"
+#include "../widgets/linenumbertextedit.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -198,7 +199,7 @@ void GitStatusDialog::setupUI()
     auto *previewGroup = new QGroupBox(tr("File Diff Preview"), this);
     auto *previewLayout = new QVBoxLayout(previewGroup);
 
-    m_diffPreviewWidget = new QTextEdit(this);
+    m_diffPreviewWidget = new LineNumberTextEdit(this);
     m_diffPreviewWidget->setReadOnly(true);
     m_diffPreviewWidget->setFont(QFont("Courier", 9));
     m_diffPreviewWidget->setPlaceholderText(tr("Select a file to view its differences here..."));

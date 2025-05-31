@@ -2,7 +2,6 @@
 #define GITDIFFDIALOG_H
 
 #include <QDialog>
-#include <QTextEdit>
 #include <QPushButton>
 #include <QLabel>
 #include <QListWidget>
@@ -10,12 +9,19 @@
 #include <QFileInfo>
 #include <QSizePolicy>
 
+// 前向声明
+class LineNumberTextEdit;
+
 /**
  * @brief Git文件差异查看器对话框
  * 
  * 支持单文件和目录两种模式：
  * - 单文件模式：直接显示文件的diff内容
  * - 目录模式：左侧显示有变化的文件列表，右侧显示选中文件的diff内容
+ * 
+ * 新增功能：
+ * - 带行号显示的diff视图
+ * - 语法高亮支持
  */
 class GitDiffDialog : public QDialog
 {
@@ -46,7 +52,7 @@ private:
     // UI组件
     QSplitter *m_splitter;
     QListWidget *m_fileListWidget;
-    QTextEdit *m_diffView;
+    LineNumberTextEdit *m_diffView;  // 使用带行号的文本编辑器
     QPushButton *m_refreshButton;
     QLabel *m_fileInfoLabel;
 

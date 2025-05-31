@@ -17,12 +17,16 @@
 // Forward declarations
 class GitStatusParser;
 class GitOperationUtils;
+class LineNumberTextEdit;
 
 /**
  * @brief Git仓库状态查看器对话框
  * 
  * 显示Git仓库的当前状态，包括分支信息、已暂存文件、
  * 已修改文件和未跟踪文件的详细列表，支持文件操作和差异预览
+ * 
+ * 新增功能：
+ * - 带行号显示的diff预览
  */
 class GitStatusDialog : public QDialog
 {
@@ -63,7 +67,7 @@ private:
     QSplitter *m_listSplitter;              // 文件列表分割器
     QTreeWidget *m_workingTreeWidget;       // 工作区文件列表（使用TreeWidget支持多选）
     QTreeWidget *m_stagingAreaWidget;       // 暂存区文件列表
-    QTextEdit *m_diffPreviewWidget;         // 差异预览区域
+    LineNumberTextEdit *m_diffPreviewWidget; // 带行号的差异预览区域
     
     // 操作按钮
     QPushButton *m_refreshButton;

@@ -5,12 +5,14 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QTextEdit>
 #include <QPushButton>
 #include <QSplitter>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QTabWidget>
+
+// 前向声明
+class LineNumberTextEdit;
 
 /**
  * @brief Git分支比较对话框
@@ -18,7 +20,7 @@
  * 提供两个分支之间的详细比较，包括：
  * - 提交差异列表
  * - 文件变更列表
- * - 详细的差异内容
+ * - 详细的差异内容（带行号显示）
  */
 class GitBranchComparisonDialog : public QDialog
 {
@@ -64,8 +66,8 @@ private:
     QTreeWidget *m_commitList;      // 提交差异列表
     QTreeWidget *m_fileList;        // 文件变更列表
     
-    // 右侧差异显示
-    QTextEdit *m_diffView;
+    // 右侧差异显示（带行号）
+    LineNumberTextEdit *m_diffView;
     
     // 数据
     QString m_repositoryPath;

@@ -1,4 +1,5 @@
 #include "gitbranchcompariondialog.h"
+#include "../widgets/linenumbertextedit.h"
 
 #include <QApplication>
 #include <QHeaderView>
@@ -183,7 +184,7 @@ void GitBranchComparisonDialog::setupFileList()
 
 void GitBranchComparisonDialog::setupDiffView()
 {
-    m_diffView = new QTextEdit;
+    m_diffView = new LineNumberTextEdit;
     m_diffView->setReadOnly(true);
     m_diffView->setFont(QFont("Consolas", 10));
     m_diffView->setPlainText(tr("Select a commit or file to view differences..."));
