@@ -81,96 +81,291 @@
 
 ---
 
-### TASK002 - Git Log界面彻底重构
+### TASK002 - Git Log界面彻底重构 (GitKraken风格)
 **版本**: 1.0  
 **状态**: 计划中  
 **优先级**: P0 - 阻塞级
 
 #### 任务描述
-完全重构GitLogDialog，实现GitKraken风格的三栏布局，解决当前分页加载不智能的问题。
+完全重构GitLogDialog，实现GitKraken风格的现代化Git历史查看器，参考现有对话框的交互模式，提供完整的commit操作功能。
 
-#### 子任务清单
-1. **设计新的三栏布局**
-   - 左侧：提交列表(支持图形化分支显示)
-   - 右上：提交详情显示区域
-   - 右下：文件差异显示区域
+#### 核心设计目标
+1. **GitKraken风格的三栏布局**: 左侧commit列表 + 右上commit详情 + 右下文件差异
+2. **智能无限滚动**: 替代当前的"Load More"按钮，实现自动加载
+3. **完整的右键菜单系统**: 参考现有GitStatusDialog和GitCommitDialog的菜单风格
+4. **分支切换和搜索**: 实时分支切换和commit搜索功能
+5. **文件级操作**: 点击修改文件查看diff，支持文件级右键菜单
 
-2. **实现智能无限滚动**
-   - 检测滚动到底部自动加载更多
-   - 移除手动"Load More"按钮
-   - 实现虚拟滚动优化性能
+#### 详细功能规范
 
-3. **增强搜索和过滤功能**
-   - 实时搜索提交消息、作者、哈希
-   - 分支过滤和时间范围过滤
-   - 搜索结果高亮显示
+##### 1. 界面布局重构
+```
+┌─────────────────────────────────────────────────────────────┐
+│ [分支选择] [搜索框] [刷新] [设置]                           │
+├──────────────────┬──────────────────────────────────────────┤
+│   Commit列表     │           Commit详情                     │
+│ ┌──────────────┐ │ ┌──────────────────────────────────────┐ │
+│ │● abc123 feat │ │ │ Commit: abc123456789...              │ │
+│ │├─● def456    │ │ │ Author: John Doe <john@example.com>  │ │
+│ │└─● ghi789    │ │ │ Date: 2024-01-15 10:30:00           │ │
+│ │              │ │ │ Message: Add new feature             │ │
+│ │              │ │ └──────────────────────────────────────┘ │
+│ │              │ │ ┌──────────────────────────────────────┐ │
+│ │              │ │ │ 修改的文件列表 (可点击查看diff)      │ │
+│ │              │ │ │ ✓ src/main.cpp        [M] 15+, 3-   │ │
+│ │              │ │ │ ✓ include/header.h    [A] 25+       │ │
+│ │              │ │ │ ✓ test/test.cpp       [D] 0+, 10-   │ │
+│ │              │ │ └──────────────────────────────────────┘ │
+│ │              │ │ ┌──────────────────────────────────────┐ │
+│ │              │ │ │        文件差异显示区域              │ │
+│ │              │ │ │ +++ src/main.cpp                     │ │
+│ │              │ │ │ @@ -10,3 +10,5 @@                   │ │
+│ │              │ │ │ + new code here                      │ │
+│ │              │ │ └──────────────────────────────────────┘ │
+│ └──────────────┘ └──────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────────┘
+```
 
-4. **文件差异语法高亮**
-   - 使用QSyntaxHighlighter实现代码高亮
-   - 支持多种编程语言的语法着色
-   - 差异行的颜色区分(添加/删除/修改)
+##### 2. Commit列表右键菜单 (参考现有风格)
+```cpp
+// === Commit操作菜单 ===
+- "Checkout Commit" (检出到此commit)
+- "Create Branch Here" (从此commit创建分支)
+- "Create Tag Here" (从此commit创建标签)
+- [分隔符]
+- "Reset to Here" -> 子菜单:
+  - "Soft Reset" (保留工作区和暂存区)
+  - "Mixed Reset" (保留工作区，清空暂存区)
+  - "Hard Reset" (清空工作区和暂存区)
+- "Revert Commit" (创建反向commit)
+- "Cherry-pick Commit" (应用此commit到当前分支)
+- [分隔符]
+- "Show Commit Details" (显示完整commit信息)
+- "Show Files Changed" (显示修改文件列表)
+- "Compare with Working Tree" (与工作区比较)
+- "Compare with Previous" (与上一个commit比较)
+- [分隔符]
+- "Copy Commit Hash" (复制完整哈希)
+- "Copy Short Hash" (复制短哈希)
+- "Copy Commit Message" (复制提交消息)
+```
+
+##### 3. 文件列表右键菜单 (继承现有风格)
+```cpp
+// === 文件操作菜单 ===
+- "View File at This Commit" (查看此commit时的文件内容)
+- "Show File Diff" (显示文件差异)
+- "Show File History" (显示文件历史)
+- "Show File Blame" (显示文件blame)
+- [分隔符]
+- "Open File" (打开当前文件)
+- "Show in Folder" (在文件夹中显示)
+- [分隔符]
+- "Copy File Path" (复制文件路径)
+- "Copy File Name" (复制文件名)
+```
+
+##### 4. 智能无限滚动实现
+```cpp
+class GitLogDialog : public QDialog {
+private:
+    // 滚动检测
+    void setupInfiniteScroll();
+    void onScrollValueChanged(int value);
+    void loadMoreCommitsIfNeeded();
+    
+    // 虚拟滚动优化
+    static const int COMMITS_PER_LOAD = 50;
+    static const int PRELOAD_THRESHOLD = 10; // 距离底部10项时开始预加载
+    
+    bool m_isLoadingMore;
+    int m_totalCommitsLoaded;
+    QScrollBar *m_commitScrollBar;
+};
+```
+
+##### 5. 分支切换和搜索功能
+```cpp
+// 分支切换
+void onBranchChanged(const QString &branchName);
+void loadBranchCommits(const QString &branchName);
+
+// 实时搜索
+void onSearchTextChanged(const QString &searchText);
+void filterCommits(const QString &searchText);
+void highlightSearchResults(const QString &searchText);
+
+// 搜索支持的字段
+- Commit message (提交消息)
+- Author name (作者名称)
+- Commit hash (提交哈希)
+- File names (文件名称)
+```
+
+##### 6. 文件差异显示增强
+```cpp
+class GitLogDialog : public QDialog {
+private:
+    // 文件列表组件
+    QTreeWidget *m_changedFilesTree;
+    QTextEdit *m_fileDiffView;
+    
+    // 语法高亮
+    QSyntaxHighlighter *m_diffHighlighter;
+    
+    // 文件差异加载
+    void loadCommitFiles(const QString &commitHash);
+    void loadFileDiff(const QString &commitHash, const QString &filePath);
+    void onFileSelectionChanged();
+    
+    // 文件状态图标
+    QIcon getFileStatusIcon(const QString &status);
+    QString getFileStatusText(const QString &status);
+};
+```
+
+#### 技术实现重点
+
+##### 1. 性能优化策略
+- **虚拟滚动**: 只渲染可见区域的commit项
+- **增量加载**: 每次加载50个commit，避免内存过载
+- **缓存机制**: 缓存已加载的commit详情和文件差异
+- **后台加载**: 使用QThread在后台预加载数据
+
+##### 2. 图形化分支显示
+```cpp
+class CommitGraphDelegate : public QStyledItemDelegate {
+public:
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, 
+               const QModelIndex &index) const override;
+    
+private:
+    void drawBranchLines(QPainter *painter, const QRect &rect, 
+                        const QString &graphData) const;
+    void drawCommitNode(QPainter *painter, const QPoint &center, 
+                       bool isCurrent) const;
+};
+```
+
+##### 3. 右键菜单集成现有系统
+```cpp
+void GitLogDialog::setupCommitContextMenu() {
+    m_commitContextMenu = new QMenu(this);
+    
+    // === 基础操作 ===
+    auto *checkoutAction = m_commitContextMenu->addAction(
+        QIcon::fromTheme("vcs-normal"), tr("Checkout Commit"));
+    auto *createBranchAction = m_commitContextMenu->addAction(
+        QIcon::fromTheme("vcs-branch"), tr("Create Branch Here"));
+    auto *createTagAction = m_commitContextMenu->addAction(
+        QIcon::fromTheme("vcs-tag"), tr("Create Tag Here"));
+    
+    m_commitContextMenu->addSeparator();
+    
+    // === Reset操作子菜单 ===
+    auto *resetMenu = m_commitContextMenu->addMenu(
+        QIcon::fromTheme("edit-undo"), tr("Reset to Here"));
+    resetMenu->addAction(tr("Soft Reset"), this, &GitLogDialog::softResetToCommit);
+    resetMenu->addAction(tr("Mixed Reset"), this, &GitLogDialog::mixedResetToCommit);
+    resetMenu->addAction(tr("Hard Reset"), this, &GitLogDialog::hardResetToCommit);
+    
+    // === 其他操作 ===
+    auto *revertAction = m_commitContextMenu->addAction(
+        QIcon::fromTheme("edit-undo"), tr("Revert Commit"));
+    auto *cherryPickAction = m_commitContextMenu->addAction(
+        QIcon::fromTheme("vcs-merge"), tr("Cherry-pick Commit"));
+    
+    // 连接到GitOperationDialog执行实际操作
+    connect(checkoutAction, &QAction::triggered, this, &GitLogDialog::checkoutCommit);
+    connect(revertAction, &QAction::triggered, this, &GitLogDialog::revertCommit);
+    connect(cherryPickAction, &QAction::triggered, this, &GitLogDialog::cherryPickCommit);
+}
+```
+
+##### 4. 与现有系统集成
+```cpp
+// 集成GitOperationDialog执行Git命令
+void GitLogDialog::executeGitOperation(const QString &operation, 
+                                      const QStringList &args) {
+    auto *dialog = new GitOperationDialog(m_repositoryPath, this);
+    dialog->setOperation(operation);
+    dialog->setArguments(args);
+    dialog->show();
+    
+    // 操作完成后刷新界面
+    connect(dialog, &GitOperationDialog::operationFinished, 
+            this, &GitLogDialog::onRefreshClicked);
+}
+
+// 集成GitDialogManager打开其他对话框
+void GitLogDialog::showFileBlame(const QString &filePath) {
+    GitDialogManager::instance()->showBlameDialog(
+        m_repositoryPath, filePath, this);
+}
+```
 
 #### 验收标准
 - [ ] 三栏布局响应式设计，支持拖拽调整大小
-- [ ] 滚动到底部自动加载更多提交，无需手动点击
-- [ ] 搜索功能实时响应，支持正则表达式
-- [ ] 文件差异有语法高亮，代码可读性高
+- [ ] 滚动到底部自动加载更多commit，无需手动点击
+- [ ] Commit列表支持图形化分支显示，清晰显示分支合并关系
+- [ ] 右键菜单功能完整，支持reset(soft/mixed/hard)、revert、cherry-pick等操作
+- [ ] 文件列表点击显示diff，支持语法高亮
+- [ ] 文件右键菜单支持查看历史、blame、打开文件等操作
+- [ ] 分支切换功能正常，实时搜索响应快速
+- [ ] 搜索功能支持commit消息、作者、哈希等多字段
 - [ ] 支持大型仓库(10000+提交)的流畅浏览
-- [ ] 内存使用控制在合理范围内
+- [ ] 内存使用控制在合理范围内(< 500MB)
+- [ ] 所有Git操作与现有GitOperationDialog无缝集成
+
+#### 性能要求
+- 初次加载时间不超过2秒
+- 滚动加载响应时间不超过500ms
+- 搜索响应时间不超过200ms
+- 分支切换时间不超过1秒
+- UI操作响应时间不超过100ms
 
 #### 注意事项
-- 虚拟滚动实现要考虑Qt的MVC架构
-- 语法高亮需要检测文件类型自动应用规则
-- 大仓库的性能优化是关键，避免一次性加载过多数据
-- UI响应性优于功能完整性，确保界面不卡顿
+- 确保与现有对话框的交互风格保持一致
+- 所有Git命令必须通过GitOperationDialog执行
+- 危险操作(如hard reset)需要确认对话框
+- 添加详细的英文日志记录便于调试
+- 考虑不同Git版本的兼容性问题
 
 #### AI编程助手提示词
 ```
-你是一个Qt界面开发专家，精通QSplitter、QTreeWidget、QTextEdit等控件的高级用法。当前任务是重构Git Log查看器，实现GitKraken风格的现代化界面。
+你是一个Git可视化专家，精通现代Git客户端的界面设计和交互模式。当前任务是重构GitLogDialog，实现GitKraken风格的现代化Git历史查看器。
 
-**设计目标**:
-- 参考GitKraken的三栏布局设计
-- 实现智能的无限滚动加载
-- 提供流畅的用户体验，特别是大型仓库
+**设计参考**:
+- GitKraken的三栏布局和交互模式
+- 现有GitStatusDialog和GitCommitDialog的右键菜单风格
+- 现有GitCheckoutDialog的分支管理模式
 
-**技术挑战**:
-- 虚拟滚动的实现(处理大量提交记录)
-- QSyntaxHighlighter的自定义语法规则
-- 多线程的Git命令执行和UI更新
+**技术要求**:
+- 基于现有的GitOperationDialog执行所有Git命令
+- 集成现有的GitDialogManager系统
+- 使用现有的图标主题和UI风格
+- 确保线程安全和异常安全
 
-**布局要求**:
-```
-┌─────────────────────────────────────┐
-│ [工具栏: 搜索|分支选择|刷新]        │
-├──────────────┬──────────────────────┤
-│   提交列表   │   提交详情           │
-│ ┌──────────┐ │ ┌──────────────────┐ │
-│ │● feat:   │ │ │哈希: abc123...   │ │
-│ │├─● fix:  │ │ │作者: John Doe    │ │
-│ │└─● docs: │ │ │时间: 2024-01-01  │ │
-│ │          │ │ └──────────────────┘ │
-│ └──────────┘ │ ┌──────────────────┐ │
-│              │ │   文件差异       │ │
-│              │ │ +++ src/main.cpp │ │
-│              │ │ --- src/main.cpp │ │
-│              │ │ @@ -1,3 +1,5 @@  │ │
-│              │ └──────────────────┘ │
-└──────────────┴──────────────────────┘
-```
+**核心功能**:
+1. 智能无限滚动的commit列表
+2. 图形化分支显示(ASCII艺术风格)
+3. 完整的commit右键菜单(reset/revert/cherry-pick等)
+4. 文件级差异显示和操作
+5. 实时搜索和分支切换
 
-**关键实现点**:
-1. 使用QSplitter实现可调整的三栏布局
-2. QTreeWidget的虚拟模式处理大数据集
-3. QTextEdit的QSyntaxHighlighter实现diff语法高亮
-4. QScrollBar的滚动事件检测实现无限加载
+**性能优化**:
+- 虚拟滚动处理大量commit
+- 增量加载和缓存机制
+- 后台数据预加载
+- 内存使用优化
 
-**性能要求**:
-- 初次加载不超过100条提交
-- 滚动加载每次增加50条提交
-- 内存使用不超过200MB(即使是大型仓库)
-- UI响应时间不超过100ms
+**交互设计**:
+- 参考现有对话框的菜单结构和图标使用
+- 保持一致的错误处理和用户反馈机制
+- 支持键盘导航和快捷键
+- 危险操作的确认机制
 
-请提供完整的GitLogDialog重构代码，包括.h和.cpp文件。
+请提供完整的GitLogDialog重构实现，包括.h和.cpp文件，确保与现有系统完美集成。
 ```
 
 ---
@@ -690,54 +885,334 @@ enum class CheckoutMode {
 
 ---
 
-## 🚀 2.0版本 - 功能完善版本
-
-### TASK006 - 高级Git Log功能
+### TASK006 - 高级Git Log功能增强
 **版本**: 2.0  
 **状态**: 计划中  
 **优先级**: P1 - 重要
 
 #### 任务描述
-在1.0版本的基础上，添加高级的Git Log功能，包括图形化分支显示、文件级历史等。
+在1.0版本GitLogDialog的基础上，添加高级的Git Log功能，包括图形化分支显示、文件级历史追踪、高级搜索和比较功能，打造企业级的Git历史分析工具。
 
 #### 子任务清单
-1. **图形化分支视图**
-   - 实现ASCII艺术风格的分支图形显示
-   - 支持自定义绘制的分支线条
-   - 添加分支合并路径的可视化
 
-2. **文件级历史追踪**
-   - 实现单个文件的完整修改历史
-   - 支持文件重命名的历史追踪
-   - 添加文件修改热力图显示
+##### 1. 高级图形化分支视图
+**目标**: 实现类似GitKraken的专业级分支图形显示
 
-3. **高级搜索功能**
-   - 支持正则表达式搜索
-   - 按时间范围、作者、文件路径过滤
-   - 保存和管理搜索历史
+**功能特性**:
+- **自定义分支图形绘制**: 使用QPainter绘制平滑的分支线条
+- **分支颜色主题**: 不同分支使用不同颜色，支持自定义主题
+- **交互式分支图**: 点击分支线显示分支信息，支持分支折叠/展开
+- **分支合并可视化**: 清晰显示merge commit和分支合并路径
+
+**技术实现**:
+```cpp
+class AdvancedCommitGraphDelegate : public QStyledItemDelegate {
+public:
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, 
+               const QModelIndex &index) const override;
+    
+private:
+    struct BranchLine {
+        int column;
+        QColor color;
+        bool isMerge;
+        bool isBranch;
+    };
+    
+    void drawBranchGraph(QPainter *painter, const QRect &rect, 
+                        const QVector<BranchLine> &lines) const;
+    void drawBezierCurve(QPainter *painter, const QPoint &start, 
+                        const QPoint &end, const QColor &color) const;
+    QColor getBranchColor(int branchIndex) const;
+};
+
+class GitBranchGraphParser {
+public:
+    struct CommitGraphData {
+        QString commitHash;
+        QVector<BranchLine> incomingLines;
+        QVector<BranchLine> outgoingLines;
+        bool isMergeCommit;
+        bool isBranchStart;
+    };
+    
+    QVector<CommitGraphData> parseGitGraph(const QString &gitLogOutput);
+};
+```
+
+##### 2. 文件级历史追踪系统
+**目标**: 提供完整的文件生命周期追踪功能
+
+**功能特性**:
+- **文件重命名追踪**: 使用`git log --follow`追踪文件重命名历史
+- **文件修改热力图**: 显示文件修改频率和代码行变化统计
+- **文件贡献者分析**: 显示每个文件的主要贡献者和修改统计
+- **文件差异时间线**: 可视化文件在不同时间点的变化
+
+**界面设计**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 文件历史追踪 - src/main.cpp                                │
+├─────────────────────────────────────────────────────────────┤
+│ [时间线视图] [热力图] [贡献者] [重命名历史]                 │
+├─────────────────────────────────────────────────────────────┤
+│ ┌─────────────┐ ┌─────────────────────────────────────────┐ │
+│ │ 2024-01-15  │ │ +25 lines added                         │ │
+│ │ John Doe    │ │ -10 lines removed                       │ │
+│ │ feat: add   │ │ Modified by: John Doe (60%), Jane (40%) │ │
+│ │ ├─────────  │ │                                         │ │
+│ │ 2024-01-10  │ │ 文件重命名历史:                         │ │
+│ │ Jane Smith  │ │ main.c -> main.cpp (2024-01-01)         │ │
+│ │ refactor    │ │ core.c -> main.c (2023-12-15)           │ │
+│ └─────────────┘ └─────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**技术实现**:
+```cpp
+class FileHistoryTracker {
+public:
+    struct FileHistoryEntry {
+        QString commitHash;
+        QString author;
+        QDateTime date;
+        QString message;
+        int linesAdded;
+        int linesRemoved;
+        QString oldFileName;  // 用于重命名追踪
+    };
+    
+    struct FileStats {
+        QMap<QString, int> authorContributions;  // 作者 -> 行数贡献
+        QVector<FileHistoryEntry> history;
+        QStringList renameHistory;
+        int totalLines;
+        int totalCommits;
+    };
+    
+    FileStats analyzeFileHistory(const QString &repositoryPath, 
+                                const QString &filePath);
+    QVector<FileHistoryEntry> getFileCommits(const QString &repositoryPath, 
+                                            const QString &filePath);
+};
+
+class FileHeatmapWidget : public QWidget {
+public:
+    void setFileStats(const FileHistoryTracker::FileStats &stats);
+    
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    
+private:
+    void drawHeatmap(QPainter *painter);
+    void drawContributorChart(QPainter *painter);
+    QColor getHeatmapColor(int intensity) const;
+};
+```
+
+##### 3. 高级搜索和过滤系统
+**目标**: 提供强大的Git历史搜索和分析功能
+
+**功能特性**:
+- **正则表达式搜索**: 支持复杂的正则表达式模式匹配
+- **多维度过滤**: 按时间范围、作者、文件路径、分支等过滤
+- **搜索历史管理**: 保存和管理常用搜索条件
+- **高级查询构建器**: 图形化的查询条件构建界面
+
+**界面设计**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 高级搜索                                                    │
+├─────────────────────────────────────────────────────────────┤
+│ 搜索类型: [简单搜索] [正则表达式] [高级查询]               │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ 搜索内容: feat.*login|fix.*bug                          │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│ 时间范围: [2024-01-01] 到 [2024-12-31]                    │
+│ 作    者: [John Doe] [Jane Smith] [All Authors]            │
+│ 分    支: [main] [develop] [feature/*] [All Branches]      │
+│ 文件路径: [src/**/*.cpp] [include/**/*.h]                  │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ [保存查询] [加载查询] [清除条件] [搜索]                 │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**技术实现**:
+```cpp
+class AdvancedSearchDialog : public QDialog {
+public:
+    struct SearchCriteria {
+        QString searchText;
+        bool useRegex;
+        QDateTime startDate;
+        QDateTime endDate;
+        QStringList authors;
+        QStringList branches;
+        QStringList filePaths;
+        bool caseSensitive;
+    };
+    
+    SearchCriteria getSearchCriteria() const;
+    void setSearchCriteria(const SearchCriteria &criteria);
+    
+private:
+    void setupUI();
+    void setupQueryBuilder();
+    void saveSearchQuery();
+    void loadSearchQuery();
+    
+    QLineEdit *m_searchEdit;
+    QCheckBox *m_regexCheckBox;
+    QDateEdit *m_startDateEdit;
+    QDateEdit *m_endDateEdit;
+    QListWidget *m_authorsWidget;
+    QListWidget *m_branchesWidget;
+    QLineEdit *m_filePathEdit;
+    QComboBox *m_savedQueriesCombo;
+};
+
+class GitSearchEngine {
+public:
+    QVector<QString> searchCommits(const QString &repositoryPath, 
+                                  const AdvancedSearchDialog::SearchCriteria &criteria);
+    
+private:
+    QStringList buildGitLogArgs(const AdvancedSearchDialog::SearchCriteria &criteria);
+    bool matchesRegex(const QString &text, const QString &pattern);
+};
+```
+
+##### 4. Commit比较和分析工具
+**目标**: 提供专业级的commit比较和代码分析功能
+
+**功能特性**:
+- **多commit比较**: 选择多个commit进行并排比较
+- **分支差异分析**: 比较不同分支之间的差异
+- **代码统计分析**: 显示代码行数、文件数量等统计信息
+- **影响范围分析**: 分析commit对项目的影响范围
+
+**界面设计**:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Commit比较分析                                              │
+├─────────────────────────────────────────────────────────────┤
+│ 基准Commit: [abc123] feat: add login feature               │
+│ 比较Commit: [def456] fix: login validation bug             │
+├─────────────────────────────────────────────────────────────┤
+│ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ │
+│ │ 统计信息        │ │ 文件变化        │ │ 代码差异        │ │
+│ │ 文件数: 5       │ │ ✓ login.cpp [M] │ │ +++ login.cpp   │ │
+│ │ 新增行: +25     │ │ ✓ auth.h   [M]  │ │ @@ -10,3 +10,5  │ │
+│ │ 删除行: -10     │ │ ✓ test.cpp [A]  │ │ + validation    │ │
+│ │ 影响模块: 3     │ │                 │ │ - old code      │ │
+│ └─────────────────┘ └─────────────────┘ └─────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### 5. 性能优化和缓存系统
+**目标**: 确保大型仓库的流畅使用体验
+
+**优化策略**:
+- **智能缓存系统**: 缓存commit数据、分支图形、文件差异等
+- **后台预加载**: 预测用户行为，后台预加载相关数据
+- **内存管理优化**: 使用对象池和智能指针管理内存
+- **数据库存储**: 使用SQLite存储复杂的分析结果
+
+**技术实现**:
+```cpp
+class GitLogCache {
+public:
+    struct CacheEntry {
+        QString commitHash;
+        QString commitData;
+        QDateTime cacheTime;
+        bool isValid() const;
+    };
+    
+    void cacheCommitData(const QString &hash, const QString &data);
+    QString getCachedCommitData(const QString &hash);
+    void clearExpiredCache();
+    void optimizeCache();
+    
+private:
+    QHash<QString, CacheEntry> m_commitCache;
+    QTimer *m_cleanupTimer;
+    static const int MAX_CACHE_SIZE = 1000;
+    static const int CACHE_EXPIRE_HOURS = 24;
+};
+
+class GitLogDatabase {
+public:
+    void storeFileStats(const QString &repositoryPath, 
+                       const QString &filePath, 
+                       const FileHistoryTracker::FileStats &stats);
+    FileHistoryTracker::FileStats loadFileStats(const QString &repositoryPath, 
+                                               const QString &filePath);
+    void updateRepositoryIndex(const QString &repositoryPath);
+    
+private:
+    QSqlDatabase m_database;
+    void initializeDatabase();
+    void createTables();
+};
+```
+
+#### 验收标准
+- [ ] 图形化分支显示支持复杂的分支合并关系，颜色区分清晰
+- [ ] 文件历史追踪能正确处理重命名和移动操作
+- [ ] 文件修改热力图准确显示修改频率和贡献者信息
+- [ ] 高级搜索支持正则表达式和多维度过滤
+- [ ] 搜索历史管理功能完整，支持保存和加载查询
+- [ ] Commit比较功能支持多选比较和详细统计
+- [ ] 分支差异分析能准确显示分支间的差异
+- [ ] 缓存系统有效提升大型仓库的性能
+- [ ] 内存使用优化，长时间使用不出现内存泄漏
+- [ ] 所有功能与现有GitLogDialog无缝集成
+
+#### 性能要求
+- 图形化分支绘制响应时间不超过200ms
+- 文件历史分析完成时间不超过5秒(1000+commits)
+- 高级搜索响应时间不超过3秒
+- 缓存命中率达到80%以上
+- 内存使用增长控制在原有基础上+50%以内
+
+#### 注意事项
+- 确保所有新功能向后兼容1.0版本的GitLogDialog
+- 复杂的Git操作需要详细的进度指示和错误处理
+- 大型仓库的性能优化是关键，避免UI冻结
+- 添加完整的单元测试覆盖核心算法
+- 考虑不同操作系统的兼容性问题
 
 #### AI编程助手提示词
 ```
-你是Git可视化专家，熟悉复杂的Git历史图形化显示。任务是为Git Log添加高级可视化功能。
+你是一个Git数据分析专家，精通Git内部机制和大型代码仓库的性能优化。当前任务是为GitLogDialog添加企业级的高级功能。
 
-**图形化分支显示要求**:
-- 使用自定义的QPainter绘制分支线条
-- 支持多种颜色区分不同分支
-- 实现分支合并点的特殊标记
-- 支持折叠/展开分支的显示
+**技术挑战**:
+- 大型仓库(100,000+ commits)的性能优化
+- 复杂分支图形的实时绘制
+- 文件历史的深度分析和可视化
+- 高级搜索的查询优化
 
-**技术实现**:
-1. 继承QStyledItemDelegate自定义绘制
-2. 解析git log --graph输出构建分支结构
-3. 使用QPainter绘制Bezier曲线表示分支
-4. 实现鼠标交互(悬停显示分支信息)
+**核心算法**:
+1. Git graph解析算法 - 解析复杂的分支合并关系
+2. 文件追踪算法 - 处理重命名和移动操作
+3. 缓存策略算法 - 智能的数据缓存和预加载
+4. 搜索优化算法 - 高效的正则表达式和多维度过滤
 
-**性能考虑**:
-- 大型仓库的分支图绘制优化
-- 使用缓存避免重复计算
-- 实现视口裁剪减少绘制开销
+**性能要求**:
+- 支持10万+提交的仓库流畅操作
+- 图形绘制帧率保持在30fps以上
+- 内存使用控制在1GB以内
+- 搜索响应时间控制在秒级
 
-请提供图形化分支显示的完整实现。
+**用户体验**:
+- 渐进式功能展示，避免界面复杂化
+- 智能的默认设置和推荐操作
+- 完整的进度指示和错误恢复
+- 专业级的数据可视化效果
+
+请提供高级Git Log功能的完整实现方案，重点关注性能优化和用户体验。
 ```
 
 ---
@@ -1051,6 +1526,30 @@ enum class CheckoutMode {
 
 ---
 
+### TASK001B - GitLogDialog基础右键菜单快速实现 (备选方案)
+**版本**: 1.0  
+**状态**: 备选方案  
+**优先级**: P2 - 备选
+
+#### 任务描述
+**注意：此任务现在作为TASK002的备选方案。**
+
+如果TASK002的完全重构进度严重滞后，可以考虑此方案作为临时解决方案。但优先推荐直接实施TASK002的完全重构，避免重复开发工作。
+
+在现有GitLogDialog基础上快速添加基础的右键菜单功能，参考现有对话框的交互风格，为用户提供基本的commit操作能力。
+
+#### 使用场景
+- TASK002重构遇到技术难题，需要较长时间解决
+- 用户急需基础的commit操作功能，无法等待完整重构
+- 作为TASK002开发过程中的功能验证原型
+
+#### 实施建议
+- **优先考虑TASK002**: 除非有特殊情况，建议直接实施TASK002
+- **避免重复工作**: 如果开始TASK002，则不建议同时进行TASK001B
+- **代码复用**: 如果必须实施，其中的右键菜单设计可以为TASK002提供参考
+
+---
+
 ## 📋 任务状态说明
 
 ### 状态定义
@@ -1066,25 +1565,45 @@ enum class CheckoutMode {
 - **P2 - 一般**: 改善功能的一般特性
 - **P3 - 可选**: 锦上添花的可选功能
 
+### 当前任务执行顺序
+1. **TASK001** (P0) - 核心基础架构重构 [立即开始]
+2. **TASK002** (P0) - Git Log界面彻底重构 (GitKraken风格) [立即开始，并行进行]
+3. **TASK004** (P1) - 基础操作对话框完善
+4. **TASK005** (P1) - Git分支管理界面优化
+5. **TASK001B** (P2) - GitLogDialog基础右键菜单快速实现 [如果TASK002进度滞后的备选方案]
+
+### 任务执行策略说明
+- **TASK001和TASK002并行**: 两个任务相对独立，可以同时进行
+- **TASK002优先级更高**: 完全重构的GitLogDialog将提供完整的功能体验
+- **TASK001B作为备选**: 仅在TASK002进度严重滞后时考虑作为临时方案
+- **避免重复工作**: 不再先做基础右键菜单再重构，直接实现完整方案
+
 ---
 
 ## 🎯 里程碑计划
 
 ### 1.0版本里程碑
 **目标发布时间**: 开发开始后4-6周  
-**核心特性**: 基础Git操作稳定可用
+**核心特性**: 基础Git操作稳定可用，GitLog具备完整的GitKraken风格界面和功能
 **验收标准**: 
-- 所有TASK001-004完成并通过测试
+- TASK002完成，GitLogDialog实现GitKraken风格的完整重构
+- 所有TASK001、004、005完成并通过测试
 - 性能测试通过(支持1000+文件的仓库)
-- 用户可以完成基本的Git工作流
+- 用户可以完成完整的Git工作流，包括专业级的commit操作和历史查看
+
+**重点说明**: 
+- TASK002是1.0版本的核心特性，提供现代化的Git历史查看体验
+- 不依赖TASK001B，直接实现完整的解决方案
+- 避免临时方案带来的技术债务
 
 ### 2.0版本里程碑
 **目标发布时间**: 1.0版本后4-6周  
 **核心特性**: 高级功能和用户体验优化
 **验收标准**:
-- 所有TASK005-007完成并通过测试
+- 所有TASK006-007完成并通过测试
 - 用户满意度调查达到80%以上
 - 支持复杂的Git工作流场景
+- 企业级性能和稳定性
 
 ### 3.0版本里程碑
 **目标发布时间**: 2.0版本后6-8周  
