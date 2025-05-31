@@ -23,11 +23,14 @@
 #include <QClipboard>
 #include <QMessageBox>
 #include <QInputDialog>
+#include <QKeyEvent>
+#include <QEvent>
 
 // Forward declarations
 class GitOperationDialog;
 class GitDialogManager;
 class LineNumberTextEdit;
+class GitFilePreviewDialog;
 
 /**
  * @brief Git提交历史查看器对话框 - GitKraken风格重构版本
@@ -52,6 +55,10 @@ public:
     explicit GitLogDialog(const QString &repositoryPath, const QString &filePath = QString(), QWidget *parent = nullptr);
     ~GitLogDialog();
 
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private Q_SLOTS:
     // === 核心界面交互 ===
     void onCommitSelectionChanged();
@@ -63,6 +70,7 @@ private Q_SLOTS:
     // === 文件操作 ===
     void onFileSelectionChanged();
     void onFileDoubleClicked(QTreeWidgetItem *item, int column);
+    void previewSelectedFile();
 
     // === 右键菜单 - Commit操作 ===
     void showCommitContextMenu(const QPoint &pos);
@@ -212,6 +220,9 @@ private:
     QHash<QString, QString> m_commitDetailsCache;
     QHash<QString, QStringList> m_commitFilesCache;
     QHash<QString, QString> m_fileDiffCache;
+    
+    // === 文件预览 ===
+    GitFilePreviewDialog *m_currentPreviewDialog;  // 当前打开的预览对话框
 };
 
 /**

@@ -14,6 +14,7 @@
 #include <QMenu>
 #include <QAction>
 #include <QKeyEvent>
+#include <QEvent>
 
 // Forward declarations
 class GitStatusParser;
@@ -40,6 +41,7 @@ public:
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private Q_SLOTS:
     void onRefreshClicked();

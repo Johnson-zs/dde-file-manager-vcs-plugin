@@ -2,6 +2,7 @@
 #include "gitoperationdialog.h"
 #include "gitdialogs.h"
 #include "widgets/linenumbertextedit.h"
+#include "gitfilepreviewdialog.h"
 
 #include <QApplication>
 #include <QHeaderView>
@@ -48,13 +49,17 @@ GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePat
       m_isSearching(false),
       m_searchLoadingMore(false),
       m_searchTotalFound(0),
-      m_searchStatusLabel(nullptr)
+      m_searchStatusLabel(nullptr),
+      m_currentPreviewDialog(nullptr)
 {
     qInfo() << "INFO: [GitLogDialog] Initializing GitKraken-style log dialog for repository:" << repositoryPath;
     
     setupUI();
     setupContextMenus();
     setupInfiniteScroll();
+    
+    // 安装事件过滤器来捕获文件列表的键盘事件
+    m_changedFilesTree->installEventFilter(this);
     
     // 加载数据
     loadBranches();
@@ -1011,6 +1016,13 @@ void GitLogDialog::setupFileContextMenu()
     
     m_fileContextMenu->addSeparator();
     
+    // === 文件预览操作 ===
+    auto *previewFileAction = m_fileContextMenu->addAction(
+        QIcon::fromTheme("document-preview"), tr("Preview File"));
+    previewFileAction->setToolTip(tr("Quick preview file content (Space key)"));
+    
+    m_fileContextMenu->addSeparator();
+    
     // === 文件管理操作 ===
     m_openFileAction = m_fileContextMenu->addAction(
         QIcon::fromTheme("document-open"), tr("Open File"));
@@ -1030,6 +1042,7 @@ void GitLogDialog::setupFileContextMenu()
     connect(m_showFileDiffAction, &QAction::triggered, this, &GitLogDialog::showFileDiff);
     connect(m_showFileHistoryAction, &QAction::triggered, this, &GitLogDialog::showFileHistory);
     connect(m_showFileBlameAction, &QAction::triggered, this, &GitLogDialog::showFileBlame);
+    connect(previewFileAction, &QAction::triggered, this, &GitLogDialog::previewSelectedFile);
     connect(m_openFileAction, &QAction::triggered, this, &GitLogDialog::openFile);
     connect(m_showFolderAction, &QAction::triggered, this, &GitLogDialog::showInFolder);
     connect(m_copyFilePathAction, &QAction::triggered, this, &GitLogDialog::copyFilePath);
@@ -1450,4 +1463,82 @@ void GitLogDialog::checkIfNeedMoreCommits()
         qInfo() << "INFO: [GitLogDialog] No scrollbar detected, loading more commits automatically";
         loadMoreCommitsIfNeeded();
     }
+}
+
+void GitLogDialog::keyPressEvent(QKeyEvent *event)
+{
+    // 空格键预览文件
+    if (event->key() == Qt::Key_Space) {
+        QString filePath = getCurrentSelectedFilePath();
+        if (!filePath.isEmpty()) {
+            if (m_currentPreviewDialog) {
+                // 如果已经有预览对话框打开，关闭它
+                m_currentPreviewDialog->close();
+                m_currentPreviewDialog = nullptr;
+            } else {
+                // 打开新的预览对话框
+                previewSelectedFile();
+            }
+        }
+        event->accept(); // 标记事件已处理
+        return;
+    }
+    
+    QDialog::keyPressEvent(event);
+}
+
+bool GitLogDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    // 捕获文件列表的键盘事件
+    if (watched == m_changedFilesTree && event->type() == QEvent::KeyPress) {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+        
+        // 空格键预览文件
+        if (keyEvent->key() == Qt::Key_Space) {
+            QString filePath = getCurrentSelectedFilePath();
+            if (!filePath.isEmpty()) {
+                if (m_currentPreviewDialog) {
+                    // 如果已经有预览对话框打开，关闭它
+                    m_currentPreviewDialog->close();
+                    m_currentPreviewDialog = nullptr;
+                } else {
+                    // 打开新的预览对话框
+                    previewSelectedFile();
+                }
+                return true; // 事件已处理，不再传播
+            }
+        }
+    }
+    
+    return QDialog::eventFilter(watched, event);
+}
+
+void GitLogDialog::previewSelectedFile()
+{
+    QString commitHash = getCurrentSelectedCommitHash();
+    QString filePath = getCurrentSelectedFilePath();
+    
+    if (commitHash.isEmpty() || filePath.isEmpty()) {
+        QMessageBox::information(this, tr("No File Selected"), 
+                                 tr("Please select a file to preview."));
+        return;
+    }
+    
+    // 关闭之前的预览对话框
+    if (m_currentPreviewDialog) {
+        m_currentPreviewDialog->close();
+        m_currentPreviewDialog = nullptr;
+    }
+    
+    // 创建新的预览对话框（commit模式）
+    m_currentPreviewDialog = GitDialogManager::instance()->showFilePreviewAtCommit(
+        m_repositoryPath, filePath, commitHash, this);
+    
+    // 连接对话框关闭信号，以便清理引用
+    connect(m_currentPreviewDialog, &QDialog::finished, this, [this]() {
+        m_currentPreviewDialog = nullptr;
+    });
+    
+    qInfo() << "INFO: [GitLogDialog] Opened file preview for:" << filePath 
+            << "at commit:" << commitHash.left(8);
 } 

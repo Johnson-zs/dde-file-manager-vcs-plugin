@@ -24,6 +24,7 @@
 #include <QSyntaxHighlighter>
 #include <QGroupBox>
 #include <QKeyEvent>
+#include <QEvent>
 
 /**
  * @brief Git差异语法高亮器
@@ -89,6 +90,10 @@ GitStatusDialog::GitStatusDialog(const QString &repositoryPath, QWidget *parent)
     setupContextMenu();
     loadRepositoryStatus();
     updateButtonStates();
+
+    // 安装事件过滤器来捕获TreeWidget的键盘事件
+    m_workingTreeWidget->installEventFilter(this);
+    m_stagingAreaWidget->installEventFilter(this);
 
     qDebug() << "[GitStatusDialog] Initialized with enhanced features for repository:" << repositoryPath;
 }
@@ -870,10 +875,38 @@ void GitStatusDialog::keyPressEvent(QKeyEvent *event)
                 previewSelectedFile();
             }
         }
+        event->accept(); // 标记事件已处理
         return;
     }
     
     QDialog::keyPressEvent(event);
+}
+
+bool GitStatusDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    // 捕获TreeWidget的键盘事件
+    if ((watched == m_workingTreeWidget || watched == m_stagingAreaWidget) && 
+        event->type() == QEvent::KeyPress) {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+        
+        // 空格键预览文件
+        if (keyEvent->key() == Qt::Key_Space) {
+            QString filePath = getCurrentSelectedFilePath();
+            if (!filePath.isEmpty()) {
+                if (m_currentPreviewDialog) {
+                    // 如果已经有预览对话框打开，关闭它
+                    m_currentPreviewDialog->close();
+                    m_currentPreviewDialog = nullptr;
+                } else {
+                    // 打开新的预览对话框
+                    previewSelectedFile();
+                }
+                return true; // 事件已处理，不再传播
+            }
+        }
+    }
+    
+    return QDialog::eventFilter(watched, event);
 }
 
 QString GitStatusDialog::getCurrentSelectedFilePath() const
