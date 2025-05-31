@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QWidget>
 #include <QScrollArea>
+#include <QTimer>
 
 #include "gitcommandexecutor.h"
 
@@ -15,7 +16,7 @@
  * @brief Git操作进度对话框 - 重构版本
  *
  * 使用GitCommandExecutor提供统一的Git操作界面
- * 支持实时输出、取消操作、重试机制
+ * 支持实时输出、取消操作、重试机制、字符动画
  */
 class GitOperationDialog : public QDialog
 {
@@ -52,6 +53,9 @@ private Q_SLOTS:
     void onCancelClicked();
     void onRetryClicked();
     void onDetailsToggled(bool visible);
+    
+    // 字符动画槽函数
+    void onAnimationTimer();
 
 private:
     void setupUI();
@@ -60,6 +64,11 @@ private:
     void setupButtonSection();
     void updateUIState(bool isExecuting);
     void showResult(GitCommandExecutor::Result result, const QString &output, const QString &error);
+    
+    // 动画控制方法
+    void startCharacterAnimation();
+    void stopCharacterAnimation();
+    void updateStatusWithAnimation();
 
     QString m_operation;
     QString m_currentDescription;
@@ -84,6 +93,12 @@ private:
     GitCommandExecutor *m_executor;
     bool m_isExecuting;
     bool m_showDetails;
+    
+    // 字符动画组件
+    QTimer *m_animationTimer;
+    QString m_baseStatusText;
+    int m_animationStep;
+    QStringList m_animationFrames;
 };
 
 #endif // GITOPERATIONDIALOG_H 
