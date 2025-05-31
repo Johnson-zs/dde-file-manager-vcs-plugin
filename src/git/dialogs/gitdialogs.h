@@ -25,6 +25,8 @@ public:
     void showBlameDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
     void showDiffDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
     void showCheckoutDialog(const QString &repositoryPath, QWidget *parent = nullptr);
+    void showBranchComparisonDialog(const QString &repositoryPath, const QString &baseBranch, 
+                                    const QString &compareBranch, QWidget *parent = nullptr);
     void showOperationDialog(const QString &operation, QWidget *parent = nullptr);
     void showOperationDialog(const QString &operation, const QString &workingDir,
                              const QStringList &arguments, QWidget *parent = nullptr);

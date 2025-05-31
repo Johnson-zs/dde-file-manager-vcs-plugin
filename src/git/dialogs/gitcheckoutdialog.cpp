@@ -791,13 +791,9 @@ void GitCheckoutDialog::compareWithCurrent()
     
     qDebug() << "[GitCheckoutDialog] Compare" << selectedBranch << "with" << m_currentBranch;
     
-    // 使用 GitOperationDialog 显示分支比较
-    QStringList args = {"log", "--oneline", "--left-right", "--graph", 
-                       QString("%1...%2").arg(m_currentBranch, selectedBranch)};
-    
-    GitDialogManager::instance()->showOperationDialog(
-        tr("Compare: %1 ↔ %2").arg(m_currentBranch, selectedBranch),
-        m_repositoryPath, args, this);
+    // 使用新的分支比较对话框
+    GitDialogManager::instance()->showBranchComparisonDialog(
+        m_repositoryPath, m_currentBranch, selectedBranch, this);
 }
 
 void GitCheckoutDialog::createTagFromSelected()

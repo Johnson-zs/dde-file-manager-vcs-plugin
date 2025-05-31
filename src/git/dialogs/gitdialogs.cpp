@@ -5,6 +5,7 @@
 #include "gitblamedialog.h"
 #include "gitdiffdialog.h"
 #include "gitcheckoutdialog.h"
+#include "gitbranchcompariondialog.h"
 #include "gitoperationdialog.h"
 
 #include <QDesktopServices>
@@ -207,4 +208,12 @@ void GitDialogManager::deleteFile(const QString &filePath, QWidget *parent)
             qWarning() << "[GitDialogManager] Failed to delete file:" << filePath;
         }
     }
+}
+
+void GitDialogManager::showBranchComparisonDialog(const QString &repositoryPath, const QString &baseBranch, 
+                                                   const QString &compareBranch, QWidget *parent)
+{
+    auto *dialog = new GitBranchComparisonDialog(repositoryPath, baseBranch, compareBranch, parent);
+    dialog->show();
+    qDebug() << "[GitDialogManager] Opened branch comparison dialog:" << baseBranch << "vs" << compareBranch;
 }
