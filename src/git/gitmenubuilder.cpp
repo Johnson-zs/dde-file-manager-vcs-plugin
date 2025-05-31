@@ -4,18 +4,16 @@
 
 #include <QFileInfo>
 
-GitMenuBuilder::GitMenuBuilder(DFMEXT::DFMExtMenuProxy *proxy, 
+GitMenuBuilder::GitMenuBuilder(DFMEXT::DFMExtMenuProxy *proxy,
                                GitOperationService *operationService,
                                QObject *parent)
-    : QObject(parent)
-    , m_proxy(proxy)
-    , m_operationService(operationService)
+    : QObject(parent), m_proxy(proxy), m_operationService(operationService)
 {
 }
 
 GitMenuBuilder::~GitMenuBuilder() = default;
 
-bool GitMenuBuilder::buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu, 
+bool GitMenuBuilder::buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
                                          const QString &currentPath,
                                          const QString &focusPath)
 {
@@ -24,11 +22,11 @@ bool GitMenuBuilder::buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
 
     // === 文件操作组 ===
     addFileOperationMenuItems(gitSubmenu, focusPath);
-    
+
     // 检查是否添加了文件操作菜单项
     if (Utils::canAddFile(focusPath) || Utils::canRemoveFile(focusPath) || Utils::canRevertFile(focusPath)) {
         hasValidAction = true;
-        
+
         // 添加分隔符
         auto separator = createSeparator();
         gitSubmenu->addAction(separator);
@@ -36,7 +34,7 @@ bool GitMenuBuilder::buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
 
     // === 查看操作组 ===
     addViewOperationMenuItems(gitSubmenu, focusPath, currentPath);
-    
+
     // 检查是否添加了查看操作菜单项
     if (Utils::canShowFileDiff(focusPath) || Utils::canShowFileLog(focusPath) || Utils::canShowFileBlame(focusPath)) {
         hasValidAction = true;
@@ -45,7 +43,7 @@ bool GitMenuBuilder::buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
     return hasValidAction;
 }
 
-bool GitMenuBuilder::buildMultiFileMenu(DFMEXT::DFMExtMenu *gitSubmenu, 
+bool GitMenuBuilder::buildMultiFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
                                         const std::list<std::string> &pathList)
 {
     if (pathList.empty()) {
@@ -76,29 +74,22 @@ bool GitMenuBuilder::buildMultiFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
     return true;
 }
 
-bool GitMenuBuilder::buildRepositoryMenu(DFMEXT::DFMExtMenu *main, 
-                                         const QString &repositoryPath)
+bool GitMenuBuilder::buildRepositoryMenuItems(DFMEXT::DFMExtMenu *main,
+                                              const QString &repositoryPath,
+                                              DFMEXT::DFMExtAction *beforeAction)
 {
     // 获取当前分支信息
     const QString branchName = Utils::getBranchName(repositoryPath);
 
     // === 查看操作组 ===
-    addRepositoryOperationMenuItems(main, repositoryPath);
+    addRepositoryOperationMenuItems(main, repositoryPath, beforeAction);
 
     auto separator1 = createSeparator();
-    main->addAction(separator1);
-
-    // === 分支操作组 ===
-    addBranchOperationMenuItems(main, repositoryPath);
-
-    auto separator2 = createSeparator();
-    main->addAction(separator2);
-
-    // === 同步操作组 ===
-    addSyncOperationMenuItems(main, repositoryPath);
-
-    auto separator3 = createSeparator();
-    main->addAction(separator3);
+    if (beforeAction) {
+        main->insertAction(beforeAction, separator1);
+    } else {
+        main->addAction(separator1);
+    }
 
     // Git Commit
     auto commitAction = m_proxy->createAction();
@@ -110,7 +101,32 @@ bool GitMenuBuilder::buildRepositoryMenu(DFMEXT::DFMExtMenu *main,
         Q_UNUSED(checked)
         m_operationService->commitChanges(repositoryPath.toStdString());
     });
-    main->addAction(commitAction);
+
+    if (beforeAction) {
+        main->insertAction(beforeAction, commitAction);
+    } else {
+        main->addAction(commitAction);
+    }
+
+    // === 分支操作组 ===
+    addBranchOperationMenuItems(main, repositoryPath, beforeAction);
+
+    auto separator2 = createSeparator();
+    if (beforeAction) {
+        main->insertAction(beforeAction, separator2);
+    } else {
+        main->addAction(separator2);
+    }
+
+    // === 同步操作组 ===
+    addSyncOperationMenuItems(main, repositoryPath, beforeAction);
+
+    auto separator3 = createSeparator();
+    if (beforeAction) {
+        main->insertAction(beforeAction, separator3);
+    } else {
+        main->addAction(separator3);
+    }
 
     return true;
 }
@@ -173,7 +189,7 @@ void GitMenuBuilder::addFileOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     }
 }
 
-void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &filePath, 
+void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &filePath,
                                                const QString &currentPath)
 {
     const QString statusText = Utils::getFileStatusDescription(filePath);
@@ -229,7 +245,8 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     }
 }
 
-void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath)
+void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
+                                                     DFMEXT::DFMExtAction *beforeAction)
 {
     const QString branchName = Utils::getBranchName(repositoryPath);
 
@@ -243,7 +260,12 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
         Q_UNUSED(checked)
         m_operationService->showFileLog(repositoryPath.toStdString());
     });
-    menu->addAction(repoLogAction);
+
+    if (beforeAction) {
+        menu->insertAction(beforeAction, repoLogAction);
+    } else {
+        menu->addAction(repoLogAction);
+    }
 
     // Git Status
     auto statusAction = m_proxy->createAction();
@@ -255,10 +277,16 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
         Q_UNUSED(checked)
         m_operationService->showRepositoryStatus(repositoryPath.toStdString());
     });
-    menu->addAction(statusAction);
+
+    if (beforeAction) {
+        menu->insertAction(beforeAction, statusAction);
+    } else {
+        menu->addAction(statusAction);
+    }
 }
 
-void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath)
+void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
+                                                 DFMEXT::DFMExtAction *beforeAction)
 {
     const QString branchName = Utils::getBranchName(repositoryPath);
 
@@ -272,10 +300,16 @@ void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const
         Q_UNUSED(checked)
         m_operationService->checkoutBranch(repositoryPath.toStdString());
     });
-    menu->addAction(checkoutAction);
+
+    if (beforeAction) {
+        menu->insertAction(beforeAction, checkoutAction);
+    } else {
+        menu->addAction(checkoutAction);
+    }
 }
 
-void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath)
+void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
+                                               DFMEXT::DFMExtAction *beforeAction)
 {
     const QString branchName = Utils::getBranchName(repositoryPath);
 
@@ -289,7 +323,12 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
         Q_UNUSED(checked)
         m_operationService->pullRepository(repositoryPath.toStdString());
     });
-    menu->addAction(pullAction);
+
+    if (beforeAction) {
+        menu->insertAction(beforeAction, pullAction);
+    } else {
+        menu->addAction(pullAction);
+    }
 
     // Git Push
     auto pushAction = m_proxy->createAction();
@@ -301,7 +340,12 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
         Q_UNUSED(checked)
         m_operationService->pushRepository(repositoryPath.toStdString());
     });
-    menu->addAction(pushAction);
+
+    if (beforeAction) {
+        menu->insertAction(beforeAction, pushAction);
+    } else {
+        menu->addAction(pushAction);
+    }
 }
 
 QStringList GitMenuBuilder::getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList)
@@ -334,7 +378,7 @@ QStringList GitMenuBuilder::getCompatibleOperationsForMultiSelection(const std::
     return operations;
 }
 
-void GitMenuBuilder::addMultiFileOperationMenuItems(DFMEXT::DFMExtMenu *menu, 
+void GitMenuBuilder::addMultiFileOperationMenuItems(DFMEXT::DFMExtMenu *menu,
                                                     const std::list<std::string> &pathList,
                                                     const QStringList &compatibleOps)
 {
@@ -396,4 +440,4 @@ DFMEXT::DFMExtAction *GitMenuBuilder::createSeparator()
 QString GitMenuBuilder::getFileCountText(int count) const
 {
     return tr("%1 files selected").arg(count);
-} 
+}

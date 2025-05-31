@@ -16,7 +16,7 @@ class GitMenuBuilder;
 
 /**
  * @brief Git菜单管理器
- * 
+ *
  * 作为QObject子类，负责协调菜单构建和Git操作
  * 使用组合模式将职责分离到专门的服务类
  */
@@ -47,8 +47,8 @@ public:
      * @brief 构建空白区域菜单
      */
     bool buildEmptyAreaMenu(DFMEXT::DFMExtMenu *main,
-                           const std::string &currentPath,
-                           bool onDesktop);
+                            const std::string &currentPath,
+                            bool onDesktop);
 
 private Q_SLOTS:
     /**
@@ -62,4 +62,4 @@ private:
     GitMenuBuilder *m_menuBuilder;
 };
 
-#endif // GITMENUMANAGER_H 
+#endif   // GITMENUMANAGER_H

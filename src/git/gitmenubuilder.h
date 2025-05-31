@@ -15,7 +15,7 @@ class GitOperationService;
 
 /**
  * @brief Git菜单构建器
- * 
+ *
  * 负责根据文件状态和上下文构建相应的Git菜单项
  * 分离菜单构建逻辑，提高代码可维护性
  */
@@ -24,44 +24,48 @@ class GitMenuBuilder : public QObject
     Q_OBJECT
 
 public:
-    explicit GitMenuBuilder(DFMEXT::DFMExtMenuProxy *proxy, 
-                           GitOperationService *operationService,
-                           QObject *parent = nullptr);
+    explicit GitMenuBuilder(DFMEXT::DFMExtMenuProxy *proxy,
+                            GitOperationService *operationService,
+                            QObject *parent = nullptr);
     ~GitMenuBuilder();
 
     /**
      * @brief 构建单文件菜单
      */
-    bool buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu, 
-                            const QString &currentPath,
-                            const QString &focusPath);
+    bool buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
+                             const QString &currentPath,
+                             const QString &focusPath);
 
     /**
      * @brief 构建多文件菜单
      */
-    bool buildMultiFileMenu(DFMEXT::DFMExtMenu *gitSubmenu, 
-                           const std::list<std::string> &pathList);
+    bool buildMultiFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
+                            const std::list<std::string> &pathList);
 
     /**
-     * @brief 构建仓库菜单（空白区域右键）
+     * @brief 构建仓库菜单项（直接添加到主菜单）
      */
-    bool buildRepositoryMenu(DFMEXT::DFMExtMenu *main, 
-                            const QString &repositoryPath);
+    bool buildRepositoryMenuItems(DFMEXT::DFMExtMenu *main,
+                                  const QString &repositoryPath,
+                                  DFMEXT::DFMExtAction *beforeAction = nullptr);
 
 private:
     // === 菜单项创建方法 ===
     void addFileOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &filePath);
-    void addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &filePath, 
-                                  const QString &currentPath);
-    void addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath);
-    void addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath);
-    void addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath);
+    void addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &filePath,
+                                   const QString &currentPath);
+    void addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
+                                         DFMEXT::DFMExtAction *beforeAction = nullptr);
+    void addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
+                                     DFMEXT::DFMExtAction *beforeAction = nullptr);
+    void addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath,
+                                   DFMEXT::DFMExtAction *beforeAction = nullptr);
 
     // === 多文件操作辅助 ===
     QStringList getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList);
-    void addMultiFileOperationMenuItems(DFMEXT::DFMExtMenu *menu, 
-                                       const std::list<std::string> &pathList,
-                                       const QStringList &compatibleOps);
+    void addMultiFileOperationMenuItems(DFMEXT::DFMExtMenu *menu,
+                                        const std::list<std::string> &pathList,
+                                        const QStringList &compatibleOps);
 
     // === 工具方法 ===
     DFMEXT::DFMExtAction *createSeparator();
@@ -71,4 +75,4 @@ private:
     GitOperationService *m_operationService;
 };
 
-#endif // GITMENUBUILDER_H 
+#endif   // GITMENUBUILDER_H
