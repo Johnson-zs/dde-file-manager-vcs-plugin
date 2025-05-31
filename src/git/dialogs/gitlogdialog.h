@@ -27,6 +27,7 @@
 // Forward declarations
 class GitOperationDialog;
 class GitDialogManager;
+class LineNumberTextEdit;
 
 /**
  * @brief Git提交历史查看器对话框 - GitKraken风格重构版本
@@ -160,7 +161,7 @@ private:
     QTreeWidget *m_changedFilesTree;
 
     // 右下：文件差异
-    QTextEdit *m_diffView;
+    LineNumberTextEdit *m_diffView;
     QSyntaxHighlighter *m_diffHighlighter;
 
     // === 右键菜单 ===

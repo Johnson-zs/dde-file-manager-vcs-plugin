@@ -1,6 +1,7 @@
 #include "gitlogdialog.h"
 #include "gitoperationdialog.h"
 #include "gitdialogs.h"
+#include "widgets/linenumbertextedit.h"
 
 #include <QApplication>
 #include <QHeaderView>
@@ -245,10 +246,10 @@ void GitLogDialog::setupFilesList()
 
 void GitLogDialog::setupDiffView()
 {
-    m_diffView = new QTextEdit;
+    m_diffView = new LineNumberTextEdit;
     m_diffView->setReadOnly(true);
     m_diffView->setFont(QFont("Consolas", 9));
-    m_diffView->setLineWrapMode(QTextEdit::NoWrap);
+    m_diffView->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_diffView->setPlainText(tr("Select a file to view changes..."));
     
     // 设置语法高亮
@@ -1292,7 +1293,7 @@ void GitLogDialog::viewFileAtCommit()
         viewDialog->setAttribute(Qt::WA_DeleteOnClose);
         
         auto *layout = new QVBoxLayout(viewDialog);
-        auto *textEdit = new QTextEdit;
+        auto *textEdit = new LineNumberTextEdit;
         textEdit->setReadOnly(true);
         textEdit->setFont(QFont("Consolas", 9));
         textEdit->setPlainText(content);
@@ -1336,10 +1337,10 @@ void GitLogDialog::showFileDiff()
     layout->addWidget(infoLabel);
     
     // 创建差异显示区域
-    auto *diffTextEdit = new QTextEdit;
+    auto *diffTextEdit = new LineNumberTextEdit;
     diffTextEdit->setReadOnly(true);
     diffTextEdit->setFont(QFont("Consolas", 9));
-    diffTextEdit->setLineWrapMode(QTextEdit::NoWrap);
+    diffTextEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
     layout->addWidget(diffTextEdit);
     
     // 添加语法高亮
