@@ -43,7 +43,11 @@ GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePat
       m_isLoadingMore(false),
       m_currentOffset(0),
       m_loadTimer(nullptr),
-      m_searchTimer(nullptr)
+      m_searchTimer(nullptr),
+      m_isSearching(false),
+      m_searchLoadingMore(false),
+      m_searchTotalFound(0),
+      m_searchStatusLabel(nullptr)
 {
     qInfo() << "INFO: [GitLogDialog] Initializing GitKraken-style log dialog for repository:" << repositoryPath;
     
@@ -101,6 +105,12 @@ void GitLogDialog::setupUI()
     m_searchEdit->setMinimumWidth(250);
     m_searchEdit->setToolTip(tr("Search in commit messages, authors, and hashes"));
     toolbarLayout->addWidget(m_searchEdit);
+
+    // 搜索状态标签
+    m_searchStatusLabel = new QLabel;
+    m_searchStatusLabel->setStyleSheet("QLabel { color: #666; font-size: 11px; }");
+    m_searchStatusLabel->hide(); // 初始隐藏
+    toolbarLayout->addWidget(m_searchStatusLabel);
 
     toolbarLayout->addSpacing(16);
 
@@ -263,7 +273,7 @@ void GitLogDialog::setupInfiniteScroll()
     m_searchTimer->setSingleShot(true);
     m_searchTimer->setInterval(500); // 500ms延迟
     connect(m_searchTimer, &QTimer::timeout,
-            this, [this]() { filterCommits(m_currentSearchText); });
+            this, [this]() { startProgressiveSearch(m_currentSearchText); });
     
     // 添加一个定时器来检查是否需要初始加载更多内容
     QTimer::singleShot(1000, this, [this]() {
@@ -455,7 +465,16 @@ void GitLogDialog::onBranchChanged()
 void GitLogDialog::onSearchTextChanged()
 {
     m_currentSearchText = m_searchEdit->text().trimmed();
-    m_searchTimer->start(); // 延迟搜索
+    
+    if (m_currentSearchText.isEmpty()) {
+        // 清空搜索，恢复正常显示
+        finishProgressiveSearch();
+        filterCommits("");
+        return;
+    }
+    
+    // 延迟开始搜索
+    m_searchTimer->start();
 }
 
 void GitLogDialog::onScrollValueChanged(int value)
@@ -522,14 +541,17 @@ void GitLogDialog::loadMoreCommitsIfNeeded()
 void GitLogDialog::filterCommits(const QString &searchText)
 {
     if (searchText.isEmpty()) {
-        // 显示所有项目
+        // 显示所有项目，清除高亮
         for (int i = 0; i < m_commitTree->topLevelItemCount(); ++i) {
-            m_commitTree->topLevelItem(i)->setHidden(false);
+            QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
+            item->setHidden(false);
+            clearItemHighlight(item);
         }
         return;
     }
     
-    // 过滤项目
+    // 过滤当前已加载的项目
+    int visibleCount = 0;
     for (int i = 0; i < m_commitTree->topLevelItemCount(); ++i) {
         QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
         bool matches = false;
@@ -543,7 +565,188 @@ void GitLogDialog::filterCommits(const QString &searchText)
         }
         
         item->setHidden(!matches);
+        if (matches) {
+            visibleCount++;
+            // 高亮匹配的项目
+            highlightItemMatches(item, searchText);
+        } else {
+            // 清除不匹配项目的高亮
+            clearItemHighlight(item);
+        }
     }
+    
+    // 更新搜索状态
+    if (m_isSearching) {
+        m_searchTotalFound = visibleCount;
+        updateSearchStatus();
+    }
+}
+
+void GitLogDialog::highlightItemMatches(QTreeWidgetItem *item, const QString &searchText)
+{
+    if (!item || searchText.isEmpty()) {
+        return;
+    }
+    
+    // 为匹配的项目设置背景色
+    QColor highlightColor(255, 255, 0, 80); // 淡黄色背景
+    
+    for (int col = 1; col <= 4; ++col) {
+        QString text = item->text(col);
+        if (text.contains(searchText, Qt::CaseInsensitive)) {
+            item->setBackground(col, QBrush(highlightColor));
+            
+            // 设置工具提示显示匹配信息
+            QString tooltip = item->toolTip(col);
+            if (!tooltip.contains("Match:")) {
+                tooltip += QString("\nMatch: '%1'").arg(searchText);
+                item->setToolTip(col, tooltip);
+            }
+        }
+    }
+}
+
+void GitLogDialog::clearItemHighlight(QTreeWidgetItem *item)
+{
+    if (!item) {
+        return;
+    }
+    
+    // 清除所有列的背景色
+    for (int col = 0; col < item->columnCount(); ++col) {
+        item->setBackground(col, QBrush());
+        
+        // 清除匹配相关的工具提示
+        QString tooltip = item->toolTip(col);
+        if (tooltip.contains("Match:")) {
+            int matchIndex = tooltip.indexOf("\nMatch:");
+            if (matchIndex >= 0) {
+                tooltip = tooltip.left(matchIndex);
+                item->setToolTip(col, tooltip);
+            }
+        }
+    }
+}
+
+void GitLogDialog::startProgressiveSearch(const QString &searchText)
+{
+    if (searchText.isEmpty()) {
+        return;
+    }
+    
+    qInfo() << "INFO: [GitLogDialog] Starting progressive search for:" << searchText;
+    
+    m_isSearching = true;
+    m_searchLoadingMore = false;
+    m_searchTotalFound = 0;
+    
+    // 设置鼠标为等待状态
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    
+    // 显示搜索状态
+    m_searchStatusLabel->show();
+    updateSearchStatus();
+    
+    // 先过滤当前已加载的commits
+    filterCommits(searchText);
+    
+    // 如果当前结果较少，开始加载更多commits进行搜索
+    if (m_searchTotalFound < 20 && m_commitTree->topLevelItemCount() == m_currentOffset) {
+        continueProgressiveSearch();
+    } else {
+        // 结果足够或没有更多commits，完成搜索
+        finishProgressiveSearch();
+    }
+}
+
+void GitLogDialog::continueProgressiveSearch()
+{
+    if (!m_isSearching || m_searchLoadingMore) {
+        return;
+    }
+    
+    m_searchLoadingMore = true;
+    updateSearchStatus();
+    
+    qDebug() << "[GitLogDialog] Loading more commits for search, current found:" << m_searchTotalFound;
+    
+    // 记录加载前的commit数量
+    int previousCommitCount = m_commitTree->topLevelItemCount();
+    
+    // 加载更多commits
+    loadCommitHistory(true);
+    
+    // 加载完成后继续搜索
+    QTimer::singleShot(100, this, [this, previousCommitCount]() {
+        m_searchLoadingMore = false;
+        
+        if (m_isSearching) {
+            // 检查是否真的加载了新的commits
+            int currentCommitCount = m_commitTree->topLevelItemCount();
+            bool hasNewCommits = currentCommitCount > previousCommitCount;
+            
+            // 重新过滤所有commits
+            filterCommits(m_currentSearchText);
+            
+            // 检查是否需要继续加载
+            if (hasNewCommits && m_searchTotalFound < 50) {
+                // 有新commits且结果还不够，继续搜索
+                continueProgressiveSearch();
+            } else {
+                // 没有新commits或结果已足够，完成搜索
+                finishProgressiveSearch();
+            }
+        }
+    });
+}
+
+void GitLogDialog::finishProgressiveSearch()
+{
+    if (!m_isSearching) {
+        return;
+    }
+    
+    qInfo() << "INFO: [GitLogDialog] Progressive search completed, found:" << m_searchTotalFound << "commits";
+    
+    m_isSearching = false;
+    m_searchLoadingMore = false;
+    
+    // 恢复鼠标状态
+    QApplication::restoreOverrideCursor();
+    
+    // 更新最终状态
+    updateSearchStatus();
+    
+    // 3秒后隐藏状态标签
+    QTimer::singleShot(3000, this, [this]() {
+        if (!m_isSearching) {
+            m_searchStatusLabel->hide();
+        }
+    });
+}
+
+void GitLogDialog::updateSearchStatus()
+{
+    if (!m_isSearching) {
+        if (m_searchTotalFound > 0) {
+            m_searchStatusLabel->setText(tr("Search completed: %1 commits found").arg(m_searchTotalFound));
+        } else if (!m_currentSearchText.isEmpty()) {
+            // 搜索完成但没有找到结果
+            m_searchStatusLabel->setText(tr("Search completed: No commits found for '%1'").arg(m_currentSearchText));
+        } else {
+            m_searchStatusLabel->hide();
+        }
+        return;
+    }
+    
+    QString statusText;
+    if (m_searchLoadingMore) {
+        statusText = tr("Searching... (loading more commits, found %1 so far)").arg(m_searchTotalFound);
+    } else {
+        statusText = tr("Searching... (found %1 commits)").arg(m_searchTotalFound);
+    }
+    
+    m_searchStatusLabel->setText(statusText);
 }
 
 void GitLogDialog::loadCommitDetails(const QString &commitHash)

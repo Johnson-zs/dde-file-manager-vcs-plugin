@@ -117,6 +117,12 @@ private:
     // === 搜索和过滤 ===
     void filterCommits(const QString &searchText);
     void highlightSearchResults(const QString &searchText);
+    void startProgressiveSearch(const QString &searchText);
+    void continueProgressiveSearch();
+    void finishProgressiveSearch();
+    void updateSearchStatus();
+    void highlightItemMatches(QTreeWidgetItem *item, const QString &searchText);
+    void clearItemHighlight(QTreeWidgetItem *item);
 
     // === 辅助方法 ===
     QString getCurrentSelectedCommitHash() const;
@@ -196,6 +202,10 @@ private:
     // === 搜索相关 ===
     QString m_currentSearchText;
     QTimer *m_searchTimer;
+    bool m_isSearching;
+    bool m_searchLoadingMore;
+    int m_searchTotalFound;
+    QLabel *m_searchStatusLabel;
 
     // === 缓存和性能 ===
     QHash<QString, QString> m_commitDetailsCache;
