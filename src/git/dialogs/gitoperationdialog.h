@@ -53,7 +53,7 @@ private Q_SLOTS:
     void onCancelClicked();
     void onRetryClicked();
     void onDetailsToggled(bool visible);
-    
+
     // 字符动画槽函数
     void onAnimationTimer();
 
@@ -64,7 +64,7 @@ private:
     void setupButtonSection();
     void updateUIState(bool isExecuting);
     void showResult(GitCommandExecutor::Result result, const QString &output, const QString &error);
-    
+
     // 动画控制方法
     void startCharacterAnimation();
     void stopCharacterAnimation();
@@ -79,7 +79,6 @@ private:
     // UI组件
     QLabel *m_statusLabel;
     QLabel *m_descriptionLabel;
-    QProgressBar *m_progressBar;
     QTextEdit *m_outputText;
     QScrollArea *m_outputScrollArea;
     QPushButton *m_cancelButton;
@@ -93,7 +92,7 @@ private:
     GitCommandExecutor *m_executor;
     bool m_isExecuting;
     bool m_showDetails;
-    
+
     // 字符动画组件
     QTimer *m_animationTimer;
     QString m_baseStatusText;
@@ -101,4 +100,4 @@ private:
     QStringList m_animationFrames;
 };
 
-#endif // GITOPERATIONDIALOG_H 
+#endif   // GITOPERATIONDIALOG_H

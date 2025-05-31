@@ -62,7 +62,6 @@ void GitOperationDialog::setupUI()
 
     mainLayout->addWidget(m_descriptionLabel);
     mainLayout->addWidget(m_statusLabel);
-    mainLayout->addWidget(m_progressBar);
     mainLayout->addWidget(m_outputWidget);
     mainLayout->addWidget(m_buttonWidget);
 
@@ -77,10 +76,6 @@ void GitOperationDialog::setupProgressSection()
 
     m_statusLabel = new QLabel(tr("Preparing to execute %1 operation...").arg(m_operation));
     m_statusLabel->setStyleSheet("QLabel { color: #555; }");
-
-    m_progressBar = new QProgressBar;
-    m_progressBar->setRange(0, 0);
-    m_progressBar->setVisible(false);
 }
 
 void GitOperationDialog::setupOutputSection()
@@ -239,7 +234,6 @@ void GitOperationDialog::onDetailsToggled(bool visible)
 void GitOperationDialog::updateUIState(bool isExecuting)
 {
     m_isExecuting = isExecuting;
-    m_progressBar->setVisible(isExecuting);
 
     if (isExecuting) {
         m_cancelButton->setText(tr("Cancel"));
