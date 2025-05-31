@@ -7,6 +7,7 @@
 #include "gitcheckoutdialog.h"
 #include "gitbranchcompariondialog.h"
 #include "gitoperationdialog.h"
+#include "gitfilepreviewdialog.h"
 
 #include <QDesktopServices>
 #include <QUrl>
@@ -216,4 +217,19 @@ void GitDialogManager::showBranchComparisonDialog(const QString &repositoryPath,
     auto *dialog = new GitBranchComparisonDialog(repositoryPath, baseBranch, compareBranch, parent);
     dialog->show();
     qDebug() << "[GitDialogManager] Opened branch comparison dialog:" << baseBranch << "vs" << compareBranch;
+}
+
+GitFilePreviewDialog* GitDialogManager::showFilePreview(const QString &repositoryPath, const QString &filePath, QWidget *parent)
+{
+    auto *dialog = GitFilePreviewDialog::showFilePreview(repositoryPath, filePath, parent);
+    qDebug() << "[GitDialogManager] Opened file preview dialog for:" << filePath;
+    return dialog;
+}
+
+GitFilePreviewDialog* GitDialogManager::showFilePreviewAtCommit(const QString &repositoryPath, const QString &filePath, 
+                                                                const QString &commitHash, QWidget *parent)
+{
+    auto *dialog = GitFilePreviewDialog::showFilePreviewAtCommit(repositoryPath, filePath, commitHash, parent);
+    qDebug() << "[GitDialogManager] Opened file preview dialog for:" << filePath << "at commit:" << commitHash.left(8);
+    return dialog;
 }

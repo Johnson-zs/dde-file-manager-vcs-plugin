@@ -16,6 +16,7 @@
 #include <QStandardItemModel>
 #include <QTreeView>
 #include <QSortFilterProxyModel>
+#include <QKeyEvent>
 #include <memory>
 
 // Forward declarations
@@ -24,6 +25,7 @@ class GitFileProxyModel;
 class GitFileItem;
 class GitStatusParser;
 class GitOperationUtils;
+class GitFilePreviewDialog;
 
 /**
  * @brief Represents a file in the Git repository with its status
@@ -149,6 +151,9 @@ public:
     bool isAmendMode() const;
     bool isAllowEmpty() const;
 
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+
 private Q_SLOTS:
     void onCommitClicked();
     void onCancelClicked();
@@ -165,6 +170,7 @@ private Q_SLOTS:
     void onSelectNone();
     void onShowContextMenu(const QPoint &pos);
     void onFileDoubleClicked(const QModelIndex &index);
+    void previewSelectedFile();
 
 private:
     void setupUI();
@@ -184,6 +190,7 @@ private:
 
     // Helper methods for context menu
     QStringList getSelectedFilePaths() const;
+    QString getCurrentSelectedFilePath() const;
 
     // Context menu actions
     void stageSelectedFiles();
@@ -229,6 +236,7 @@ private:
     QAction *m_unstageAction;
     QAction *m_discardAction;
     QAction *m_showDiffAction;
+    QAction *m_previewAction;
 
     // Action buttons
     QPushButton *m_refreshButton;
@@ -238,6 +246,9 @@ private:
     QPushButton *m_selectNoneButton;
     QPushButton *m_commitButton;
     QPushButton *m_cancelButton;
+    
+    // File preview
+    GitFilePreviewDialog *m_currentPreviewDialog;
 };
 
 #endif // GITCOMMITDIALOG_H

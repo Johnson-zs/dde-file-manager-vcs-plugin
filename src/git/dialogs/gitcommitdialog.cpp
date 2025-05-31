@@ -4,6 +4,7 @@
 #include "gitcommandexecutor.h"
 #include "gitstatusparser.h"
 #include "gitoperationutils.h"
+#include "gitfilepreviewdialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -27,6 +28,7 @@
 #include <QDir>
 #include <QClipboard>
 #include <QRegularExpression>
+#include <QKeyEvent>
 
 // ============================================================================
 // GitFileItem Implementation
@@ -364,7 +366,7 @@ bool GitFileProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourc
 // ============================================================================
 
 GitCommitDialog::GitCommitDialog(const QString &repositoryPath, QWidget *parent)
-    : QDialog(parent), m_repositoryPath(repositoryPath), m_isAmendMode(false), m_isAllowEmpty(false), m_fileModel(std::make_unique<GitFileModel>(this)), m_proxyModel(std::make_unique<GitFileProxyModel>(this))
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_isAmendMode(false), m_isAllowEmpty(false), m_fileModel(std::make_unique<GitFileModel>(this)), m_proxyModel(std::make_unique<GitFileProxyModel>(this)), m_currentPreviewDialog(nullptr)
 {
     setWindowTitle(tr("Git Commit"));
     setMinimumSize(800, 700);
@@ -621,6 +623,12 @@ void GitCommitDialog::setupContextMenu()
 
     m_contextMenu->addSeparator();
 
+    // === File Preview Action ===
+    m_previewAction = m_contextMenu->addAction(QIcon::fromTheme("document-preview"), tr("Preview File"));
+    m_previewAction->setToolTip(tr("Quick preview file content (Space key)"));
+
+    m_contextMenu->addSeparator();
+
     // === File Management Actions ===
     auto *openFileAction = m_contextMenu->addAction(QIcon::fromTheme("document-open"), tr("Open File"));
     auto *showFolderAction = m_contextMenu->addAction(QIcon::fromTheme("folder-open"), tr("Show in Folder"));
@@ -643,6 +651,9 @@ void GitCommitDialog::setupContextMenu()
     connect(m_unstageAction, &QAction::triggered, this, &GitCommitDialog::unstageSelectedFiles);
     connect(m_discardAction, &QAction::triggered, this, &GitCommitDialog::discardSelectedFiles);
     connect(m_showDiffAction, &QAction::triggered, this, &GitCommitDialog::showSelectedFilesDiff);
+
+    // Connect preview action
+    connect(m_previewAction, &QAction::triggered, this, &GitCommitDialog::previewSelectedFile);
 
     // File management actions
     connect(openFileAction, &QAction::triggered, this, [this]() {
@@ -1363,4 +1374,67 @@ void GitCommitDialog::showSelectedFilesDiff()
             break;   // Show diff for first selected file
         }
     }
+}
+
+void GitCommitDialog::keyPressEvent(QKeyEvent *event)
+{
+    // 空格键预览文件
+    if (event->key() == Qt::Key_Space) {
+        QString filePath = getCurrentSelectedFilePath();
+        if (!filePath.isEmpty()) {
+            if (m_currentPreviewDialog) {
+                // 如果已经有预览对话框打开，关闭它
+                m_currentPreviewDialog->close();
+                m_currentPreviewDialog = nullptr;
+            } else {
+                // 打开新的预览对话框
+                previewSelectedFile();
+            }
+        }
+        return;
+    }
+    
+    QDialog::keyPressEvent(event);
+}
+
+QString GitCommitDialog::getCurrentSelectedFilePath() const
+{
+    auto selectedIndexes = m_fileView->selectionModel()->selectedRows();
+    if (selectedIndexes.isEmpty()) {
+        return QString();
+    }
+
+    auto sourceIndex = m_proxyModel->mapToSource(selectedIndexes.first());
+    auto file = sourceIndex.data(GitFileModel::FileItemRole).value<std::shared_ptr<GitFileItem>>();
+    if (file) {
+        return file->filePath();
+    }
+
+    return QString();
+}
+
+void GitCommitDialog::previewSelectedFile()
+{
+    QString filePath = getCurrentSelectedFilePath();
+    if (filePath.isEmpty()) {
+        QMessageBox::information(this, tr("No File Selected"), 
+                                 tr("Please select a file to preview."));
+        return;
+    }
+    
+    // 关闭之前的预览对话框
+    if (m_currentPreviewDialog) {
+        m_currentPreviewDialog->close();
+        m_currentPreviewDialog = nullptr;
+    }
+    
+    // 创建新的预览对话框
+    m_currentPreviewDialog = GitDialogManager::instance()->showFilePreview(m_repositoryPath, filePath, this);
+    
+    // 连接对话框关闭信号，以便清理引用
+    connect(m_currentPreviewDialog, &QDialog::finished, this, [this]() {
+        m_currentPreviewDialog = nullptr;
+    });
+    
+    qInfo() << "INFO: [GitCommitDialog] Opened file preview for:" << filePath;
 }

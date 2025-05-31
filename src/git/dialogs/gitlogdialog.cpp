@@ -1274,43 +1274,11 @@ void GitLogDialog::viewFileAtCommit()
     QString filePath = getCurrentSelectedFilePath();
     if (commitHash.isEmpty() || filePath.isEmpty()) return;
     
-    // 创建临时文件查看器
-    QProcess process;
-    process.setWorkingDirectory(m_repositoryPath);
+    // 使用新的GitFilePreviewDialog
+    GitDialogManager::instance()->showFilePreviewAtCommit(m_repositoryPath, filePath, commitHash, this);
     
-    QStringList args;
-    args << "show" << QString("%1:%2").arg(commitHash, filePath);
-    
-    process.start("git", args);
-    if (process.waitForFinished(5000)) {
-        QString content = QString::fromUtf8(process.readAllStandardOutput());
-        
-        // 创建简单的文件查看对话框
-        QDialog *viewDialog = new QDialog(this);
-        viewDialog->setWindowTitle(tr("View File - %1 at %2")
-            .arg(QFileInfo(filePath).fileName(), commitHash.left(8)));
-        viewDialog->resize(800, 600);
-        viewDialog->setAttribute(Qt::WA_DeleteOnClose);
-        
-        auto *layout = new QVBoxLayout(viewDialog);
-        auto *textEdit = new LineNumberTextEdit;
-        textEdit->setReadOnly(true);
-        textEdit->setFont(QFont("Consolas", 9));
-        textEdit->setPlainText(content);
-        layout->addWidget(textEdit);
-        
-        auto *buttonLayout = new QHBoxLayout;
-        buttonLayout->addStretch();
-        auto *closeButton = new QPushButton(tr("Close"));
-        connect(closeButton, &QPushButton::clicked, viewDialog, &QDialog::accept);
-        buttonLayout->addWidget(closeButton);
-        layout->addLayout(buttonLayout);
-        
-        viewDialog->show();
-    } else {
-        QMessageBox::warning(this, tr("Error"), 
-            tr("Failed to load file content: %1").arg(process.errorString()));
-    }
+    qInfo() << QString("INFO: [GitLogDialog] Opened file preview for %1 at commit %2")
+               .arg(filePath, commitHash.left(8));
 }
 
 void GitLogDialog::showFileDiff()

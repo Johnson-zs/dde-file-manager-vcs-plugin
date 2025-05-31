@@ -13,11 +13,13 @@
 #include <QTreeWidgetItem>
 #include <QMenu>
 #include <QAction>
+#include <QKeyEvent>
 
 // Forward declarations
 class GitStatusParser;
 class GitOperationUtils;
 class LineNumberTextEdit;
+class GitFilePreviewDialog;
 
 /**
  * @brief Git仓库状态查看器对话框
@@ -27,6 +29,7 @@ class LineNumberTextEdit;
  * 
  * 新增功能：
  * - 带行号显示的diff预览
+ * - 文件快速预览（空格键）
  */
 class GitStatusDialog : public QDialog
 {
@@ -34,6 +37,9 @@ class GitStatusDialog : public QDialog
 
 public:
     explicit GitStatusDialog(const QString &repositoryPath, QWidget *parent = nullptr);
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
 
 private Q_SLOTS:
     void onRefreshClicked();
@@ -45,6 +51,7 @@ private Q_SLOTS:
     void addSelectedFiles();
     void resetSelectedFiles();
     void commitSelectedFiles();
+    void previewSelectedFile();
 
 private:
     void setupUI();
@@ -57,6 +64,7 @@ private:
     QIcon getStatusIcon(const QString &status) const;
     QList<QTreeWidgetItem*> getSelectedFiles() const;
     bool hasSelectedFiles() const;
+    QString getCurrentSelectedFilePath() const;
 
     QString m_repositoryPath;
 
@@ -85,6 +93,10 @@ private:
     QAction *m_stageAction;
     QAction *m_unstageAction;
     QAction *m_diffAction;
+    QAction *m_previewAction;               // 文件预览动作
+    
+    // 文件预览
+    GitFilePreviewDialog *m_currentPreviewDialog;  // 当前打开的预览对话框
 };
 
 #endif // GITSTATUSDIALOG_H 

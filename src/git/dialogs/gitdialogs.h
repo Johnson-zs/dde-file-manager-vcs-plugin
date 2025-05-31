@@ -5,6 +5,9 @@
 #include <QWidget>
 #include <QStringList>
 
+// Forward declarations
+class GitFilePreviewDialog;
+
 /**
  * @brief Git对话框统一管理器
  *
@@ -30,6 +33,11 @@ public:
     void showOperationDialog(const QString &operation, QWidget *parent = nullptr);
     void showOperationDialog(const QString &operation, const QString &workingDir,
                              const QStringList &arguments, QWidget *parent = nullptr);
+
+    // 文件预览接口
+    GitFilePreviewDialog* showFilePreview(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
+    GitFilePreviewDialog* showFilePreviewAtCommit(const QString &repositoryPath, const QString &filePath, 
+                                                  const QString &commitHash, QWidget *parent = nullptr);
 
     // 文件操作接口
     void openFile(const QString &filePath, QWidget *parent = nullptr);
