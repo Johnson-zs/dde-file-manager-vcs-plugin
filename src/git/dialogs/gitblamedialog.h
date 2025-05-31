@@ -19,6 +19,9 @@
 #include <QKeyEvent>
 #include <QContextMenuEvent>
 
+// 前向声明
+class LineNumberTextEdit;
+
 /**
  * @brief Git Blame信息结构
  */
@@ -64,9 +67,10 @@ private:
     int getLineNumberFromPosition(const QPoint &pos);
     QString getCommitHashFromLine(int lineNumber);
     void showCommitDetailsDialog(const QString &hash);
-    void applyDiffSyntaxHighlighting(QTextEdit *textEdit);
+    void applyDiffSyntaxHighlighting(LineNumberTextEdit *textEdit);
     void setupContextMenu();
     void highlightSelectedLine();
+    QColor getHashColor(const QString &hash, const QString &previousHash = QString());
 
     QString m_repositoryPath;
     QString m_filePath;
@@ -89,6 +93,11 @@ private:
 
     // 当前选中的行
     int m_currentSelectedLine;
+
+    // 颜色管理
+    QHash<QString, QColor> m_hashColors;
+    QList<QColor> m_colorPalette;
+    int m_nextColorIndex;
 
     // 常量
     static constexpr int HASH_DISPLAY_LENGTH = 8;   // 显示的哈希长度

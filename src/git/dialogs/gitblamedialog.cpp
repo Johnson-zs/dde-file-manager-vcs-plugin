@@ -1,5 +1,6 @@
 #include "gitblamedialog.h"
 #include "gitcommandexecutor.h"
+#include "widgets/linenumbertextedit.h"
 
 #include <QApplication>
 #include <QProcess>
@@ -20,7 +21,7 @@
 #include <QTimer>
 
 GitBlameDialog::GitBlameDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent)
-    : QDialog(parent), m_repositoryPath(repositoryPath), m_filePath(filePath), m_fileName(QFileInfo(filePath).fileName()), m_currentSelectedLine(-1), m_contextMenu(nullptr), m_showCommitDetailsAction(nullptr), m_filePathLabel(nullptr), m_blameTextEdit(nullptr), m_refreshButton(nullptr), m_closeButton(nullptr), m_progressBar(nullptr), m_statusLabel(nullptr)
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_filePath(filePath), m_fileName(QFileInfo(filePath).fileName()), m_currentSelectedLine(-1), m_contextMenu(nullptr), m_showCommitDetailsAction(nullptr), m_filePathLabel(nullptr), m_blameTextEdit(nullptr), m_refreshButton(nullptr), m_closeButton(nullptr), m_progressBar(nullptr), m_statusLabel(nullptr), m_nextColorIndex(0)
 {
     setWindowTitle(tr("Git Blame - %1").arg(m_fileName));
     setMinimumSize(1200, 800);
@@ -28,6 +29,22 @@ GitBlameDialog::GitBlameDialog(const QString &repositoryPath, const QString &fil
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
     resize(1400, 900);
     setAttribute(Qt::WA_DeleteOnClose);
+
+    // 初始化颜色调色板 - 使用更多样化的颜色，确保相邻hash有明显区别
+    m_colorPalette = {
+        QColor(255, 239, 219),   // 浅橙色
+        QColor(219, 255, 239),   // 浅绿色
+        QColor(239, 219, 255),   // 浅紫色
+        QColor(255, 219, 239),   // 浅粉色
+        QColor(219, 239, 255),   // 浅蓝色
+        QColor(255, 255, 219),   // 浅黄色
+        QColor(239, 255, 219),   // 浅青色
+        QColor(255, 219, 219),   // 浅红色
+        QColor(230, 230, 255),   // 浅蓝紫色
+        QColor(255, 230, 230),   // 浅玫瑰色
+        QColor(230, 255, 230),   // 浅薄荷绿
+        QColor(255, 245, 230),   // 浅杏色
+    };
 
     setupUI();
     setupContextMenu();
@@ -298,33 +315,58 @@ BlameLineInfo GitBlameDialog::parseBlameLineInfo(const QStringList &blameLines, 
     return info;
 }
 
+QColor GitBlameDialog::getHashColor(const QString &hash, const QString &previousHash)
+{
+    if (hash.isEmpty()) {
+        return QColor(240, 240, 240);   // 默认灰色
+    }
+
+    // 如果已经为这个hash分配了颜色，直接返回
+    if (m_hashColors.contains(hash)) {
+        return m_hashColors[hash];
+    }
+
+    // 为新的hash分配颜色
+    QColor newColor;
+
+    // 如果有前一个hash，尝试选择一个与之不同的颜色
+    if (!previousHash.isEmpty() && m_hashColors.contains(previousHash)) {
+        QColor prevColor = m_hashColors[previousHash];
+
+        // 寻找与前一个颜色差异最大的颜色
+        int bestIndex = m_nextColorIndex;
+        int maxDistance = 0;
+
+        for (int i = 0; i < m_colorPalette.size(); ++i) {
+            QColor candidate = m_colorPalette[i];
+
+            // 计算颜色距离（简单的欧几里得距离）
+            int rDiff = candidate.red() - prevColor.red();
+            int gDiff = candidate.green() - prevColor.green();
+            int bDiff = candidate.blue() - prevColor.blue();
+            int distance = rDiff * rDiff + gDiff * gDiff + bDiff * bDiff;
+
+            if (distance > maxDistance) {
+                maxDistance = distance;
+                bestIndex = i;
+            }
+        }
+
+        newColor = m_colorPalette[bestIndex];
+        m_nextColorIndex = (bestIndex + 1) % m_colorPalette.size();
+    } else {
+        // 没有前一个hash，按顺序分配
+        newColor = m_colorPalette[m_nextColorIndex % m_colorPalette.size()];
+        m_nextColorIndex = (m_nextColorIndex + 1) % m_colorPalette.size();
+    }
+
+    m_hashColors[hash] = newColor;
+    return newColor;
+}
+
 void GitBlameDialog::formatBlameDisplay()
 {
     QStringList displayLines;
-
-    // 初始化作者颜色映射
-    QHash<QString, QColor> authorColors;
-    QList<QColor> colorPalette = {
-        QColor(255, 239, 219),   // 浅橙色
-        QColor(219, 255, 239),   // 浅绿色
-        QColor(239, 219, 255),   // 浅紫色
-        QColor(255, 219, 239),   // 浅粉色
-        QColor(219, 239, 255),   // 浅蓝色
-        QColor(255, 255, 219),   // 浅黄色
-        QColor(239, 255, 219),   // 浅青色
-        QColor(255, 219, 219),   // 浅红色
-    };
-
-    QSet<QString> authors;
-    for (const auto &info : m_blameData) {
-        authors.insert(info.author);
-    }
-
-    int colorIndex = 0;
-    for (const QString &author : authors) {
-        authorColors[author] = colorPalette[colorIndex % colorPalette.size()];
-        colorIndex++;
-    }
 
     for (int i = 0; i < m_blameData.size(); ++i) {
         const BlameLineInfo &info = m_blameData[i];
@@ -346,8 +388,14 @@ void GitBlameDialog::formatBlameDisplay()
                                    .arg(info.hash)   // 完整哈希作为链接
                                    .arg(hashDisplay);   // 显示的短哈希
 
-        // 获取作者背景色
-        QColor bgColor = authorColors.value(info.author, QColor(240, 240, 240));
+        // 获取前一行的hash用于颜色对比
+        QString previousHash;
+        if (i > 0) {
+            previousHash = m_blameData[i - 1].hash;
+        }
+
+        // 基于hash获取背景色，确保相邻不同hash有不同颜色
+        QColor bgColor = getHashColor(info.hash, previousHash);
 
         // 如果是选中行，使用高亮颜色
         if (i == m_currentSelectedLine) {
@@ -373,6 +421,8 @@ void GitBlameDialog::formatBlameDisplay()
     // 使用HTML格式设置内容，不包装额外的容器
     QString htmlContent = displayLines.join("");
     m_blameTextEdit->setHtml(htmlContent);
+
+    qInfo() << "INFO: [GitBlameDialog::formatBlameDisplay] Formatted" << m_blameData.size() << "lines with hash-based coloring";
 }
 
 void GitBlameDialog::onRefreshClicked()
@@ -496,11 +546,11 @@ void GitBlameDialog::showCommitDetailsDialog(const QString &hash)
     commitInfoEdit->setFont(QFont("Consolas", 9));
     splitter->addWidget(commitInfoEdit);
 
-    // 下部分：文件差异
-    auto *diffEdit = new QTextEdit;
+    // 下部分：文件差异 - 使用LineNumberTextEdit
+    auto *diffEdit = new LineNumberTextEdit;
     diffEdit->setReadOnly(true);
     diffEdit->setFont(QFont("Consolas", 9));
-    diffEdit->setLineWrapMode(QTextEdit::NoWrap);
+    diffEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
     splitter->addWidget(diffEdit);
 
     // 设置分割器比例
@@ -581,10 +631,10 @@ void GitBlameDialog::showCommitDetailsDialog(const QString &hash)
     }
 }
 
-void GitBlameDialog::applyDiffSyntaxHighlighting(QTextEdit *textEdit)
+void GitBlameDialog::applyDiffSyntaxHighlighting(LineNumberTextEdit *textEdit)
 {
-    if (!textEdit || textEdit == m_blameTextEdit) {
-        // 不要对主blame显示区域应用语法高亮
+    if (!textEdit) {
+        // 只检查textEdit是否为空，不再比较不同类型的指针
         return;
     }
 
@@ -658,6 +708,8 @@ void GitBlameDialog::applyDiffSyntaxHighlighting(QTextEdit *textEdit)
     }
 
     cursor.endEditBlock();
+
+    qInfo() << "INFO: [GitBlameDialog::applyDiffSyntaxHighlighting] Applied syntax highlighting to diff view";
 }
 
 int GitBlameDialog::getLineNumberFromPosition(const QPoint &pos)
