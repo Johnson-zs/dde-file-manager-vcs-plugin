@@ -327,7 +327,7 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
 
     // Git Pull
     auto pullAction = m_proxy->createAction();
-    pullAction->setText("Git Pull.");
+    pullAction->setText("Git Pull");
     pullAction->setIcon("vcs-pull");
     pullAction->setToolTip(QString("Pull latest changes from remote repository\nCurrent branch: %1").arg(branchName).toStdString());
     pullAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {

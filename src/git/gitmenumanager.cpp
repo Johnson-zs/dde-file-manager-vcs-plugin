@@ -45,7 +45,7 @@ bool GitMenuManager::buildNormalMenu(DFMEXT::DFMExtMenu *main,
 
     // 创建Git根菜单
     auto rootAction = m_proxy->createAction();
-    rootAction->setText("Git");
+    rootAction->setText("Git...");
 
     auto gitSubmenu = m_proxy->createMenu();
     rootAction->setMenu(gitSubmenu);

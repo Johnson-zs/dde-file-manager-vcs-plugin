@@ -158,97 +158,100 @@ bool canAddFile(const QString &filePath)
 {
     if (!isInsideRepositoryFile(filePath))
         return false;
-    
+
     auto status = getFileGitStatus(filePath);
     using Global::ItemVersion;
-    
+
     // 可以添加的文件状态：未版本控制、本地修改(未暂存)、忽略的文件可以强制添加
-    return status == ItemVersion::UnversionedVersion 
-           || status == ItemVersion::LocallyModifiedUnstagedVersion
-           || status == ItemVersion::IgnoredVersion;
+    return status == ItemVersion::UnversionedVersion
+            || status == ItemVersion::LocallyModifiedUnstagedVersion
+            || status == ItemVersion::IgnoredVersion;
 }
 
 bool canRemoveFile(const QString &filePath)
 {
     if (!isInsideRepositoryFile(filePath))
         return false;
-    
+
     auto status = getFileGitStatus(filePath);
     using Global::ItemVersion;
-    
+
     // 可以删除的文件状态：正常版本、本地修改、已添加
-    return status == ItemVersion::NormalVersion 
-           || status == ItemVersion::LocallyModifiedVersion
-           || status == ItemVersion::LocallyModifiedUnstagedVersion
-           || status == ItemVersion::AddedVersion;
+    return status == ItemVersion::NormalVersion
+            || status == ItemVersion::LocallyModifiedVersion
+            || status == ItemVersion::LocallyModifiedUnstagedVersion
+            || status == ItemVersion::AddedVersion;
 }
 
 bool canRevertFile(const QString &filePath)
 {
     if (!isInsideRepositoryFile(filePath))
         return false;
-    
+
     auto status = getFileGitStatus(filePath);
     using Global::ItemVersion;
-    
+
     // 可以还原的文件状态：本地修改、冲突、已删除
     return status == ItemVersion::LocallyModifiedVersion
-           || status == ItemVersion::LocallyModifiedUnstagedVersion
-           || status == ItemVersion::ConflictingVersion
-           || status == ItemVersion::RemovedVersion;
+            || status == ItemVersion::LocallyModifiedUnstagedVersion
+            || status == ItemVersion::ConflictingVersion
+            || status == ItemVersion::RemovedVersion;
 }
 
 bool canShowFileLog(const QString &filePath)
 {
     if (!isInsideRepositoryFile(filePath))
         return false;
-    
+
     auto status = getFileGitStatus(filePath);
     using Global::ItemVersion;
-    
+
     // 只要是在版本控制中的文件都可以查看日志（除了未版本控制和忽略的文件）
-    return status != ItemVersion::UnversionedVersion 
-           && status != ItemVersion::IgnoredVersion;
+    return status != ItemVersion::UnversionedVersion
+            && status != ItemVersion::IgnoredVersion;
 }
 
 bool canShowFileDiff(const QString &filePath)
 {
     if (!isInsideRepositoryFile(filePath))
         return false;
-    
+
     auto status = getFileGitStatus(filePath);
     using Global::ItemVersion;
-    
+
     // 可以查看差异的文件状态：有修改的文件
     return status == ItemVersion::LocallyModifiedVersion
-           || status == ItemVersion::LocallyModifiedUnstagedVersion
-           || status == ItemVersion::ConflictingVersion;
+            || status == ItemVersion::LocallyModifiedUnstagedVersion
+            || status == ItemVersion::ConflictingVersion;
 }
 
 bool canShowFileBlame(const QString &filePath)
 {
+    if (QFileInfo(filePath).isDir())
+        return false;
+
     if (!isInsideRepositoryFile(filePath))
         return false;
-    
+
     auto status = getFileGitStatus(filePath);
     using Global::ItemVersion;
-    
+
     // 可以查看blame的文件状态：已在版本控制中的文件（除了新添加的文件）
-    return status == ItemVersion::NormalVersion 
-           || status == ItemVersion::LocallyModifiedVersion
-           || status == ItemVersion::LocallyModifiedUnstagedVersion
-           || status == ItemVersion::ConflictingVersion
-           || status == ItemVersion::UpdateRequiredVersion;
+    return status == ItemVersion::NormalVersion
+            || status == ItemVersion::LocallyModifiedVersion
+            || status == ItemVersion::LocallyModifiedUnstagedVersion
+            || status == ItemVersion::ConflictingVersion
+            || status == ItemVersion::UpdateRequiredVersion;
 }
 
 QString getFileStatusDescription(const QString &filePath)
 {
     if (!isInsideRepositoryFile(filePath))
         return QObject::tr("Not in Git repository");
-    
+
     auto status = getFileGitStatus(filePath);
     using Global::ItemVersion;
-    
+
     switch (status) {
     case ItemVersion::UnversionedVersion:
         return QObject::tr("Untracked file");
@@ -280,20 +283,20 @@ QString getBranchName(const QString &repositoryPath)
     QProcess process;
     process.setWorkingDirectory(repositoryPath);
     process.start("git", { "branch", "--show-current" });
-    
+
     if (process.waitForFinished(3000) && process.exitCode() == 0) {
         QString branchName = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
         if (!branchName.isEmpty()) {
             return branchName;
         }
     }
-    
+
     // 如果上面的命令失败，尝试使用rev-parse
     process.start("git", { "rev-parse", "--abbrev-ref", "HEAD" });
     if (process.waitForFinished(3000) && process.exitCode() == 0) {
         return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
     }
-    
+
     return QObject::tr("Unknown branch");
 }
 
