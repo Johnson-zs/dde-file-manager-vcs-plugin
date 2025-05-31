@@ -1,9 +1,8 @@
 #include "gitstatusdialog.h"
 #include "gitdialogs.h"
-#include "../gitcommandexecutor.h"
-#include "../gitstatusparser.h"
-#include "../gitoperationutils.h"
-#include "../widgets/linenumbertextedit.h"
+#include "gitstatusparser.h"
+#include "gitoperationutils.h"
+#include "widgets/linenumbertextedit.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>

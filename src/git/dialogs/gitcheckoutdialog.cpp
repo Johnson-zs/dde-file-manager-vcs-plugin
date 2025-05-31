@@ -1,7 +1,7 @@
 #include "gitcheckoutdialog.h"
 #include "gitoperationdialog.h"
 #include "gitdialogs.h"
-#include "../../include/cache.h"
+#include "cache.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -24,20 +24,13 @@
 #include <QTimer>
 
 GitCheckoutDialog::GitCheckoutDialog(const QString &repositoryPath, QWidget *parent)
-    : QDialog(parent)
-    , m_repositoryPath(repositoryPath)
-    , m_isLoading(false)
-    , m_showRemoteBranches(true)
-    , m_showTags(true)
-    , m_autoFetch(false)
-    , m_confirmDangerousOps(true)
-    , m_lastSelectedItem(nullptr)
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_isLoading(false), m_showRemoteBranches(true), m_showTags(true), m_autoFetch(false), m_confirmDangerousOps(true), m_lastSelectedItem(nullptr)
 {
     setupUI();
     setupContextMenus();
-    
+
     qDebug() << "[GitCheckoutDialog] Starting branch data loading for:" << repositoryPath;
-    
+
     // 开始加载分支数据
     showLoadingState(true);
     loadBranchData();
@@ -49,7 +42,7 @@ void GitCheckoutDialog::setupUI()
 {
     setWindowTitle(tr("Git Checkout"));
     setModal(true);
-    resize(750, 650);  // 增大窗口以容纳更多功能
+    resize(750, 650);   // 增大窗口以容纳更多功能
 
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setSpacing(8);
@@ -63,7 +56,7 @@ void GitCheckoutDialog::setupUI()
 
     // 组装布局
     m_mainLayout->addLayout(m_toolbarLayout);
-    m_mainLayout->addWidget(m_treeWidget, 1);  // 占主要空间
+    m_mainLayout->addWidget(m_treeWidget, 1);   // 占主要空间
     m_mainLayout->addLayout(m_newBranchLayout);
 
     // 状态显示区域
@@ -138,9 +131,9 @@ void GitCheckoutDialog::setupTreeWidget()
     m_treeWidget->setUniformRowHeights(true);
 
     // 设置列宽度
-    m_treeWidget->header()->resizeSection(0, 250);  // Name列
-    m_treeWidget->header()->resizeSection(1, 120);  // Status列
-    m_treeWidget->header()->setStretchLastSection(true);  // Last Commit列自动拉伸
+    m_treeWidget->header()->resizeSection(0, 250);   // Name列
+    m_treeWidget->header()->resizeSection(1, 120);   // Status列
+    m_treeWidget->header()->setStretchLastSection(true);   // Last Commit列自动拉伸
 
     // 连接信号
     connect(m_treeWidget, &QTreeWidget::itemDoubleClicked,
@@ -177,20 +170,20 @@ void GitCheckoutDialog::setupNewBranchSection()
 void GitCheckoutDialog::setupButtonSection()
 {
     m_buttonLayout = new QHBoxLayout;
-    
+
     // 添加一个"Close"按钮，让用户明确知道可以关闭对话框
     auto *closeButton = new QPushButton(tr("Close"));
     closeButton->setToolTip(tr("Close this dialog"));
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
-    
+
     m_buttonLayout->addWidget(closeButton);
-    m_buttonLayout->addStretch();  // 中间弹簧
+    m_buttonLayout->addStretch();   // 中间弹簧
 
     m_cancelButton = new QPushButton(tr("Cancel"));
     m_cancelButton->setToolTip(tr("Cancel current operation"));
     m_checkoutButton = new QPushButton(tr("Checkout"));
     m_checkoutButton->setDefault(true);
-    m_checkoutButton->setEnabled(false);  // 初始禁用，等有选择时启用
+    m_checkoutButton->setEnabled(false);   // 初始禁用，等有选择时启用
 
     // 连接信号
     connect(m_cancelButton, &QPushButton::clicked,
@@ -250,30 +243,30 @@ void GitCheckoutDialog::setupContextMenus()
 void GitCheckoutDialog::setupSettingsMenu()
 {
     m_settingsMenu = new QMenu(this);
-    
+
     // 创建可勾选的菜单项
     QAction *showRemoteAction = m_settingsMenu->addAction(tr("Show Remote Branches"));
     showRemoteAction->setCheckable(true);
     showRemoteAction->setChecked(m_showRemoteBranches);
     connect(showRemoteAction, &QAction::triggered, this, &GitCheckoutDialog::toggleRemoteBranches);
-    
+
     QAction *showTagsAction = m_settingsMenu->addAction(tr("Show Tags"));
     showTagsAction->setCheckable(true);
     showTagsAction->setChecked(m_showTags);
     connect(showTagsAction, &QAction::triggered, this, &GitCheckoutDialog::toggleTags);
-    
+
     m_settingsMenu->addSeparator();
-    
+
     QAction *autoFetchAction = m_settingsMenu->addAction(tr("Auto-fetch on Refresh"));
     autoFetchAction->setCheckable(true);
     autoFetchAction->setChecked(m_autoFetch);
     connect(autoFetchAction, &QAction::triggered, this, &GitCheckoutDialog::toggleAutoFetch);
-    
+
     QAction *confirmDangerousAction = m_settingsMenu->addAction(tr("Confirm Dangerous Operations"));
     confirmDangerousAction->setCheckable(true);
     confirmDangerousAction->setChecked(m_confirmDangerousOps);
     connect(confirmDangerousAction, &QAction::triggered, this, &GitCheckoutDialog::toggleConfirmations);
-    
+
     m_settingsButton->setMenu(m_settingsMenu);
 }
 
@@ -281,35 +274,35 @@ void GitCheckoutDialog::setupSettingsMenu()
 void GitCheckoutDialog::loadBranchData()
 {
     qDebug() << "[GitCheckoutDialog] Loading branch data";
-    
+
     m_currentBranch = getCurrentBranch();
     qDebug() << "[GitCheckoutDialog] Current branch/tag:" << m_currentBranch;
-    
+
     // 解析本地分支
     QProcess process;
     process.setWorkingDirectory(m_repositoryPath);
-    process.start("git", {"branch", "-v"});
-    
+    process.start("git", { "branch", "-v" });
+
     if (process.waitForFinished(5000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
         m_localBranches = parseLocalBranches(output);
         qDebug() << "[GitCheckoutDialog] Loaded" << m_localBranches.size() << "local branches";
     }
-    
+
     // 解析远程分支
-    process.start("git", {"branch", "-rv"});
+    process.start("git", { "branch", "-rv" });
     if (process.waitForFinished(5000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
         m_remoteBranches = parseRemoteBranches(output);
         qDebug() << "[GitCheckoutDialog] Loaded" << m_remoteBranches.size() << "remote branches";
     }
-    
+
     // 解析标签
-    process.start("git", {"tag", "-l"});
+    process.start("git", { "tag", "-l" });
     if (process.waitForFinished(5000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
         m_tags = parseTags(output);
-        
+
         // 检查当前是否在某个tag上
         for (auto &tag : m_tags) {
             if (tag.name == m_currentBranch) {
@@ -318,19 +311,19 @@ void GitCheckoutDialog::loadBranchData()
                 break;
             }
         }
-        
+
         qDebug() << "[GitCheckoutDialog] Loaded" << m_tags.size() << "tags";
     }
-    
+
     // 填充树形控件
     populateTreeWidget();
-    
+
     // 更新UI状态
     showLoadingState(false);
     m_statusLabel->setText(tr("Loaded %1 branches, %2 tags. Current: %3")
-                                  .arg(m_localBranches.size() + m_remoteBranches.size())
-                                  .arg(m_tags.size())
-                                  .arg(m_currentBranch));
+                                   .arg(m_localBranches.size() + m_remoteBranches.size())
+                                   .arg(m_tags.size())
+                                   .arg(m_currentBranch));
 }
 
 void GitCheckoutDialog::populateTreeWidget()
@@ -339,16 +332,16 @@ void GitCheckoutDialog::populateTreeWidget()
         filterItems(m_currentFilter);
         return;
     }
-    
+
     qDebug() << "[GitCheckoutDialog] Populating tree widget";
-    
+
     clearTreeWidget();
-    
+
     // 创建分类节点
     QTreeWidgetItem *localItem = nullptr;
     QTreeWidgetItem *remoteItem = nullptr;
     QTreeWidgetItem *tagItem = nullptr;
-    
+
     // 本地分支
     if (!m_localBranches.isEmpty()) {
         localItem = createCategoryItem(tr("📁 Local Branches"), m_localBranches.size());
@@ -356,23 +349,23 @@ void GitCheckoutDialog::populateTreeWidget()
         populateCategoryItems(localItem, m_localBranches);
         localItem->setExpanded(true);
     }
-    
+
     // 远程分支
     if (!m_remoteBranches.isEmpty() && m_showRemoteBranches) {
         remoteItem = createCategoryItem(tr("📁 Remote Branches"), m_remoteBranches.size());
         m_treeWidget->addTopLevelItem(remoteItem);
         populateCategoryItems(remoteItem, m_remoteBranches);
-        remoteItem->setExpanded(false);  // 默认折叠远程分支
+        remoteItem->setExpanded(false);   // 默认折叠远程分支
     }
-    
+
     // 标签
     if (!m_tags.isEmpty() && m_showTags) {
         tagItem = createCategoryItem(tr("📁 Tags"), m_tags.size());
         m_treeWidget->addTopLevelItem(tagItem);
         populateCategoryItems(tagItem, m_tags);
-        tagItem->setExpanded(false);  // 默认折叠标签
+        tagItem->setExpanded(false);   // 默认折叠标签
     }
-    
+
     qDebug() << "[GitCheckoutDialog] Tree widget populated successfully";
 }
 
@@ -408,11 +401,11 @@ void GitCheckoutDialog::onCheckoutClicked()
         // 检查是否为当前分支
         BranchItem branchInfo = getCurrentSelectedBranchInfo();
         if (branchInfo.isCurrent && branchInfo.type == BranchItem::LocalBranch) {
-            QMessageBox::information(this, tr("Current Branch"), 
-                                    tr("'%1' is already the current branch.").arg(target));
+            QMessageBox::information(this, tr("Current Branch"),
+                                     tr("'%1' is already the current branch.").arg(target));
             return;
         }
-        
+
         // 根据类型执行不同的切换逻辑
         if (branchInfo.type == BranchItem::LocalBranch) {
             performCheckout(target, CheckoutMode::Normal);
@@ -432,7 +425,7 @@ void GitCheckoutDialog::onCancelClicked()
     m_newBranchEdit->clear();
     m_statusLabel->setText(tr("Ready"));
     updateCheckoutButtonState();
-    
+
     qDebug() << "[GitCheckoutDialog] Operation cancelled by user";
 }
 
@@ -445,21 +438,21 @@ void GitCheckoutDialog::onItemDoubleClicked(QTreeWidgetItem *item, int column)
         }
         return;
     }
-    
+
     // 获取分支信息
     BranchItem branchInfo = item->data(0, Qt::UserRole).value<BranchItem>();
     if (branchInfo.name.isEmpty()) {
         qWarning() << "[GitCheckoutDialog] Invalid branch item data";
         return;
     }
-    
+
     // 检查是否为当前分支
     if (branchInfo.isCurrent && branchInfo.type == BranchItem::LocalBranch) {
-        QMessageBox::information(this, tr("Current Branch"), 
-                                tr("'%1' is already the current branch.").arg(branchInfo.name));
+        QMessageBox::information(this, tr("Current Branch"),
+                                 tr("'%1' is already the current branch.").arg(branchInfo.name));
         return;
     }
-    
+
     // 根据类型执行不同的切换逻辑
     if (branchInfo.type == BranchItem::LocalBranch) {
         // 本地分支 - 使用与右键菜单相同的逻辑
@@ -480,17 +473,17 @@ void GitCheckoutDialog::showContextMenu(const QPoint &pos)
         qDebug() << "[GitCheckoutDialog] No item at position:" << pos;
         return;
     }
-    
+
     // 确保选中右键点击的项目
     m_treeWidget->setCurrentItem(item);
-    
+
     QMenu *menu = nullptr;
-    
+
     if (item->parent()) {
         // 这是一个分支/标签项目
         QString categoryText = item->parent()->text(0);
         qDebug() << "[GitCheckoutDialog] Context menu for category:" << categoryText;
-        
+
         if (categoryText.contains(tr("Local Branches"))) {
             menu = m_branchContextMenu;
         } else if (categoryText.contains(tr("Remote Branches"))) {
@@ -503,7 +496,7 @@ void GitCheckoutDialog::showContextMenu(const QPoint &pos)
         qDebug() << "[GitCheckoutDialog] Category node clicked, no context menu";
         return;
     }
-    
+
     if (menu) {
         qDebug() << "[GitCheckoutDialog] Showing context menu with" << menu->actions().size() << "actions";
         menu->exec(m_treeWidget->mapToGlobal(pos));
@@ -515,17 +508,17 @@ void GitCheckoutDialog::showContextMenu(const QPoint &pos)
 void GitCheckoutDialog::onItemSelectionChanged()
 {
     QTreeWidgetItem *item = m_treeWidget->currentItem();
-    
+
     // 更新checkout按钮状态
     updateCheckoutButtonState();
-    
+
     if (item && item->parent()) {
         // 这是一个分支/标签项目
         BranchItem branchInfo = item->data(0, Qt::UserRole).value<BranchItem>();
         if (!branchInfo.name.isEmpty()) {
             // 在新建分支输入框中显示选中的分支名
             m_newBranchEdit->setText(branchInfo.name);
-            
+
             // 更新状态标签
             QString statusText;
             if (branchInfo.isCurrent) {
@@ -547,7 +540,7 @@ void GitCheckoutDialog::onItemSelectionChanged()
                     break;
                 }
             }
-            
+
             m_statusLabel->setText(statusText);
         }
     } else {
@@ -560,19 +553,19 @@ void GitCheckoutDialog::onItemSelectionChanged()
 void GitCheckoutDialog::onSearchTextChanged(const QString &text)
 {
     m_currentFilter = text;
-    populateTreeWidget();  // 重新填充并应用过滤
+    populateTreeWidget();   // 重新填充并应用过滤
     qDebug() << "[GitCheckoutDialog] Search filter applied:" << text;
 }
 
 void GitCheckoutDialog::onRefreshClicked()
 {
     qDebug() << "[GitCheckoutDialog] Refreshing branch data";
-    
+
     if (m_autoFetch) {
         // 如果启用了自动获取，先执行fetch
         fetchRemote();
     }
-    
+
     showLoadingState(true);
     loadBranchData();
 }
@@ -581,12 +574,12 @@ void GitCheckoutDialog::onNewBranchClicked()
 {
     bool ok;
     QString branchName = QInputDialog::getText(this, tr("Create New Branch"),
-                                               tr("Enter new branch name:"), 
+                                               tr("Enter new branch name:"),
                                                QLineEdit::Normal, QString(), &ok);
-    
+
     if (ok && !branchName.trimmed().isEmpty()) {
         m_newBranchEdit->setText(branchName.trimmed());
-        
+
         // 如果设置了立即切换，直接创建并切换
         if (m_switchImmediatelyCheck->isChecked()) {
             createNewBranch();
@@ -598,12 +591,12 @@ void GitCheckoutDialog::onNewTagClicked()
 {
     bool ok;
     QString tagName = QInputDialog::getText(this, tr("Create New Tag"),
-                                            tr("Enter new tag name:"), 
+                                            tr("Enter new tag name:"),
                                             QLineEdit::Normal, QString(), &ok);
-    
+
     if (ok && !tagName.trimmed().isEmpty()) {
-        executeGitCommand({"tag", tagName.trimmed()}, tr("Create Tag"));
-        
+        executeGitCommand({ "tag", tagName.trimmed() }, tr("Create Tag"));
+
         // 刷新标签列表
         onRefreshClicked();
     }
@@ -618,9 +611,9 @@ void GitCheckoutDialog::checkoutSelected()
 {
     QString branchName = getCurrentSelectedBranch();
     if (branchName.isEmpty()) return;
-    
+
     BranchItem branchInfo = getCurrentSelectedBranchInfo();
-    
+
     // 使用统一的checkout逻辑
     performCheckoutWithChangeCheck(branchName, branchInfo);
 }
@@ -629,18 +622,18 @@ void GitCheckoutDialog::forceCheckoutSelected()
 {
     QString branchName = getCurrentSelectedBranch();
     if (branchName.isEmpty()) return;
-    
+
     if (m_confirmDangerousOps) {
         QMessageBox::StandardButton ret = QMessageBox::warning(this, tr("Force Checkout"),
-            tr("Force checkout will discard all local changes!\n\n"
-               "This action cannot be undone. Are you sure you want to continue?"),
-            QMessageBox::Yes | QMessageBox::No);
-            
+                                                               tr("Force checkout will discard all local changes!\n\n"
+                                                                  "This action cannot be undone. Are you sure you want to continue?"),
+                                                               QMessageBox::Yes | QMessageBox::No);
+
         if (ret != QMessageBox::Yes) {
             return;
         }
     }
-    
+
     performCheckout(branchName, CheckoutMode::Force);
 }
 
@@ -648,16 +641,16 @@ void GitCheckoutDialog::newBranchFromSelected()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     bool ok;
     QString branchName = QInputDialog::getText(this, tr("Create New Branch"),
-                                               tr("Enter name for new branch from '%1':").arg(selectedBranch), 
+                                               tr("Enter name for new branch from '%1':").arg(selectedBranch),
                                                QLineEdit::Normal, QString(), &ok);
-    
+
     if (ok && !branchName.trimmed().isEmpty()) {
-        QStringList args = {"checkout", "-b", branchName.trimmed(), selectedBranch};
+        QStringList args = { "checkout", "-b", branchName.trimmed(), selectedBranch };
         bool success = executeGitCommandWithResult(args, tr("Create new branch from %1").arg(selectedBranch));
-        
+
         // 不再自动关闭对话框
         if (success) {
             m_statusLabel->setText(tr("✓ Successfully created branch %1 from %2").arg(branchName.trimmed(), selectedBranch));
@@ -669,14 +662,14 @@ void GitCheckoutDialog::copyBranch()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     bool ok;
     QString branchName = QInputDialog::getText(this, tr("Copy Branch"),
-                                               tr("Enter name for branch copy of '%1':").arg(selectedBranch), 
+                                               tr("Enter name for branch copy of '%1':").arg(selectedBranch),
                                                QLineEdit::Normal, selectedBranch + "_copy", &ok);
-    
+
     if (ok && !branchName.trimmed().isEmpty()) {
-        QStringList args = {"branch", branchName.trimmed(), selectedBranch};
+        QStringList args = { "branch", branchName.trimmed(), selectedBranch };
         executeGitCommand(args, tr("Copy branch %1").arg(selectedBranch));
     }
 }
@@ -685,21 +678,21 @@ void GitCheckoutDialog::renameBranch()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     BranchItem branchInfo = getCurrentSelectedBranchInfo();
     if (branchInfo.isCurrent) {
         QMessageBox::information(this, tr("Current Branch"),
-                                tr("Cannot rename the current branch. Please switch to another branch first."));
+                                 tr("Cannot rename the current branch. Please switch to another branch first."));
         return;
     }
-    
+
     bool ok;
     QString newName = QInputDialog::getText(this, tr("Rename Branch"),
-                                           tr("Enter new name for branch '%1':").arg(selectedBranch), 
-                                           QLineEdit::Normal, selectedBranch, &ok);
-    
+                                            tr("Enter new name for branch '%1':").arg(selectedBranch),
+                                            QLineEdit::Normal, selectedBranch, &ok);
+
     if (ok && !newName.trimmed().isEmpty() && newName.trimmed() != selectedBranch) {
-        QStringList args = {"branch", "-m", selectedBranch, newName.trimmed()};
+        QStringList args = { "branch", "-m", selectedBranch, newName.trimmed() };
         executeGitCommand(args, tr("Rename branch"));
     }
 }
@@ -708,21 +701,21 @@ void GitCheckoutDialog::setUpstreamBranch()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     QStringList remoteBranches = getRemoteBranches();
     if (remoteBranches.isEmpty()) {
         QMessageBox::information(this, tr("No Remote Branches"),
-                                tr("No remote branches found. Please add a remote repository first."));
+                                 tr("No remote branches found. Please add a remote repository first."));
         return;
     }
-    
+
     bool ok;
     QString upstream = QInputDialog::getItem(this, tr("Set Upstream Branch"),
-                                           tr("Select upstream branch for '%1':").arg(selectedBranch),
-                                           remoteBranches, 0, false, &ok);
-    
+                                             tr("Select upstream branch for '%1':").arg(selectedBranch),
+                                             remoteBranches, 0, false, &ok);
+
     if (ok && !upstream.isEmpty()) {
-        QStringList args = {"branch", "--set-upstream-to=" + upstream, selectedBranch};
+        QStringList args = { "branch", "--set-upstream-to=" + upstream, selectedBranch };
         executeGitCommand(args, tr("Set upstream branch"));
     }
 }
@@ -731,8 +724,8 @@ void GitCheckoutDialog::unsetUpstreamBranch()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
-    QStringList args = {"branch", "--unset-upstream", selectedBranch};
+
+    QStringList args = { "branch", "--unset-upstream", selectedBranch };
     executeGitCommand(args, tr("Unset upstream branch"));
 }
 
@@ -740,11 +733,11 @@ void GitCheckoutDialog::checkoutRemoteBranch()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     // 从远程分支名称中提取本地分支名称
     QString localBranchName = selectedBranch;
     if (localBranchName.startsWith("origin/")) {
-        localBranchName = localBranchName.mid(7);  // 移除 "origin/" 前缀
+        localBranchName = localBranchName.mid(7);   // 移除 "origin/" 前缀
     } else {
         // 处理其他远程名称
         int slashIndex = localBranchName.indexOf('/');
@@ -752,16 +745,16 @@ void GitCheckoutDialog::checkoutRemoteBranch()
             localBranchName = localBranchName.mid(slashIndex + 1);
         }
     }
-    
+
     bool ok;
     QString branchName = QInputDialog::getText(this, tr("Checkout Remote Branch"),
-                                               tr("Enter local branch name for remote '%1':").arg(selectedBranch), 
+                                               tr("Enter local branch name for remote '%1':").arg(selectedBranch),
                                                QLineEdit::Normal, localBranchName, &ok);
-    
+
     if (ok && !branchName.trimmed().isEmpty()) {
-        QStringList args = {"checkout", "-b", branchName.trimmed(), selectedBranch};
+        QStringList args = { "checkout", "-b", branchName.trimmed(), selectedBranch };
         bool success = executeGitCommandWithResult(args, tr("Checkout remote branch"));
-        
+
         // 不再自动关闭对话框
         if (success) {
             m_statusLabel->setText(tr("✓ Successfully checked out remote branch %1 as %2").arg(selectedBranch, branchName.trimmed()));
@@ -773,9 +766,9 @@ void GitCheckoutDialog::showBranchLog()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     qDebug() << "[GitCheckoutDialog] Show log for branch:" << selectedBranch;
-    
+
     // 使用 GitDialogManager 显示分支日志
     GitDialogManager::instance()->showLogDialog(m_repositoryPath, this);
 }
@@ -784,30 +777,30 @@ void GitCheckoutDialog::compareWithCurrent()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty() || selectedBranch == m_currentBranch) {
-        QMessageBox::information(this, tr("Compare Branches"), 
-                               tr("Cannot compare branch with itself."));
+        QMessageBox::information(this, tr("Compare Branches"),
+                                 tr("Cannot compare branch with itself."));
         return;
     }
-    
+
     qDebug() << "[GitCheckoutDialog] Compare" << selectedBranch << "with" << m_currentBranch;
-    
+
     // 使用新的分支比较对话框
     GitDialogManager::instance()->showBranchComparisonDialog(
-        m_repositoryPath, m_currentBranch, selectedBranch, this);
+            m_repositoryPath, m_currentBranch, selectedBranch, this);
 }
 
 void GitCheckoutDialog::createTagFromSelected()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     bool ok;
     QString tagName = QInputDialog::getText(this, tr("Create Tag"),
-                                           tr("Enter tag name for '%1':").arg(selectedBranch), 
-                                           QLineEdit::Normal, QString(), &ok);
-    
+                                            tr("Enter tag name for '%1':").arg(selectedBranch),
+                                            QLineEdit::Normal, QString(), &ok);
+
     if (ok && !tagName.trimmed().isEmpty()) {
-        QStringList args = {"tag", tagName.trimmed(), selectedBranch};
+        QStringList args = { "tag", tagName.trimmed(), selectedBranch };
         executeGitCommand(args, tr("Create tag"));
     }
 }
@@ -816,36 +809,37 @@ void GitCheckoutDialog::deleteSelectedBranch()
 {
     QString selectedBranch = getCurrentSelectedBranch();
     if (selectedBranch.isEmpty()) return;
-    
+
     BranchItem branchInfo = getCurrentSelectedBranchInfo();
     if (branchInfo.isCurrent) {
         QMessageBox::warning(this, tr("Cannot Delete"),
-                           tr("Cannot delete the current branch. Please switch to another branch first."));
+                             tr("Cannot delete the current branch. Please switch to another branch first."));
         return;
     }
-    
+
     // 询问删除模式
     QMessageBox msgBox(this);
     msgBox.setWindowTitle(tr("Delete Branch"));
     msgBox.setText(tr("Choose delete mode for branch '%1':").arg(selectedBranch));
     msgBox.setInformativeText(tr("Safe Delete: Only delete if branch is fully merged\n"
-                                "Force Delete: Delete branch regardless of merge status"));
-    
+                                 "Force Delete: Delete branch regardless of merge status"));
+
     QPushButton *safeButton = msgBox.addButton(tr("Safe Delete"), QMessageBox::AcceptRole);
     QPushButton *forceButton = msgBox.addButton(tr("Force Delete"), QMessageBox::DestructiveRole);
     msgBox.addButton(QMessageBox::Cancel);
-    
+
     msgBox.exec();
-    
+
     if (msgBox.clickedButton() == safeButton) {
         performBranchDelete(selectedBranch, BranchDeleteMode::SafeDelete);
     } else if (msgBox.clickedButton() == forceButton) {
         if (m_confirmDangerousOps) {
             QMessageBox::StandardButton ret = QMessageBox::warning(this, tr("Force Delete Branch"),
-                tr("Force delete will permanently remove branch '%1' even if it's not merged!\n\n"
-                   "This action cannot be undone. Are you sure?").arg(selectedBranch),
-                QMessageBox::Yes | QMessageBox::No);
-                
+                                                                   tr("Force delete will permanently remove branch '%1' even if it's not merged!\n\n"
+                                                                      "This action cannot be undone. Are you sure?")
+                                                                           .arg(selectedBranch),
+                                                                   QMessageBox::Yes | QMessageBox::No);
+
             if (ret == QMessageBox::Yes) {
                 performBranchDelete(selectedBranch, BranchDeleteMode::ForceDelete);
             }
@@ -857,10 +851,10 @@ void GitCheckoutDialog::deleteSelectedBranch()
 
 void GitCheckoutDialog::pushTag()
 {
-    QString selectedTag = getCurrentSelectedBranch();  // 对于标签，也使用这个方法获取名称
+    QString selectedTag = getCurrentSelectedBranch();   // 对于标签，也使用这个方法获取名称
     if (selectedTag.isEmpty()) return;
-    
-    QStringList args = {"push", "origin", selectedTag};
+
+    QStringList args = { "push", "origin", selectedTag };
     executeGitCommand(args, tr("Push tag"));
 }
 
@@ -868,18 +862,18 @@ void GitCheckoutDialog::deleteTag()
 {
     QString selectedTag = getCurrentSelectedBranch();
     if (selectedTag.isEmpty()) return;
-    
+
     if (m_confirmDangerousOps) {
         QMessageBox::StandardButton ret = QMessageBox::question(this, tr("Delete Tag"),
-            tr("Are you sure you want to delete tag '%1'?").arg(selectedTag),
-            QMessageBox::Yes | QMessageBox::No);
-            
+                                                                tr("Are you sure you want to delete tag '%1'?").arg(selectedTag),
+                                                                QMessageBox::Yes | QMessageBox::No);
+
         if (ret != QMessageBox::Yes) {
             return;
         }
     }
-    
-    QStringList args = {"tag", "-d", selectedTag};
+
+    QStringList args = { "tag", "-d", selectedTag };
     executeGitCommand(args, tr("Delete tag"));
 }
 
@@ -887,19 +881,20 @@ void GitCheckoutDialog::deleteRemoteTag()
 {
     QString selectedTag = getCurrentSelectedBranch();
     if (selectedTag.isEmpty()) return;
-    
+
     if (m_confirmDangerousOps) {
         QMessageBox::StandardButton ret = QMessageBox::warning(this, tr("Delete Remote Tag"),
-            tr("Are you sure you want to delete remote tag '%1'?\n\n"
-               "This will remove the tag from the remote repository.").arg(selectedTag),
-            QMessageBox::Yes | QMessageBox::No);
-            
+                                                               tr("Are you sure you want to delete remote tag '%1'?\n\n"
+                                                                  "This will remove the tag from the remote repository.")
+                                                                       .arg(selectedTag),
+                                                               QMessageBox::Yes | QMessageBox::No);
+
         if (ret != QMessageBox::Yes) {
             return;
         }
     }
-    
-    QStringList args = {"push", "origin", ":refs/tags/" + selectedTag};
+
+    QStringList args = { "push", "origin", ":refs/tags/" + selectedTag };
     executeGitCommand(args, tr("Delete remote tag"));
 }
 
@@ -907,14 +902,14 @@ void GitCheckoutDialog::deleteRemoteTag()
 void GitCheckoutDialog::fetchRemote()
 {
     qDebug() << "[GitCheckoutDialog] Fetching remote branches";
-    executeGitCommand({"fetch", "--all", "--prune"}, tr("Fetch remote branches"));
+    executeGitCommand({ "fetch", "--all", "--prune" }, tr("Fetch remote branches"));
 }
 
 void GitCheckoutDialog::toggleRemoteBranches()
 {
     m_showRemoteBranches = !m_showRemoteBranches;
     qDebug() << "[GitCheckoutDialog] Show remote branches:" << m_showRemoteBranches;
-    
+
     // 更新菜单项状态
     for (QAction *action : m_settingsMenu->actions()) {
         if (action->text() == tr("Show Remote Branches")) {
@@ -922,7 +917,7 @@ void GitCheckoutDialog::toggleRemoteBranches()
             break;
         }
     }
-    
+
     populateTreeWidget();
 }
 
@@ -930,7 +925,7 @@ void GitCheckoutDialog::toggleTags()
 {
     m_showTags = !m_showTags;
     qDebug() << "[GitCheckoutDialog] Show tags:" << m_showTags;
-    
+
     // 更新菜单项状态
     for (QAction *action : m_settingsMenu->actions()) {
         if (action->text() == tr("Show Tags")) {
@@ -938,7 +933,7 @@ void GitCheckoutDialog::toggleTags()
             break;
         }
     }
-    
+
     populateTreeWidget();
 }
 
@@ -946,7 +941,7 @@ void GitCheckoutDialog::toggleAutoFetch()
 {
     m_autoFetch = !m_autoFetch;
     qDebug() << "[GitCheckoutDialog] Auto-fetch on refresh:" << m_autoFetch;
-    
+
     // 更新菜单项状态
     for (QAction *action : m_settingsMenu->actions()) {
         if (action->text() == tr("Auto-fetch on Refresh")) {
@@ -960,7 +955,7 @@ void GitCheckoutDialog::toggleConfirmations()
 {
     m_confirmDangerousOps = !m_confirmDangerousOps;
     qDebug() << "[GitCheckoutDialog] Confirm dangerous operations:" << m_confirmDangerousOps;
-    
+
     // 更新菜单项状态
     for (QAction *action : m_settingsMenu->actions()) {
         if (action->text() == tr("Confirm Dangerous Operations")) {
@@ -974,33 +969,33 @@ void GitCheckoutDialog::toggleConfirmations()
 void GitCheckoutDialog::performBranchDelete(const QString &branchName, BranchDeleteMode mode)
 {
     qDebug() << "[GitCheckoutDialog] Deleting branch:" << branchName << "mode:" << static_cast<int>(mode);
-    
+
     QStringList args;
     QString operation;
-    
+
     switch (mode) {
     case BranchDeleteMode::SafeDelete:
-        args = {"branch", "-d", branchName};
+        args = { "branch", "-d", branchName };
         operation = tr("Safe delete branch");
         break;
-        
+
     case BranchDeleteMode::ForceDelete:
-        args = {"branch", "-D", branchName};
+        args = { "branch", "-D", branchName };
         operation = tr("Force delete branch");
         break;
     }
-    
+
     executeGitCommand(args, operation);
 }
 
 QStringList GitCheckoutDialog::getRemoteBranches()
 {
     QStringList remoteBranches;
-    
+
     for (const auto &branch : m_remoteBranches) {
         remoteBranches.append(branch.name);
     }
-    
+
     return remoteBranches;
 }
 
@@ -1012,9 +1007,9 @@ void GitCheckoutDialog::filterItems(const QString &filter)
         populateTreeWidget();
         return;
     }
-    
+
     clearTreeWidget();
-    
+
     // 过滤本地分支
     QVector<BranchItem> filteredLocal;
     for (const auto &branch : m_localBranches) {
@@ -1022,7 +1017,7 @@ void GitCheckoutDialog::filterItems(const QString &filter)
             filteredLocal.append(branch);
         }
     }
-    
+
     // 过滤远程分支
     QVector<BranchItem> filteredRemote;
     if (m_showRemoteBranches) {
@@ -1032,7 +1027,7 @@ void GitCheckoutDialog::filterItems(const QString &filter)
             }
         }
     }
-    
+
     // 过滤标签
     QVector<BranchItem> filteredTags;
     if (m_showTags) {
@@ -1042,7 +1037,7 @@ void GitCheckoutDialog::filterItems(const QString &filter)
             }
         }
     }
-    
+
     // 创建过滤后的分类节点
     if (!filteredLocal.isEmpty()) {
         QTreeWidgetItem *localItem = createCategoryItem(tr("📁 Local Branches"), filteredLocal.size());
@@ -1050,21 +1045,21 @@ void GitCheckoutDialog::filterItems(const QString &filter)
         populateCategoryItems(localItem, filteredLocal, filter);
         localItem->setExpanded(true);
     }
-    
+
     if (!filteredRemote.isEmpty()) {
         QTreeWidgetItem *remoteItem = createCategoryItem(tr("📁 Remote Branches"), filteredRemote.size());
         m_treeWidget->addTopLevelItem(remoteItem);
         populateCategoryItems(remoteItem, filteredRemote, filter);
         remoteItem->setExpanded(true);
     }
-    
+
     if (!filteredTags.isEmpty()) {
         QTreeWidgetItem *tagItem = createCategoryItem(tr("📁 Tags"), filteredTags.size());
         m_treeWidget->addTopLevelItem(tagItem);
         populateCategoryItems(tagItem, filteredTags, filter);
         tagItem->setExpanded(true);
     }
-    
+
     // 更新状态信息
     int totalFiltered = filteredLocal.size() + filteredRemote.size() + filteredTags.size();
     m_statusLabel->setText(tr("Found %1 items matching '%2'").arg(totalFiltered).arg(filter));
@@ -1077,42 +1072,42 @@ QString GitCheckoutDialog::getCurrentBranch()
 {
     QProcess process;
     process.setWorkingDirectory(m_repositoryPath);
-    process.start("git", {"rev-parse", "--abbrev-ref", "HEAD"});
-    
+    process.start("git", { "rev-parse", "--abbrev-ref", "HEAD" });
+
     if (process.waitForFinished(3000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
         qDebug() << "[GitCheckoutDialog] Current branch:" << output;
-        
+
         // 如果是detached HEAD状态，尝试获取当前的tag或commit
         if (output == "HEAD") {
             // 检查是否在某个tag上
             QProcess tagProcess;
             tagProcess.setWorkingDirectory(m_repositoryPath);
-            tagProcess.start("git", {"describe", "--exact-match", "--tags", "HEAD"});
-            
+            tagProcess.start("git", { "describe", "--exact-match", "--tags", "HEAD" });
+
             if (tagProcess.waitForFinished(3000)) {
                 QString tagOutput = QString::fromUtf8(tagProcess.readAllStandardOutput()).trimmed();
                 if (!tagOutput.isEmpty()) {
                     qDebug() << "[GitCheckoutDialog] Current tag:" << tagOutput;
-                    return tagOutput;  // 返回tag名称
+                    return tagOutput;   // 返回tag名称
                 }
             }
-            
+
             // 如果不在tag上，返回短commit hash
             QProcess hashProcess;
             hashProcess.setWorkingDirectory(m_repositoryPath);
-            hashProcess.start("git", {"rev-parse", "--short", "HEAD"});
-            
+            hashProcess.start("git", { "rev-parse", "--short", "HEAD" });
+
             if (hashProcess.waitForFinished(3000)) {
                 QString hashOutput = QString::fromUtf8(hashProcess.readAllStandardOutput()).trimmed();
                 qDebug() << "[GitCheckoutDialog] Current commit:" << hashOutput;
                 return QString("detached@%1").arg(hashOutput);
             }
         }
-        
+
         return output;
     }
-    
+
     qWarning() << "[GitCheckoutDialog] Failed to get current branch";
     return QString();
 }
@@ -1122,9 +1117,9 @@ QString GitCheckoutDialog::getCurrentSelectedBranch() const
 {
     QTreeWidgetItem *item = m_treeWidget->currentItem();
     if (!item || !item->parent()) {
-        return QString();  // 没有选择或选择的是分类节点
+        return QString();   // 没有选择或选择的是分类节点
     }
-    
+
     BranchItem branchInfo = item->data(0, Qt::UserRole).value<BranchItem>();
     return branchInfo.name;
 }
@@ -1133,9 +1128,9 @@ BranchItem::Type GitCheckoutDialog::getCurrentSelectedType() const
 {
     QTreeWidgetItem *item = m_treeWidget->currentItem();
     if (!item || !item->parent()) {
-        return BranchItem::LocalBranch;  // 默认类型
+        return BranchItem::LocalBranch;   // 默认类型
     }
-    
+
     BranchItem branchInfo = item->data(0, Qt::UserRole).value<BranchItem>();
     return branchInfo.type;
 }
@@ -1144,9 +1139,9 @@ BranchItem GitCheckoutDialog::getCurrentSelectedBranchInfo() const
 {
     QTreeWidgetItem *item = m_treeWidget->currentItem();
     if (!item || !item->parent()) {
-        return BranchItem();  // 空对象
+        return BranchItem();   // 空对象
     }
-    
+
     return item->data(0, Qt::UserRole).value<BranchItem>();
 }
 
@@ -1159,24 +1154,24 @@ void GitCheckoutDialog::updateCheckoutButtonState()
 {
     bool hasValidSelection = false;
     bool hasNewBranchName = !m_newBranchEdit->text().trimmed().isEmpty();
-    
+
     QTreeWidgetItem *item = m_treeWidget->currentItem();
     if (item && item->parent()) {
         // 选中了分支/标签项目
         BranchItem branchInfo = item->data(0, Qt::UserRole).value<BranchItem>();
         if (!branchInfo.name.isEmpty()) {
             hasValidSelection = true;
-            
+
             // 如果选中的是当前分支，禁用checkout按钮
             if (branchInfo.isCurrent && branchInfo.type == BranchItem::LocalBranch) {
                 hasValidSelection = false;
             }
         }
     }
-    
+
     // 启用checkout按钮的条件：有有效选择或有新分支名称
     m_checkoutButton->setEnabled(hasValidSelection || hasNewBranchName);
-    
+
     // 更新按钮文本
     if (hasNewBranchName && !hasValidSelection) {
         m_checkoutButton->setText(tr("Create Branch"));
@@ -1202,7 +1197,7 @@ void GitCheckoutDialog::showLoadingState(bool loading)
     m_isLoading = loading;
     m_progressBar->setVisible(loading);
     m_statusLabel->setText(loading ? tr("Loading...") : tr("Ready"));
-    
+
     // 禁用/启用相关控件
     m_refreshButton->setEnabled(!loading);
     m_newBranchButton->setEnabled(!loading);
@@ -1214,39 +1209,39 @@ void GitCheckoutDialog::showLoadingState(bool loading)
 void GitCheckoutDialog::performCheckout(const QString &branchName, CheckoutMode mode)
 {
     qDebug() << "[GitCheckoutDialog] Performing checkout:" << branchName << "mode:" << static_cast<int>(mode);
-    
+
     QStringList args;
     QString operation;
-    
+
     switch (mode) {
     case CheckoutMode::Normal:
-        args = {"checkout", branchName};
+        args = { "checkout", branchName };
         operation = tr("Checkout branch");
         break;
-        
+
     case CheckoutMode::Force:
-        args = {"checkout", "-f", branchName};
+        args = { "checkout", "-f", branchName };
         operation = tr("Force checkout branch");
         break;
-        
+
     case CheckoutMode::Stash:
         // 先暂存，再切换，最后恢复
-        if (executeGitCommandWithResult({"stash", "push", "-m", tr("Auto-stash for checkout")}, tr("Stash changes"))) {
-            args = {"checkout", branchName};
+        if (executeGitCommandWithResult({ "stash", "push", "-m", tr("Auto-stash for checkout") }, tr("Stash changes"))) {
+            args = { "checkout", branchName };
             operation = tr("Checkout branch (with stash)");
         } else {
-            return; // 暂存失败，不继续操作
+            return;   // 暂存失败，不继续操作
         }
         break;
     }
-    
+
     bool success = executeGitCommandWithResult(args, operation);
-    
+
     // 如果是stash模式且切换成功，尝试恢复暂存
     if (success && mode == CheckoutMode::Stash) {
-        executeGitCommandWithResult({"stash", "pop"}, tr("Restore stashed changes"));
+        executeGitCommandWithResult({ "stash", "pop" }, tr("Restore stashed changes"));
     }
-    
+
     // 不再自动关闭对话框，让用户可以继续操作
     if (success) {
         // 清空新建分支输入框
@@ -1263,16 +1258,16 @@ void GitCheckoutDialog::createNewBranch()
         QMessageBox::warning(this, tr("Warning"), tr("Please enter a branch name."));
         return;
     }
-    
+
     // 验证分支名称的有效性
     if (branchName.contains(' ') || branchName.contains('\t')) {
         QMessageBox::warning(this, tr("Warning"), tr("Branch name cannot contain spaces."));
         return;
     }
-    
-    QStringList args = {"checkout", "-b", branchName};
+
+    QStringList args = { "checkout", "-b", branchName };
     bool success = executeGitCommandWithResult(args, tr("Create new branch"));
-    
+
     // 不再自动关闭对话框
     if (success) {
         // 清空输入框
@@ -1286,53 +1281,53 @@ bool GitCheckoutDialog::hasLocalChanges()
 {
     QProcess process;
     process.setWorkingDirectory(m_repositoryPath);
-    process.start("git", {"status", "--porcelain"});
-    
+    process.start("git", { "status", "--porcelain" });
+
     if (process.waitForFinished(3000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
         QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-        
+
         qDebug() << "[GitCheckoutDialog] Git status output lines:" << lines.size();
-        
+
         // 检查是否有会阻止 checkout 的更改
         bool hasBlockingChanges = false;
-        
+
         for (const QString &line : lines) {
             if (line.length() < 2) continue;
-            
-            QChar indexStatus = line.at(0);    // 暂存区状态
-            QChar workTreeStatus = line.at(1); // 工作区状态
-            
+
+            QChar indexStatus = line.at(0);   // 暂存区状态
+            QChar workTreeStatus = line.at(1);   // 工作区状态
+
             qDebug() << "[GitCheckoutDialog] File status:" << line.left(2) << "File:" << line.mid(3);
-            
+
             // 检查会阻止 checkout 的状态：
             // 1. 暂存区有更改 (A, M, D, R, C)
             // 2. 工作区有修改 (M) 或删除 (D)
             // 注意：未跟踪文件 (??) 不会阻止 checkout
-            
+
             if (indexStatus != ' ' && indexStatus != '?') {
                 // 暂存区有更改
                 hasBlockingChanges = true;
                 qDebug() << "[GitCheckoutDialog] Found staged changes:" << line;
                 break;
             }
-            
+
             if (workTreeStatus == 'M' || workTreeStatus == 'D') {
                 // 工作区有修改或删除
                 hasBlockingChanges = true;
                 qDebug() << "[GitCheckoutDialog] Found working tree changes:" << line;
                 break;
             }
-            
+
             // 未跟踪文件 (??) 和忽略的文件 (!!) 不会阻止 checkout，跳过
         }
-        
+
         qDebug() << "[GitCheckoutDialog] Has blocking changes:" << hasBlockingChanges;
         return hasBlockingChanges;
     }
-    
+
     qWarning() << "[GitCheckoutDialog] Failed to check git status, assuming no changes";
-    return false;  // 如果检查失败，假设没有更改
+    return false;   // 如果检查失败，假设没有更改
 }
 
 void GitCheckoutDialog::executeGitCommand(const QStringList &args, const QString &operation)
@@ -1343,47 +1338,47 @@ void GitCheckoutDialog::executeGitCommand(const QStringList &args, const QString
 bool GitCheckoutDialog::executeGitCommandWithResult(const QStringList &args, const QString &operation)
 {
     qDebug() << "[GitCheckoutDialog] Executing Git command:" << args << "for operation:" << operation;
-    
+
     GitOperationDialog *dialog = new GitOperationDialog(operation.isEmpty() ? tr("Git Operation") : operation, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
-    
+
     // 设置操作描述
     if (!operation.isEmpty()) {
         dialog->setOperationDescription(operation);
     }
-    
+
     // 连接对话框的 finished 信号，确保无论如何关闭都能处理
     connect(dialog, &QDialog::finished, this, [this, operation](int result) {
         bool success = (result == QDialog::Accepted);
         qDebug() << "[GitCheckoutDialog] GitOperationDialog finished with result:" << result;
-        
+
         // 无论成功失败，都需要处理后续逻辑
         if (success) {
             qDebug() << "[GitCheckoutDialog] Git operation completed successfully";
-            
+
             // 刷新缓存状态 - 使用正确的API
             Global::Cache::instance().removeVersion(m_repositoryPath);
-            
+
             showOperationResult(true, operation, tr("Operation completed successfully."));
         } else {
             qWarning() << "[GitCheckoutDialog] Git operation failed or was cancelled";
             showOperationResult(false, operation, tr("Operation failed or was cancelled."));
         }
-        
+
         // 刷新分支数据以更新当前分支状态
         if (operation.contains("checkout") || operation.contains("branch") || operation.contains("tag")) {
             QTimer::singleShot(100, this, [this]() {
-                loadBranchData();  // 延迟刷新确保操作完全完成
+                loadBranchData();   // 延迟刷新确保操作完全完成
             });
         }
     });
-    
+
     // 执行命令
     dialog->executeCommand(m_repositoryPath, args);
-    
+
     // 使用 show() 而不是 exec()，这样对话框可以独立运行
     dialog->show();
-    
+
     // 对于异步操作，我们假设会成功，实际结果通过信号处理
     return true;
 }
@@ -1404,19 +1399,19 @@ QVector<BranchItem> GitCheckoutDialog::parseLocalBranches(const QString &output)
 {
     QVector<BranchItem> branches;
     QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-    
+
     for (const QString &line : lines) {
         QString trimmed = line.trimmed();
         if (trimmed.isEmpty()) continue;
-        
+
         BranchItem item;
         item.type = BranchItem::LocalBranch;
-        
+
         if (trimmed.startsWith("* ")) {
             item.isCurrent = true;
             trimmed = trimmed.mid(2).trimmed();
         }
-        
+
         // 解析分支名称和最后提交信息
         QStringList parts = trimmed.split(' ', Qt::SkipEmptyParts);
         if (!parts.isEmpty()) {
@@ -1425,10 +1420,10 @@ QVector<BranchItem> GitCheckoutDialog::parseLocalBranches(const QString &output)
                 item.lastCommitHash = parts[1];
             }
         }
-        
+
         branches.append(item);
     }
-    
+
     return branches;
 }
 
@@ -1436,14 +1431,14 @@ QVector<BranchItem> GitCheckoutDialog::parseRemoteBranches(const QString &output
 {
     QVector<BranchItem> branches;
     QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-    
+
     for (const QString &line : lines) {
         QString trimmed = line.trimmed();
-        if (trimmed.isEmpty() || trimmed.contains("->")) continue;  // 跳过符号链接
-        
+        if (trimmed.isEmpty() || trimmed.contains("->")) continue;   // 跳过符号链接
+
         BranchItem item;
         item.type = BranchItem::RemoteBranch;
-        
+
         // 解析远程分支名称和最后提交信息
         QStringList parts = trimmed.split(' ', Qt::SkipEmptyParts);
         if (!parts.isEmpty()) {
@@ -1452,10 +1447,10 @@ QVector<BranchItem> GitCheckoutDialog::parseRemoteBranches(const QString &output
                 item.lastCommitHash = parts[1];
             }
         }
-        
+
         branches.append(item);
     }
-    
+
     return branches;
 }
 
@@ -1463,57 +1458,57 @@ QVector<BranchItem> GitCheckoutDialog::parseTags(const QString &output)
 {
     QVector<BranchItem> tags;
     QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-    
+
     for (const QString &line : lines) {
         QString trimmed = line.trimmed();
         if (trimmed.isEmpty()) continue;
-        
+
         BranchItem item;
         item.type = BranchItem::Tag;
         item.name = trimmed;
-        
+
         tags.append(item);
     }
-    
+
     return tags;
 }
 
 // 树形控件相关方法 - 需要实现
-QTreeWidgetItem* GitCheckoutDialog::createCategoryItem(const QString &title, int count, const QString &icon)
+QTreeWidgetItem *GitCheckoutDialog::createCategoryItem(const QString &title, int count, const QString &icon)
 {
     QTreeWidgetItem *item = new QTreeWidgetItem;
     item->setText(0, QString("%1 (%2)").arg(title).arg(count));
-    item->setFlags(Qt::ItemIsEnabled);  // 分类节点不可选择
-    
+    item->setFlags(Qt::ItemIsEnabled);   // 分类节点不可选择
+
     // 设置字体样式
     QFont font = item->font(0);
     font.setBold(true);
     item->setFont(0, font);
-    
+
     return item;
 }
 
-QTreeWidgetItem* GitCheckoutDialog::createBranchItem(const BranchItem &item)
+QTreeWidgetItem *GitCheckoutDialog::createBranchItem(const BranchItem &item)
 {
     QTreeWidgetItem *treeItem = new QTreeWidgetItem;
-    
+
     // 设置分支名称
     QString displayName = item.name;
     if (item.isCurrent) {
-        displayName = "● " + displayName;  // 当前分支/标签标记
-        
+        displayName = "● " + displayName;   // 当前分支/标签标记
+
         // 为当前项设置特殊样式
         QFont font = treeItem->font(0);
         font.setBold(true);
         treeItem->setFont(0, font);
-        
+
         // 设置背景色
-        treeItem->setBackground(0, QColor(230, 255, 230));  // 浅绿色背景
+        treeItem->setBackground(0, QColor(230, 255, 230));   // 浅绿色背景
         treeItem->setBackground(1, QColor(230, 255, 230));
         treeItem->setBackground(2, QColor(230, 255, 230));
     }
     treeItem->setText(0, displayName);
-    
+
     // 设置状态信息
     QString status;
     if (item.isCurrent) {
@@ -1528,15 +1523,15 @@ QTreeWidgetItem* GitCheckoutDialog::createBranchItem(const BranchItem &item)
         status = tr("[Tag]");
     }
     treeItem->setText(1, status);
-    
+
     // 设置最后提交信息
     if (!item.lastCommitHash.isEmpty()) {
-        treeItem->setText(2, item.lastCommitHash.left(8));  // 显示短哈希
+        treeItem->setText(2, item.lastCommitHash.left(8));   // 显示短哈希
     }
-    
+
     // 存储完整的分支信息
     treeItem->setData(0, Qt::UserRole, QVariant::fromValue(item));
-    
+
     return treeItem;
 }
 
@@ -1545,7 +1540,7 @@ void GitCheckoutDialog::populateCategoryItems(QTreeWidgetItem *categoryItem, con
     for (const BranchItem &item : items) {
         QTreeWidgetItem *branchItem = createBranchItem(item);
         categoryItem->addChild(branchItem);
-        
+
         // 如果有高亮文本，设置高亮样式
         if (!highlightText.isEmpty() && item.name.contains(highlightText, Qt::CaseInsensitive)) {
             QFont font = branchItem->font(0);
@@ -1560,23 +1555,23 @@ void GitCheckoutDialog::performCheckoutWithChangeCheck(const QString &branchName
     // 检查是否有本地更改 - 只对非当前分支检查
     if (!branchInfo.isCurrent && hasLocalChanges()) {
         QMessageBox::StandardButton ret = QMessageBox::question(this, tr("Local Changes Detected"),
-            tr("You have uncommitted changes. How would you like to proceed?\n\n"
-               "• Stash: Temporarily save your changes and restore them after checkout\n"
-               "• Force: Discard your changes and checkout anyway\n"
-               "• Cancel: Keep your changes and stay on current branch"),
-            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
-            
+                                                                tr("You have uncommitted changes. How would you like to proceed?\n\n"
+                                                                   "• Stash: Temporarily save your changes and restore them after checkout\n"
+                                                                   "• Force: Discard your changes and checkout anyway\n"
+                                                                   "• Cancel: Keep your changes and stay on current branch"),
+                                                                QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+
         switch (ret) {
-        case QMessageBox::Save:     // Stash
+        case QMessageBox::Save:   // Stash
             performCheckout(branchName, CheckoutMode::Stash);
             break;
-        case QMessageBox::Discard:  // Force
+        case QMessageBox::Discard:   // Force
             performCheckout(branchName, CheckoutMode::Force);
             break;
-        default:                    // Cancel
+        default:   // Cancel
             return;
         }
     } else {
         performCheckout(branchName, CheckoutMode::Normal);
     }
-} 
+}
