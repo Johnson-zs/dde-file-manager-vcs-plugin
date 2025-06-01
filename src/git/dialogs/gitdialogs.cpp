@@ -73,6 +73,13 @@ void GitDialogManager::showLogDialog(const QString &repositoryPath, const QStrin
     qDebug() << "[GitDialogManager] Opened log dialog for file:" << filePath;
 }
 
+void GitDialogManager::showLogDialog(const QString &repositoryPath, const QString &filePath, const QString &initialBranch, QWidget *parent)
+{
+    auto *dialog = new GitLogDialog(repositoryPath, filePath, initialBranch, parent);
+    dialog->show();
+    qDebug() << "[GitDialogManager] Opened log dialog for file:" << filePath << "with initial branch:" << initialBranch;
+}
+
 void GitDialogManager::showBlameDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent)
 {
     auto *dialog = new GitBlameDialog(repositoryPath, filePath, parent);

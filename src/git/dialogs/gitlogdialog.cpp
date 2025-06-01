@@ -28,6 +28,7 @@ GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePat
     : QDialog(parent),
       m_repositoryPath(repositoryPath),
       m_filePath(filePath),
+      m_initialBranch(),  // 初始化为空字符串
       m_branchCombo(nullptr),
       m_searchEdit(nullptr),
       m_refreshButton(nullptr),
@@ -54,6 +55,53 @@ GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePat
       m_enableChangeStats(true)  // 默认启用改动统计
 {
     qInfo() << "INFO: [GitLogDialog] Initializing GitKraken-style log dialog for repository:" << repositoryPath;
+    
+    setupUI();
+    setupContextMenus();
+    setupInfiniteScroll();
+    
+    // 安装事件过滤器来捕获文件列表的键盘事件
+    m_changedFilesTree->installEventFilter(this);
+    
+    // 加载数据
+    loadBranches();
+    loadCommitHistory();
+    
+    qInfo() << "INFO: [GitLogDialog] GitKraken-style log dialog initialized successfully";
+}
+
+GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePath, const QString &initialBranch, QWidget *parent)
+    : QDialog(parent),
+      m_repositoryPath(repositoryPath),
+      m_filePath(filePath),
+      m_initialBranch(initialBranch),
+      m_branchCombo(nullptr),
+      m_searchEdit(nullptr),
+      m_refreshButton(nullptr),
+      m_settingsButton(nullptr),
+      m_mainSplitter(nullptr),
+      m_rightSplitter(nullptr),
+      m_commitTree(nullptr),
+      m_commitScrollBar(nullptr),
+      m_commitDetails(nullptr),
+      m_changedFilesTree(nullptr),
+      m_diffView(nullptr),
+      m_diffHighlighter(nullptr),
+      m_commitContextMenu(nullptr),
+      m_fileContextMenu(nullptr),
+      m_isLoadingMore(false),
+      m_currentOffset(0),
+      m_loadTimer(nullptr),
+      m_searchTimer(nullptr),
+      m_isSearching(false),
+      m_searchLoadingMore(false),
+      m_searchTotalFound(0),
+      m_searchStatusLabel(nullptr),
+      m_currentPreviewDialog(nullptr),
+      m_enableChangeStats(true)  // 默认启用改动统计
+{
+    qInfo() << "INFO: [GitLogDialog] Initializing GitKraken-style log dialog for repository:" << repositoryPath 
+            << "with initial branch:" << initialBranch;
     
     setupUI();
     setupContextMenus();
@@ -493,6 +541,17 @@ void GitLogDialog::loadBranches()
     QString output = QString::fromUtf8(process.readAllStandardOutput());
     QStringList branches = output.split('\n', Qt::SkipEmptyParts);
     
+    // 获取所有标签
+    QStringList tagArgs;
+    tagArgs << "tag" << "-l";
+    
+    process.start("git", tagArgs);
+    QStringList tags;
+    if (process.waitForFinished(5000)) {
+        QString tagOutput = QString::fromUtf8(process.readAllStandardOutput());
+        tags = tagOutput.split('\n', Qt::SkipEmptyParts);
+    }
+    
     m_branchCombo->clear();
     
     // 如果有当前分支，设为默认选项
@@ -510,7 +569,29 @@ void GitLogDialog::loadBranches()
         }
     }
     
-    qDebug() << "[GitLogDialog] Loaded" << branches.size() << "branches, current branch:" << currentBranch;
+    // 添加标签选项（如果有的话）
+    if (!tags.isEmpty()) {
+        m_branchCombo->insertSeparator(m_branchCombo->count());
+        for (const QString &tag : tags) {
+            QString cleanTag = tag.trimmed();
+            if (!cleanTag.isEmpty()) {
+                m_branchCombo->addItem(QString("🏷 %1 (tag)").arg(cleanTag), cleanTag);
+            }
+        }
+    }
+    
+    // 如果指定了初始分支，设置为选中状态
+    if (!m_initialBranch.isEmpty()) {
+        int index = m_branchCombo->findData(m_initialBranch);
+        if (index >= 0) {
+            m_branchCombo->setCurrentIndex(index);
+            qDebug() << "[GitLogDialog] Set initial branch/tag to:" << m_initialBranch;
+        } else {
+            qWarning() << "WARNING: [GitLogDialog] Initial branch/tag not found in combo box:" << m_initialBranch;
+        }
+    }
+    
+    qDebug() << "[GitLogDialog] Loaded" << branches.size() << "branches and" << tags.size() << "tags, current branch:" << currentBranch;
 }
 
 // === 槽函数实现 ===

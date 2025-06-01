@@ -213,8 +213,6 @@ void GitCheckoutDialog::setupContextMenus()
     m_branchContextMenu->addAction(tr("Compare with Current"), this, &GitCheckoutDialog::compareWithCurrent);
     m_branchContextMenu->addSeparator();
     m_branchContextMenu->addAction(tr("Create Tag Here"), this, &GitCheckoutDialog::createTagFromSelected);
-    m_branchContextMenu->addSeparator();
-    m_branchContextMenu->addAction(tr("Delete Branch"), this, &GitCheckoutDialog::deleteSelectedBranch);
 
     // 远程分支右键菜单
     m_remoteBranchContextMenu = new QMenu(this);
@@ -231,7 +229,7 @@ void GitCheckoutDialog::setupContextMenus()
     m_tagContextMenu->addAction(tr("Checkout Tag"), this, &GitCheckoutDialog::checkoutSelected);
     m_tagContextMenu->addAction(tr("Checkout as New Branch"), this, &GitCheckoutDialog::newBranchFromSelected);
     m_tagContextMenu->addSeparator();
-    m_tagContextMenu->addAction(tr("Show Log"), this, &GitCheckoutDialog::showBranchLog);
+    m_tagContextMenu->addAction(tr("Show History from Tag"), this, &GitCheckoutDialog::showBranchLog);
     m_tagContextMenu->addSeparator();
     m_tagContextMenu->addAction(tr("Push Tag"), this, &GitCheckoutDialog::pushTag);
     m_tagContextMenu->addAction(tr("Delete Tag"), this, &GitCheckoutDialog::deleteTag);
@@ -769,8 +767,8 @@ void GitCheckoutDialog::showBranchLog()
 
     qDebug() << "[GitCheckoutDialog] Show log for branch:" << selectedBranch;
 
-    // 使用 GitDialogManager 显示分支日志
-    GitDialogManager::instance()->showLogDialog(m_repositoryPath, this);
+    // 使用 GitDialogManager 显示分支日志，传递选中的分支作为初始分支
+    GitDialogManager::instance()->showLogDialog(m_repositoryPath, QString(), selectedBranch, this);
 }
 
 void GitCheckoutDialog::compareWithCurrent()

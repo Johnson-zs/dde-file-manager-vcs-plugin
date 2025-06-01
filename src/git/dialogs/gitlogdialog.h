@@ -53,6 +53,7 @@ class GitLogDialog : public QDialog
 
 public:
     explicit GitLogDialog(const QString &repositoryPath, const QString &filePath = QString(), QWidget *parent = nullptr);
+    explicit GitLogDialog(const QString &repositoryPath, const QString &filePath, const QString &initialBranch, QWidget *parent = nullptr);
     ~GitLogDialog();
 
 protected:
@@ -154,6 +155,7 @@ private:
     // === 成员变量 ===
     QString m_repositoryPath;
     QString m_filePath;
+    QString m_initialBranch;  // 初始要显示的分支
 
     // === UI组件 ===
     // 工具栏
