@@ -66,6 +66,7 @@ private Q_SLOTS:
     void onBranchChanged();
     void onSearchTextChanged();
     void onScrollValueChanged(int value);
+    void onSettingsClicked();
 
     // === 文件操作 ===
     void onFileSelectionChanged();
@@ -122,6 +123,10 @@ private:
     void loadFileDiff(const QString &commitHash, const QString &filePath);
     void loadMoreCommitsIfNeeded();
     void populateFilesList(const QStringList &fileLines);
+    void loadFileChangeStats(const QString &commitHash);
+    void updateFileChangeStats(const QStringList &statLines);
+    void updateCommitSummaryStats(const QStringList &statLines);
+    void clearLoadingStats();
 
     // === 搜索和过滤 ===
     void filterCommits(const QString &searchText);
@@ -140,6 +145,9 @@ private:
     void refreshAfterOperation();
     QIcon getFileStatusIcon(const QString &status) const;
     QString getFileStatusText(const QString &status) const;
+    QString formatChangeStats(int additions, int deletions) const;
+    QString formatCommitSummaryStats(int filesChanged, int additions, int deletions) const;
+    void setChangeStatsColor(QTreeWidgetItem *item, int additions, int deletions) const;
     void applyDiffSyntaxHighlighting();
     void checkIfNeedMoreCommits();
 
@@ -223,6 +231,9 @@ private:
     
     // === 文件预览 ===
     GitFilePreviewDialog *m_currentPreviewDialog;  // 当前打开的预览对话框
+    
+    // === 功能控制选项 ===
+    bool m_enableChangeStats;  // 是否启用改动统计功能
 };
 
 /**

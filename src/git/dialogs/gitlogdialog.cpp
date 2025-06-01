@@ -50,7 +50,8 @@ GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePat
       m_searchLoadingMore(false),
       m_searchTotalFound(0),
       m_searchStatusLabel(nullptr),
-      m_currentPreviewDialog(nullptr)
+      m_currentPreviewDialog(nullptr),
+      m_enableChangeStats(true)  // 默认启用改动统计
 {
     qInfo() << "INFO: [GitLogDialog] Initializing GitKraken-style log dialog for repository:" << repositoryPath;
     
@@ -140,6 +141,8 @@ void GitLogDialog::setupUI()
             this, &GitLogDialog::onSearchTextChanged);
     connect(m_refreshButton, &QPushButton::clicked,
             this, &GitLogDialog::onRefreshClicked);
+    connect(m_settingsButton, &QPushButton::clicked,
+            this, &GitLogDialog::onSettingsClicked);
     
     mainLayout->addLayout(toolbarLayout);
     mainLayout->addWidget(m_mainSplitter);
@@ -215,6 +218,9 @@ void GitLogDialog::setupCommitDetails()
     m_commitDetails->setMaximumHeight(200);
     m_commitDetails->setFont(QFont("Consolas", 9));
     m_commitDetails->setPlainText(tr("Select a commit to view details..."));
+    
+    // 启用HTML支持以显示彩色文本
+    m_commitDetails->setAcceptRichText(true);
     
     // 设置样式
     m_commitDetails->setStyleSheet(
@@ -790,6 +796,10 @@ void GitLogDialog::loadCommitFiles(const QString &commitHash)
     // 检查缓存
     if (m_commitFilesCache.contains(commitHash)) {
         populateFilesList(m_commitFilesCache[commitHash]);
+        // 即使从缓存加载，也要加载统计信息（如果启用了的话）
+        if (m_enableChangeStats) {
+            loadFileChangeStats(commitHash);
+        }
         return;
     }
     
@@ -809,6 +819,11 @@ void GitLogDialog::loadCommitFiles(const QString &commitHash)
         
         m_commitFilesCache[commitHash] = lines;
         populateFilesList(lines);
+        
+        // 异步加载文件改动统计（如果启用了的话）
+        if (m_enableChangeStats) {
+            loadFileChangeStats(commitHash);
+        }
     } else {
         m_changedFilesTree->clear();
     }
@@ -837,10 +852,298 @@ void GitLogDialog::populateFilesList(const QStringList &fileLines)
             item->setData(1, Qt::UserRole, filePath);
             item->setToolTip(1, filePath);
             
-            // Changes列 - 稍后通过diff统计获取
-            item->setText(2, "");
+            // Changes列 - 根据设置决定是否显示Loading
+            if (m_enableChangeStats) {
+                item->setText(2, tr("Loading..."));
+                item->setData(2, Qt::UserRole, "loading");
+            } else {
+                item->setText(2, tr("Disabled"));
+                item->setData(2, Qt::UserRole, "disabled");
+                item->setForeground(2, QBrush(QColor(128, 128, 128)));
+                item->setToolTip(2, tr("Change statistics disabled. Enable in Settings."));
+            }
         }
     }
+}
+
+void GitLogDialog::loadFileChangeStats(const QString &commitHash)
+{
+    // 添加调试信息
+    qDebug() << "[GitLogDialog] Starting loadFileChangeStats for commit:" << commitHash.left(8);
+    qDebug() << "[GitLogDialog] Current file tree item count:" << m_changedFilesTree->topLevelItemCount();
+    
+    // 设置一个备用定时器，确保Loading状态最终会被清除
+    QTimer::singleShot(8000, this, [this, commitHash]() {
+        qWarning() << "WARNING: [GitLogDialog] Backup timer triggered for commit:" << commitHash.left(8);
+        clearLoadingStats();
+    });
+    
+    QProcess process;
+    process.setWorkingDirectory(m_repositoryPath);
+    
+    QStringList args;
+    args << "show"
+         << "--numstat"
+         << "--format="
+         << commitHash;
+    
+    qDebug() << "[GitLogDialog] Loading file change stats with args:" << args;
+    
+    process.start("git", args);
+    if (process.waitForFinished(5000)) {
+        if (process.exitCode() == 0) {
+            QString output = QString::fromUtf8(process.readAllStandardOutput());
+            QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+            
+            qDebug() << "[GitLogDialog] Git numstat output lines count:" << lines.size();
+            for (const QString &line : lines) {
+                qDebug() << "[GitLogDialog] numstat line:" << line;
+            }
+            
+            // 检查是否有有效的统计数据
+            if (lines.isEmpty()) {
+                qWarning() << "WARNING: [GitLogDialog] No numstat data received for commit:" << commitHash.left(8);
+                clearLoadingStats();
+                return;
+            }
+            
+            // 解析numstat输出并更新文件列表
+            updateFileChangeStats(lines);
+            
+            // 同时更新commit汇总统计
+            updateCommitSummaryStats(lines);
+        } else {
+            QString errorOutput = QString::fromUtf8(process.readAllStandardError());
+            qWarning() << "WARNING: [GitLogDialog] Git command failed with exit code:" << process.exitCode()
+                       << "Error:" << errorOutput;
+            clearLoadingStats();
+        }
+    } else {
+        qWarning() << "WARNING: [GitLogDialog] Failed to load file change stats:" << process.errorString();
+        // 如果加载失败，清除"Loading..."文本
+        clearLoadingStats();
+    }
+}
+
+void GitLogDialog::updateFileChangeStats(const QStringList &statLines)
+{
+    qDebug() << "[GitLogDialog] Starting updateFileChangeStats with" << statLines.size() << "lines";
+    
+    // 创建文件路径到统计信息的映射
+    QHash<QString, QPair<int, int>> fileStats; // filePath -> (additions, deletions)
+    
+    for (const QString &line : statLines) {
+        if (line.trimmed().isEmpty()) continue;
+        
+        QStringList parts = line.split('\t');
+        if (parts.size() >= 3) {
+            QString additionsStr = parts[0];
+            QString deletionsStr = parts[1];
+            QString filePath = parts[2];
+            
+            // 处理二进制文件（显示为"-"）
+            int additions = (additionsStr == "-") ? 0 : additionsStr.toInt();
+            int deletions = (deletionsStr == "-") ? 0 : deletionsStr.toInt();
+            
+            fileStats[filePath] = qMakePair(additions, deletions);
+            qDebug() << "[GitLogDialog] Parsed stats for" << filePath << ":" << additions << "additions," << deletions << "deletions";
+        }
+    }
+    
+    qDebug() << "[GitLogDialog] Parsed" << fileStats.size() << "file stats";
+    
+    // 更新树形控件中的统计信息
+    int updatedCount = 0;
+    int totalItems = m_changedFilesTree->topLevelItemCount();
+    
+    for (int i = 0; i < totalItems; ++i) {
+        QTreeWidgetItem *item = m_changedFilesTree->topLevelItem(i);
+        QString filePath = item->data(1, Qt::UserRole).toString();
+        
+        qDebug() << "[GitLogDialog] Processing item" << i << "with file path:" << filePath;
+        
+        if (fileStats.contains(filePath)) {
+            QPair<int, int> stats = fileStats[filePath];
+            int additions = stats.first;
+            int deletions = stats.second;
+            
+            // 格式化显示统计信息，类似GitHub风格
+            QString statsText = formatChangeStats(additions, deletions);
+            item->setText(2, statsText);
+            item->setData(2, Qt::UserRole, "completed"); // 标记为已完成
+            
+            // 设置颜色样式
+            setChangeStatsColor(item, additions, deletions);
+            
+            updatedCount++;
+            qDebug() << "[GitLogDialog] Updated stats for" << filePath << ":" << statsText;
+        } else {
+            // 没有找到统计信息，可能是重命名或其他特殊情况
+            qWarning() << "WARNING: [GitLogDialog] No stats found for file:" << filePath;
+            qDebug() << "[GitLogDialog] Available file paths in stats:";
+            for (auto it = fileStats.begin(); it != fileStats.end(); ++it) {
+                qDebug() << "  -" << it.key();
+            }
+            
+            item->setText(2, "");
+            item->setData(2, Qt::UserRole, "completed");
+        }
+    }
+    
+    qInfo() << QString("INFO: [GitLogDialog] Updated stats for %1 out of %2 files")
+               .arg(updatedCount).arg(totalItems);
+    
+    // 确保清除任何剩余的Loading状态
+    clearLoadingStats();
+}
+
+void GitLogDialog::updateCommitSummaryStats(const QStringList &statLines)
+{
+    int totalAdditions = 0;
+    int totalDeletions = 0;
+    int filesChanged = 0;
+    
+    for (const QString &line : statLines) {
+        if (line.trimmed().isEmpty()) continue;
+        
+        QStringList parts = line.split('\t');
+        if (parts.size() >= 3) {
+            QString additionsStr = parts[0];
+            QString deletionsStr = parts[1];
+            
+            // 处理二进制文件（显示为"-"）
+            if (additionsStr != "-" && deletionsStr != "-") {
+                totalAdditions += additionsStr.toInt();
+                totalDeletions += deletionsStr.toInt();
+            }
+            filesChanged++;
+        }
+    }
+    
+    // 更新commit详情中的汇总统计
+    QString currentCommitHash = getCurrentSelectedCommitHash();
+    if (!currentCommitHash.isEmpty()) {
+        // 获取当前的commit详情（纯文本）
+        QString currentDetails = m_commitDetailsCache.value(currentCommitHash, "");
+        
+        // 创建汇总统计信息
+        QString summaryStats = formatCommitSummaryStats(filesChanged, totalAdditions, totalDeletions);
+        
+        // 组合HTML内容
+        QString htmlContent = summaryStats + 
+                             "<hr style='border: 1px solid #ccc; margin: 10px 0;'>" +
+                             "<pre style='font-family: Consolas, monospace; font-size: 9pt; margin: 0;'>" +
+                             currentDetails.toHtmlEscaped() + "</pre>";
+        
+        m_commitDetails->setHtml(htmlContent);
+        
+        qInfo() << QString("INFO: [GitLogDialog] Commit summary: %1 files, +%2 -%3")
+                   .arg(filesChanged).arg(totalAdditions).arg(totalDeletions);
+    }
+}
+
+QString GitLogDialog::formatCommitSummaryStats(int filesChanged, int additions, int deletions) const
+{
+    QString result = "<div style='font-family: Arial, sans-serif; font-size: 10pt; margin-bottom: 8px;'>";
+    result += "<b>📊 Commit Summary:</b><br>";
+    result += QString("Files changed: <b>%1</b><br>").arg(filesChanged);
+    
+    if (additions > 0 || deletions > 0) {
+        result += "Changes: ";
+        if (additions > 0) {
+            result += QString("<span style='color: #28a745; font-weight: bold;'>+%1</span>").arg(additions);
+        }
+        if (deletions > 0) {
+            if (additions > 0) {
+                result += " ";
+            }
+            result += QString("<span style='color: #dc3545; font-weight: bold;'>-%1</span>").arg(deletions);
+        }
+        result += "<br>";
+    } else {
+        result += "No line changes<br>";
+    }
+    
+    result += "</div>";
+    return result;
+}
+
+QString GitLogDialog::formatChangeStats(int additions, int deletions) const
+{
+    if (additions == 0 && deletions == 0) {
+        return tr("No changes");
+    }
+    
+    QString result;
+    if (additions > 0) {
+        result += QString("+%1").arg(additions);
+    }
+    if (deletions > 0) {
+        if (!result.isEmpty()) {
+            result += " ";
+        }
+        result += QString("-%1").arg(deletions);
+    }
+    
+    return result;
+}
+
+void GitLogDialog::setChangeStatsColor(QTreeWidgetItem *item, int additions, int deletions) const
+{
+    if (!item) return;
+    
+    // 根据改动类型设置颜色
+    QColor textColor;
+    if (additions > 0 && deletions == 0) {
+        // 只有新增：绿色
+        textColor = QColor(0, 128, 0);
+    } else if (additions == 0 && deletions > 0) {
+        // 只有删除：红色
+        textColor = QColor(128, 0, 0);
+    } else if (additions > 0 && deletions > 0) {
+        // 既有新增又有删除：橙色
+        textColor = QColor(255, 140, 0);
+    } else {
+        // 无改动：灰色
+        textColor = QColor(128, 128, 128);
+    }
+    
+    item->setForeground(2, QBrush(textColor));
+    
+    // 设置工具提示
+    QString tooltip;
+    if (additions > 0 || deletions > 0) {
+        tooltip = tr("Lines added: %1, Lines deleted: %2").arg(additions).arg(deletions);
+    } else {
+        tooltip = tr("No line changes");
+    }
+    item->setToolTip(2, tooltip);
+}
+
+void GitLogDialog::clearLoadingStats()
+{
+    int clearedCount = 0;
+    int totalItems = m_changedFilesTree->topLevelItemCount();
+    
+    qDebug() << "[GitLogDialog] clearLoadingStats: checking" << totalItems << "items";
+    
+    for (int i = 0; i < totalItems; ++i) {
+        QTreeWidgetItem *item = m_changedFilesTree->topLevelItem(i);
+        QString status = item->data(2, Qt::UserRole).toString();
+        QString text = item->text(2);
+        
+        qDebug() << "[GitLogDialog] Item" << i << "- status:" << status << "text:" << text;
+        
+        if (status == "loading" || text == tr("Loading...")) {
+            item->setText(2, "");
+            item->setData(2, Qt::UserRole, "cleared");
+            clearedCount++;
+            qDebug() << "[GitLogDialog] Cleared loading status for item" << i;
+        }
+    }
+    
+    qInfo() << QString("INFO: [GitLogDialog] Cleared loading status for %1 out of %2 files")
+               .arg(clearedCount).arg(totalItems);
 }
 
 void GitLogDialog::loadFileDiff(const QString &commitHash, const QString &filePath)
@@ -1016,13 +1319,6 @@ void GitLogDialog::setupFileContextMenu()
     
     m_fileContextMenu->addSeparator();
     
-    // === 文件预览操作 ===
-    auto *previewFileAction = m_fileContextMenu->addAction(
-        QIcon::fromTheme("document-preview"), tr("Preview File"));
-    previewFileAction->setToolTip(tr("Quick preview file content (Space key)"));
-    
-    m_fileContextMenu->addSeparator();
-    
     // === 文件管理操作 ===
     m_openFileAction = m_fileContextMenu->addAction(
         QIcon::fromTheme("document-open"), tr("Open File"));
@@ -1042,7 +1338,6 @@ void GitLogDialog::setupFileContextMenu()
     connect(m_showFileDiffAction, &QAction::triggered, this, &GitLogDialog::showFileDiff);
     connect(m_showFileHistoryAction, &QAction::triggered, this, &GitLogDialog::showFileHistory);
     connect(m_showFileBlameAction, &QAction::triggered, this, &GitLogDialog::showFileBlame);
-    connect(previewFileAction, &QAction::triggered, this, &GitLogDialog::previewSelectedFile);
     connect(m_openFileAction, &QAction::triggered, this, &GitLogDialog::openFile);
     connect(m_showFolderAction, &QAction::triggered, this, &GitLogDialog::showInFolder);
     connect(m_copyFilePathAction, &QAction::triggered, this, &GitLogDialog::copyFilePath);
@@ -1541,4 +1836,56 @@ void GitLogDialog::previewSelectedFile()
     
     qInfo() << "INFO: [GitLogDialog] Opened file preview for:" << filePath 
             << "at commit:" << commitHash.left(8);
+}
+
+void GitLogDialog::onSettingsClicked()
+{
+    QMenu settingsMenu(this);
+    
+    // 改动统计选项
+    QAction *changeStatsAction = settingsMenu.addAction(tr("Enable Change Statistics"));
+    changeStatsAction->setCheckable(true);
+    changeStatsAction->setChecked(m_enableChangeStats);
+    changeStatsAction->setToolTip(tr("Show/hide file change statistics (+/-) in the file list"));
+    
+    connect(changeStatsAction, &QAction::triggered, this, [this](bool enabled) {
+        m_enableChangeStats = enabled;
+        qInfo() << "INFO: [GitLogDialog] Change statistics" << (enabled ? "enabled" : "disabled");
+        
+        // 如果启用了统计，重新加载当前commit的统计信息
+        if (enabled) {
+            QString currentCommit = getCurrentSelectedCommitHash();
+            if (!currentCommit.isEmpty()) {
+                // 重新填充文件列表以显示Loading状态
+                if (m_commitFilesCache.contains(currentCommit)) {
+                    populateFilesList(m_commitFilesCache[currentCommit]);
+                    loadFileChangeStats(currentCommit);
+                }
+            }
+        } else {
+            // 如果禁用了统计，更新当前显示
+            QString currentCommit = getCurrentSelectedCommitHash();
+            if (!currentCommit.isEmpty() && m_commitFilesCache.contains(currentCommit)) {
+                populateFilesList(m_commitFilesCache[currentCommit]);
+            }
+        }
+    });
+    
+    settingsMenu.addSeparator();
+    
+    // 其他设置选项可以在这里添加
+    QAction *aboutAction = settingsMenu.addAction(tr("About"));
+    connect(aboutAction, &QAction::triggered, this, [this]() {
+        QMessageBox::information(this, tr("About Git Log Dialog"),
+            tr("Git Log Dialog with GitHub-style change statistics\n\n"
+               "Features:\n"
+               "• File change statistics (+/-)\n"
+               "• Commit summary statistics\n"
+               "• Right-click context menus\n"
+               "• Space key file preview\n"
+               "• Infinite scroll loading\n"
+               "• Search and filtering"));
+    });
+    
+    settingsMenu.exec(m_settingsButton->mapToGlobal(QPoint(0, m_settingsButton->height())));
 } 
