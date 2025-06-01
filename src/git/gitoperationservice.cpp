@@ -494,7 +494,7 @@ bool GitOperationService::testRemoteConnection(const QString &repositoryPath, co
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "ls-remote";
-    cmd.arguments = QStringList() << "--heads" << remoteName;
+    cmd.arguments = QStringList() << "ls-remote" << "--heads" << remoteName;
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 10000; // 10秒超时
     
@@ -522,7 +522,7 @@ QStringList GitOperationService::getRemotes(const QString &repositoryPath)
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "remote";
-    cmd.arguments = QStringList();
+    cmd.arguments = QStringList() << "remote";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
@@ -543,7 +543,7 @@ QStringList GitOperationService::getLocalBranches(const QString &repositoryPath)
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList();
+    cmd.arguments = QStringList() << "branch";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
@@ -575,7 +575,7 @@ QStringList GitOperationService::getRemoteBranches(const QString &repositoryPath
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "-r";
+    cmd.arguments = QStringList() << "branch" << "-r";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
@@ -611,7 +611,7 @@ QString GitOperationService::getCurrentBranch(const QString &repositoryPath)
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "--show-current";
+    cmd.arguments = QStringList() << "branch" << "--show-current";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
@@ -632,7 +632,7 @@ QStringList GitOperationService::getUnpushedCommits(const QString &repositoryPat
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "log";
-    cmd.arguments = QStringList() << "--oneline" << "--no-merges" << (remoteBranch + "..HEAD");
+    cmd.arguments = QStringList() << "log" << "--oneline" << "--no-merges" << (remoteBranch + "..HEAD");
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 10000;
 
@@ -644,7 +644,7 @@ QStringList GitOperationService::getUnpushedCommits(const QString &repositoryPat
     
     // 如果没有找到远程分支，可能是新分支，返回所有本地提交
     if (error.contains("unknown revision")) {
-        cmd.arguments = QStringList() << "--oneline" << "--no-merges";
+        cmd.arguments = QStringList() << "log" << "--oneline" << "--no-merges";
         result = executor.executeCommand(cmd, output, error);
         if (result == GitCommandExecutor::Result::Success) {
             return output.split('\n', Qt::SkipEmptyParts);
@@ -662,7 +662,7 @@ QStringList GitOperationService::getRemoteUpdates(const QString &repositoryPath,
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "log";
-    cmd.arguments = QStringList() << "--oneline" << "--no-merges" << ("HEAD.." + remoteBranch);
+    cmd.arguments = QStringList() << "log" << "--oneline" << "--no-merges" << ("HEAD.." + remoteBranch);
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 10000;
 
@@ -683,7 +683,7 @@ bool GitOperationService::hasLocalChanges(const QString &repositoryPath)
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "status";
-    cmd.arguments = QStringList() << "--porcelain";
+    cmd.arguments = QStringList() << "status" << "--porcelain";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
@@ -704,7 +704,7 @@ bool GitOperationService::hasUncommittedChanges(const QString &repositoryPath)
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "status";
-    cmd.arguments = QStringList() << "--porcelain";
+    cmd.arguments = QStringList() << "status" << "--porcelain";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 

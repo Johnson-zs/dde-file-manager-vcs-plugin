@@ -283,7 +283,7 @@ void GitPullDialog::loadRemotes()
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "remote";
-    cmd.arguments = QStringList();
+    cmd.arguments = QStringList() << "remote";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
@@ -318,7 +318,7 @@ void GitPullDialog::loadBranches()
     // 获取当前分支
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "--show-current";
+    cmd.arguments = QStringList() << "branch" << "--show-current";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
@@ -352,7 +352,7 @@ void GitPullDialog::loadRemoteBranches()
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "-r";
+    cmd.arguments = QStringList() << "branch" << "-r";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
@@ -395,7 +395,7 @@ void GitPullDialog::checkLocalChanges()
     // 检查工作区状态
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "status";
-    cmd.arguments = QStringList() << "--porcelain";
+    cmd.arguments = QStringList() << "status" << "--porcelain";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 

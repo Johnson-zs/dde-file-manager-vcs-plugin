@@ -277,7 +277,8 @@ void GitPushDialog::loadRemotes()
 
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "remote";
-    cmd.arguments = QStringList() << "-v";
+    cmd.arguments = QStringList() << "remote"
+                                  << "-v";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
@@ -325,7 +326,7 @@ void GitPushDialog::loadBranches()
     // 加载本地分支
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList();
+    cmd.arguments = QStringList() << "branch";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
@@ -376,7 +377,8 @@ void GitPushDialog::loadRemoteBranches()
 
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "-r";
+    cmd.arguments = QStringList() << "branch"
+                                  << "-r";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
@@ -426,7 +428,8 @@ void GitPushDialog::loadUnpushedCommits()
 
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "log";
-    cmd.arguments = QStringList() << "--oneline"
+    cmd.arguments = QStringList() << "log"
+                                  << "--oneline"
                                   << "--no-merges"
                                   << (remoteBranch + ".." + m_currentBranch);
     cmd.workingDirectory = m_repositoryPath;

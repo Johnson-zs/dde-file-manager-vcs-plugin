@@ -252,7 +252,7 @@ void GitRemoteManager::loadRemotes()
     
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "remote";
-    cmd.arguments = QStringList() << "-v";
+    cmd.arguments = QStringList() << "remote" << "-v";
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
