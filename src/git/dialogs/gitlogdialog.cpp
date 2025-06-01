@@ -1278,7 +1278,6 @@ QString GitLogDialog::formatCommitSummaryStats(int filesChanged, int additions, 
             }
             result += QString("<span style='color: #dc3545; font-weight: bold;'>-%1</span>").arg(deletions);
         }
-        result += "<br>";
     } else {
         result += "No line changes<br>";
     }
