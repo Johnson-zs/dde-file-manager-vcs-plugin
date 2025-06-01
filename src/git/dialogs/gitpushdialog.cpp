@@ -672,23 +672,26 @@ void GitPushDialog::onPushCompleted(bool success, const QString &message)
         qInfo() << "INFO: [GitPushDialog::onPushCompleted] Push completed successfully";
 
         if (isDryRun) {
+            // Dry run成功时显示结果信息
             QMessageBox::information(this, tr("Dry Run Successful"),
                                      tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
         } else {
-            QMessageBox::information(this, tr("Push Successful"),
-                                     tr("Push operation completed successfully.\n\n%1").arg(message));
+            // 实际push成功时直接关闭对话框，不显示弹窗
+            qInfo() << "INFO: [GitPushDialog::onPushCompleted] Push operation completed successfully, closing dialog";
 
-            // 刷新状态（仅在实际push后）
+            // 显示成功状态
+            m_progressLabel->setText(tr("Push completed successfully!"));
+            m_progressLabel->setStyleSheet("color: #4CAF50; font-weight: bold;");
+            m_progressLabel->setVisible(true);
+
+            // 刷新状态
             loadUnpushedCommits();
             updateRepositoryStatus();
 
-            // 可选择关闭对话框
-            if (QMessageBox::question(this, tr("Push Complete"),
-                                      tr("Push completed successfully. Close dialog?"),
-                                      QMessageBox::Yes | QMessageBox::No)
-                == QMessageBox::Yes) {
+            // 延迟1.5秒后关闭对话框，让用户看到成功提示
+            QTimer::singleShot(1500, this, [this]() {
                 accept();
-            }
+            });
         }
     } else {
         qWarning() << "WARNING: [GitPushDialog::onPushCompleted] Push failed:" << message;

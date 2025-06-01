@@ -645,45 +645,48 @@ void GitPullDialog::executePullWithOptions(const PullOptions &options)
 void GitPullDialog::onPullCompleted(bool success, const QString &message)
 {
     bool isDryRun = m_isDryRunInProgress;
-
+    
     m_isOperationInProgress = false;
     m_isDryRunInProgress = false;
     enableControls(true);
-
+    
     m_progressBar->setVisible(false);
     m_progressLabel->setVisible(false);
-
+    
     if (success) {
         qInfo() << "INFO: [GitPullDialog::onPullCompleted] Pull completed successfully";
-
+        
         if (isDryRun) {
-            QMessageBox::information(this, tr("Dry Run Successful"),
-                                     tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
+            // Dry run成功时显示结果信息
+            QMessageBox::information(this, tr("Dry Run Successful"), 
+                                   tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
         } else {
-            QMessageBox::information(this, tr("Pull Successful"),
-                                     tr("Pull operation completed successfully.\n\n%1").arg(message));
-
-            // 刷新状态（仅在实际pull后）
+            // 实际pull成功时直接关闭对话框，不显示弹窗
+            qInfo() << "INFO: [GitPullDialog::onPullCompleted] Pull operation completed successfully, closing dialog";
+            
+            // 显示成功状态
+            m_progressLabel->setText(tr("Pull completed successfully!"));
+            m_progressLabel->setStyleSheet("color: #4CAF50; font-weight: bold;");
+            m_progressLabel->setVisible(true);
+            
+            // 刷新状态
             checkLocalChanges();
             updateLocalStatus();
-
-            // 可选择关闭对话框
-            if (QMessageBox::question(this, tr("Pull Complete"),
-                                      tr("Pull completed successfully. Close dialog?"),
-                                      QMessageBox::Yes | QMessageBox::No)
-                == QMessageBox::Yes) {
+            
+            // 延迟1.5秒后关闭对话框，让用户看到成功提示
+            QTimer::singleShot(1500, this, [this]() {
                 accept();
-            }
+            });
         }
     } else {
         qWarning() << "WARNING: [GitPullDialog::onPullCompleted] Pull failed:" << message;
-
+        
         if (isDryRun) {
-            QMessageBox::critical(this, tr("Dry Run Failed"),
-                                  tr("Dry run failed.\n\n%1").arg(message));
+            QMessageBox::critical(this, tr("Dry Run Failed"), 
+                                tr("Dry run failed.\n\n%1").arg(message));
         } else {
-            QMessageBox::critical(this, tr("Pull Failed"),
-                                  tr("Pull operation failed.\n\n%1").arg(message));
+            QMessageBox::critical(this, tr("Pull Failed"), 
+                                tr("Pull operation failed.\n\n%1").arg(message));
         }
     }
 }
