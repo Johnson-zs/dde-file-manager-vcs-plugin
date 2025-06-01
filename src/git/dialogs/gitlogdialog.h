@@ -31,6 +31,7 @@ class GitOperationDialog;
 class GitDialogManager;
 class LineNumberTextEdit;
 class GitFilePreviewDialog;
+class SearchableBranchSelector;
 
 /**
  * @brief Git提交历史查看器对话框 - GitKraken风格重构版本
@@ -46,6 +47,7 @@ class GitFilePreviewDialog;
  * - 智能无限滚动替代分页
  * - 实时搜索和分支切换
  * - 文件级操作和差异查看
+ * - 可搜索的分支/标签选择器
  */
 class GitLogDialog : public QDialog
 {
@@ -65,6 +67,7 @@ private Q_SLOTS:
     void onCommitSelectionChanged();
     void onRefreshClicked();
     void onBranchChanged();
+    void onBranchSelectorChanged(const QString &branchName);
     void onSearchTextChanged();
     void onScrollValueChanged(int value);
     void onSettingsClicked();
@@ -115,6 +118,7 @@ private:
     void setupCommitContextMenu();
     void setupFileContextMenu();
     void setupInfiniteScroll();
+    void setupBranchSelector();
 
     // === 数据加载方法 ===
     void loadCommitHistory(bool append = false);
@@ -159,7 +163,8 @@ private:
 
     // === UI组件 ===
     // 工具栏
-    QComboBox *m_branchCombo;
+    SearchableBranchSelector *m_branchSelector;
+    QComboBox *m_branchCombo;  // 保留作为备用，将被逐步替换
     QLineEdit *m_searchEdit;
     QPushButton *m_refreshButton;
     QPushButton *m_settingsButton;

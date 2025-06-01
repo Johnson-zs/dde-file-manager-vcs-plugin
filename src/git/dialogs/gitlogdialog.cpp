@@ -2,6 +2,7 @@
 #include "gitoperationdialog.h"
 #include "gitdialogs.h"
 #include "widgets/linenumbertextedit.h"
+#include "widgets/searchablebranchselector.h"
 #include "gitfilepreviewdialog.h"
 
 #include <QApplication>
@@ -63,9 +64,11 @@ GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePat
     // 安装事件过滤器来捕获文件列表的键盘事件
     m_changedFilesTree->installEventFilter(this);
     
-    // 加载数据
-    loadBranches();
-    loadCommitHistory();
+    // 异步加载数据，避免阻塞UI显示
+    QTimer::singleShot(0, this, [this]() {
+        loadBranches();
+        loadCommitHistory();
+    });
     
     qInfo() << "INFO: [GitLogDialog] GitKraken-style log dialog initialized successfully";
 }
@@ -110,9 +113,11 @@ GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePat
     // 安装事件过滤器来捕获文件列表的键盘事件
     m_changedFilesTree->installEventFilter(this);
     
-    // 加载数据
-    loadBranches();
-    loadCommitHistory();
+    // 异步加载数据，避免阻塞UI显示
+    QTimer::singleShot(0, this, [this]() {
+        loadBranches();
+        loadCommitHistory();
+    });
     
     qInfo() << "INFO: [GitLogDialog] GitKraken-style log dialog initialized successfully";
 }
@@ -144,12 +149,10 @@ void GitLogDialog::setupUI()
     auto *toolbarLayout = new QHBoxLayout;
     toolbarLayout->setSpacing(8);
 
-    // 分支选择
+    // 分支选择器 - 使用新的可搜索组件
     toolbarLayout->addWidget(new QLabel(tr("Branch:")));
-    m_branchCombo = new QComboBox;
-    m_branchCombo->setMinimumWidth(180);
-    m_branchCombo->setToolTip(tr("Select branch to view commit history"));
-    toolbarLayout->addWidget(m_branchCombo);
+    setupBranchSelector();
+    toolbarLayout->addWidget(m_branchSelector);
 
     toolbarLayout->addSpacing(16);
 
@@ -183,8 +186,6 @@ void GitLogDialog::setupUI()
     toolbarLayout->addStretch();
 
     // 连接信号
-    connect(m_branchCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &GitLogDialog::onBranchChanged);
     connect(m_searchEdit, &QLineEdit::textChanged,
             this, &GitLogDialog::onSearchTextChanged);
     connect(m_refreshButton, &QPushButton::clicked,
@@ -194,6 +195,24 @@ void GitLogDialog::setupUI()
     
     mainLayout->addLayout(toolbarLayout);
     mainLayout->addWidget(m_mainSplitter);
+}
+
+void GitLogDialog::setupBranchSelector()
+{
+    m_branchSelector = new SearchableBranchSelector;
+    m_branchSelector->setPlaceholderText(tr("Select branch or tag..."));
+    m_branchSelector->setMinimumWidth(300);
+    m_branchSelector->setToolTip(tr("Select branch or tag to view commit history"));
+    
+    // 连接信号
+    connect(m_branchSelector, &SearchableBranchSelector::selectionChanged,
+            this, &GitLogDialog::onBranchSelectorChanged);
+    connect(m_branchSelector, &SearchableBranchSelector::branchActivated,
+            this, &GitLogDialog::onBranchSelectorChanged);
+    connect(m_branchSelector, &SearchableBranchSelector::refreshRequested,
+            this, &GitLogDialog::onRefreshClicked);
+    
+    qDebug() << "[GitLogDialog] Searchable branch selector setup completed";
 }
 
 void GitLogDialog::setupMainLayout()
@@ -377,9 +396,11 @@ void GitLogDialog::loadCommitHistory(bool append)
         args << "--" << relativePath;
     }
     
-    // 如果选择了特定分支
-    QString currentBranch = m_branchCombo->currentData().toString();
-    if (!currentBranch.isEmpty() && currentBranch != "HEAD") {
+    // 如果选择了特定分支 - 使用新的分支选择器
+    QString currentBranch = m_branchSelector->getCurrentSelection();
+    if (!currentBranch.isEmpty() && 
+        currentBranch != "HEAD" && 
+        currentBranch != tr("All Branches")) {
         args.insert(1, currentBranch);
     }
     
@@ -499,8 +520,8 @@ void GitLogDialog::loadCommitHistory(bool append)
     m_currentOffset += loadedCount;
     m_isLoadingMore = false;
     
-    qInfo() << QString("INFO: [GitLogDialog] Loaded %1 commits (total offset: %2)")
-               .arg(loadedCount).arg(m_currentOffset);
+    qInfo() << QString("INFO: [GitLogDialog] Loaded %1 commits (total offset: %2) for branch: %3")
+               .arg(loadedCount).arg(m_currentOffset).arg(m_branchSelector->getCurrentSelection());
     
     // 如果是首次加载且有结果，选中第一项
     if (!append && m_commitTree->topLevelItemCount() > 0) {
@@ -539,7 +560,24 @@ void GitLogDialog::loadBranches()
     }
     
     QString output = QString::fromUtf8(process.readAllStandardOutput());
-    QStringList branches = output.split('\n', Qt::SkipEmptyParts);
+    QStringList allBranches = output.split('\n', Qt::SkipEmptyParts);
+    
+    // 分离本地和远程分支
+    QStringList localBranches;
+    QStringList remoteBranches;
+    
+    for (const QString &branch : allBranches) {
+        QString cleanBranch = branch.trimmed();
+        if (cleanBranch.isEmpty() || cleanBranch.startsWith("origin/HEAD")) {
+            continue;
+        }
+        
+        if (cleanBranch.startsWith("origin/") || cleanBranch.contains("/")) {
+            remoteBranches << cleanBranch;
+        } else {
+            localBranches << cleanBranch;
+        }
+    }
     
     // 获取所有标签
     QStringList tagArgs;
@@ -552,46 +590,61 @@ void GitLogDialog::loadBranches()
         tags = tagOutput.split('\n', Qt::SkipEmptyParts);
     }
     
-    m_branchCombo->clear();
+    // 更新可搜索分支选择器
+    m_branchSelector->setBranches(localBranches, remoteBranches, tags, currentBranch);
     
-    // 如果有当前分支，设为默认选项
-    if (!currentBranch.isEmpty()) {
-        m_branchCombo->addItem(QString("● %1 (current)").arg(currentBranch), currentBranch);
+    // 如果指定了初始分支，设置为选中状态
+    if (!m_initialBranch.isEmpty()) {
+        m_branchSelector->setCurrentSelection(m_initialBranch);
+        qDebug() << "[GitLogDialog] Set initial branch/tag to:" << m_initialBranch;
+    } else if (!currentBranch.isEmpty()) {
+        m_branchSelector->setCurrentSelection(currentBranch);
     }
     
-    // 添加所有分支选项
-    m_branchCombo->addItem(tr("All Branches"), "HEAD");
-    
-    for (const QString &branch : branches) {
-        QString cleanBranch = branch.trimmed();
-        if (!cleanBranch.isEmpty() && !cleanBranch.startsWith("origin/HEAD") && cleanBranch != currentBranch) {
-            m_branchCombo->addItem(cleanBranch, cleanBranch);
+    // 保留原有的ComboBox作为备用（可以在设置中切换）
+    if (m_branchCombo) {
+        m_branchCombo->clear();
+        
+        // 如果有当前分支，设为默认选项
+        if (!currentBranch.isEmpty()) {
+            m_branchCombo->addItem(QString("● %1 (current)").arg(currentBranch), currentBranch);
         }
-    }
-    
-    // 添加标签选项（如果有的话）
-    if (!tags.isEmpty()) {
-        m_branchCombo->insertSeparator(m_branchCombo->count());
-        for (const QString &tag : tags) {
-            QString cleanTag = tag.trimmed();
-            if (!cleanTag.isEmpty()) {
-                m_branchCombo->addItem(QString("🏷 %1 (tag)").arg(cleanTag), cleanTag);
+        
+        // 添加所有分支选项
+        m_branchCombo->addItem(tr("All Branches"), "HEAD");
+        
+        for (const QString &branch : localBranches) {
+            if (branch != currentBranch) {
+                m_branchCombo->addItem(branch, branch);
+            }
+        }
+        
+        for (const QString &branch : remoteBranches) {
+            m_branchCombo->addItem(branch, branch);
+        }
+        
+        // 添加标签选项（如果有的话）
+        if (!tags.isEmpty()) {
+            m_branchCombo->insertSeparator(m_branchCombo->count());
+            for (const QString &tag : tags) {
+                QString cleanTag = tag.trimmed();
+                if (!cleanTag.isEmpty()) {
+                    m_branchCombo->addItem(QString("🏷 %1 (tag)").arg(cleanTag), cleanTag);
+                }
+            }
+        }
+        
+        // 如果指定了初始分支，设置为选中状态
+        if (!m_initialBranch.isEmpty()) {
+            int index = m_branchCombo->findData(m_initialBranch);
+            if (index >= 0) {
+                m_branchCombo->setCurrentIndex(index);
             }
         }
     }
     
-    // 如果指定了初始分支，设置为选中状态
-    if (!m_initialBranch.isEmpty()) {
-        int index = m_branchCombo->findData(m_initialBranch);
-        if (index >= 0) {
-            m_branchCombo->setCurrentIndex(index);
-            qDebug() << "[GitLogDialog] Set initial branch/tag to:" << m_initialBranch;
-        } else {
-            qWarning() << "WARNING: [GitLogDialog] Initial branch/tag not found in combo box:" << m_initialBranch;
-        }
-    }
-    
-    qDebug() << "[GitLogDialog] Loaded" << branches.size() << "branches and" << tags.size() << "tags, current branch:" << currentBranch;
+    qInfo() << QString("INFO: [GitLogDialog] Loaded %1 local branches, %2 remote branches, %3 tags, current branch: %4")
+               .arg(localBranches.size()).arg(remoteBranches.size()).arg(tags.size()).arg(currentBranch);
 }
 
 // === 槽函数实现 ===
@@ -616,7 +669,23 @@ void GitLogDialog::onRefreshClicked()
 
 void GitLogDialog::onBranchChanged()
 {
-    qInfo() << "INFO: [GitLogDialog] Branch changed to:" << m_branchCombo->currentText();
+    // 保留原有的ComboBox处理逻辑作为备用
+    if (m_branchCombo) {
+        qInfo() << "INFO: [GitLogDialog] Branch changed to:" << m_branchCombo->currentText();
+        loadCommitHistory(false);
+    }
+}
+
+void GitLogDialog::onBranchSelectorChanged(const QString &branchName)
+{
+    qInfo() << "INFO: [GitLogDialog] Branch selector changed to:" << branchName;
+    
+    // 清空缓存，因为要切换到不同的分支
+    m_commitDetailsCache.clear();
+    m_commitFilesCache.clear();
+    m_fileDiffCache.clear();
+    
+    // 重新加载提交历史
     loadCommitHistory(false);
 }
 
@@ -2019,12 +2088,32 @@ void GitLogDialog::onSettingsClicked()
     
     settingsMenu.addSeparator();
     
+    // 分支选择器设置
+    QAction *showRemoteBranchesAction = settingsMenu.addAction(tr("Show Remote Branches"));
+    showRemoteBranchesAction->setCheckable(true);
+    showRemoteBranchesAction->setChecked(true); // 默认显示
+    connect(showRemoteBranchesAction, &QAction::triggered, this, [this](bool show) {
+        m_branchSelector->setShowRemoteBranches(show);
+        qInfo() << "INFO: [GitLogDialog] Remote branches" << (show ? "shown" : "hidden");
+    });
+    
+    QAction *showTagsAction = settingsMenu.addAction(tr("Show Tags"));
+    showTagsAction->setCheckable(true);
+    showTagsAction->setChecked(true); // 默认显示
+    connect(showTagsAction, &QAction::triggered, this, [this](bool show) {
+        m_branchSelector->setShowTags(show);
+        qInfo() << "INFO: [GitLogDialog] Tags" << (show ? "shown" : "hidden");
+    });
+    
+    settingsMenu.addSeparator();
+    
     // 其他设置选项可以在这里添加
     QAction *aboutAction = settingsMenu.addAction(tr("About"));
     connect(aboutAction, &QAction::triggered, this, [this]() {
         QMessageBox::information(this, tr("About Git Log Dialog"),
             tr("Git Log Dialog with GitHub-style change statistics\n\n"
                "Features:\n"
+               "• Searchable branch/tag selector\n"
                "• File change statistics (+/-)\n"
                "• Commit summary statistics\n"
                "• Right-click context menus\n"
