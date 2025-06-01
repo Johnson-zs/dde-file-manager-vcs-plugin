@@ -124,7 +124,7 @@ bool GitMenuBuilder::buildRepositoryMenuItems(DFMEXT::DFMExtMenu *main,
 
     // Git Commit（直接在主菜单中）
     auto commitAction = m_proxy->createAction();
-    commitAction->setText("Git Commit");
+    commitAction->setText("Git Commit...");
     commitAction->setIcon("vcs-commit");
     commitAction->setToolTip(QString("Commit staged changes to repository\nCurrent branch: %1").arg(branchName).toStdString());
     commitAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -216,7 +216,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     // Git Diff
     if (Utils::canShowFileDiff(filePath)) {
         auto diffAction = m_proxy->createAction();
-        diffAction->setText("Git Diff");
+        diffAction->setText("Git Diff...");
         diffAction->setIcon("vcs-diff");
         diffAction->setToolTip(QString("View changes in '%1'\nCurrent status: %2")
                                        .arg(fileName, statusText)
@@ -232,7 +232,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     // Git Log (for file)
     if (Utils::canShowFileLog(filePath)) {
         auto logAction = m_proxy->createAction();
-        logAction->setText("Git Log");
+        logAction->setText("Git Log...");
         logAction->setIcon("vcs-normal");
         logAction->setToolTip(QString("View commit history for '%1'\nCurrent status: %2")
                                       .arg(fileName, statusText)
@@ -249,7 +249,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     // Git Blame
     if (Utils::canShowFileBlame(filePath)) {
         auto blameAction = m_proxy->createAction();
-        blameAction->setText("Git Blame");
+        blameAction->setText("Git Blame...");
         blameAction->setIcon("vcs-annotation");
         blameAction->setToolTip(QString("View line-by-line authorship for '%1'\nCurrent status: %2")
                                         .arg(fileName, statusText)
@@ -270,7 +270,7 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
 
     // Git Log (for repository)
     auto repoLogAction = m_proxy->createAction();
-    repoLogAction->setText("Git Log");
+    repoLogAction->setText("Git Log...");
     repoLogAction->setIcon("vcs-normal");
     repoLogAction->setToolTip(QString("View repository commit history\nCurrent branch: %1").arg(branchName).toStdString());
     repoLogAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -287,7 +287,7 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
 
     // Git Status
     auto statusAction = m_proxy->createAction();
-    statusAction->setText("Git Status");
+    statusAction->setText("Git Status...");
     statusAction->setIcon("vcs-status");
     statusAction->setToolTip(QString("View repository status and pending changes\nCurrent branch: %1").arg(branchName).toStdString());
     statusAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
@@ -309,7 +309,7 @@ void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const
 
     // Git Checkout
     auto checkoutAction = m_proxy->createAction();
-    checkoutAction->setText("Git Checkout");
+    checkoutAction->setText("Git Checkout...");
     checkoutAction->setIcon("vcs-branch");
     checkoutAction->setToolTip(QString("Switch branches or create new branch\nCurrent branch: %1").arg(branchName).toStdString());
     checkoutAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {

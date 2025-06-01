@@ -99,10 +99,10 @@ void GitPushDialog::setupUI()
 
     // 修复布局添加问题
     auto *buttonWidget = new QWidget;
-    buttonWidget->setFixedHeight(50);  // 减少容器高度，让按钮有更多空间
+    buttonWidget->setFixedHeight(50);   // 减少容器高度，让按钮有更多空间
     auto *buttonLayout = new QHBoxLayout(buttonWidget);
     buttonLayout->setSpacing(6);
-    buttonLayout->setContentsMargins(0, 8, 0, 8);  // 增加上下边距，让按钮居中
+    buttonLayout->setContentsMargins(0, 8, 0, 8);   // 增加上下边距，让按钮居中
 
     // 远程管理按钮
     m_remoteManagerButton = new QPushButton(tr("Remote Manager"));
@@ -128,7 +128,7 @@ void GitPushDialog::setupUI()
     m_pushButton = new QPushButton(tr("Push"));
     m_pushButton->setIcon(QIcon(":/icons/vcs-push"));
     m_pushButton->setDefault(true);
-    m_pushButton->setStyleSheet("QPushButton { font-weight: bold; }");  // 移除自定义padding
+    m_pushButton->setStyleSheet("QPushButton { font-weight: bold; }");   // 移除自定义padding
 
     m_cancelButton = new QPushButton(tr("Cancel"));
     m_cancelButton->setIcon(QIcon(":/icons/dialog-cancel"));
@@ -676,20 +676,12 @@ void GitPushDialog::onPushCompleted(bool success, const QString &message)
             QMessageBox::information(this, tr("Dry Run Successful"),
                                      tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
         } else {
-            QMessageBox::information(this, tr("Push Successful"),
-                                     tr("Push operation completed successfully.\n\n%1").arg(message));
-
             // 刷新状态（仅在实际push后）
             loadUnpushedCommits();
             updateRepositoryStatus();
 
-            // 可选择关闭对话框
-            if (QMessageBox::question(this, tr("Push Complete"),
-                                      tr("Push completed successfully. Close dialog?"),
-                                      QMessageBox::Yes | QMessageBox::No)
-                == QMessageBox::Yes) {
-                accept();
-            }
+            // 关闭对话框
+            accept();
         }
     } else {
         qWarning() << "WARNING: [GitPushDialog::onPushCompleted] Push failed:" << message;
