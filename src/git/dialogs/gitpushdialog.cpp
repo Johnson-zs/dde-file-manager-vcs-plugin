@@ -99,9 +99,10 @@ void GitPushDialog::setupUI()
 
     // 修复布局添加问题
     auto *buttonWidget = new QWidget;
+    buttonWidget->setFixedHeight(50);  // 减少容器高度，让按钮有更多空间
     auto *buttonLayout = new QHBoxLayout(buttonWidget);
     buttonLayout->setSpacing(6);
-    buttonLayout->setContentsMargins(0, 0, 0, 0);
+    buttonLayout->setContentsMargins(0, 8, 0, 8);  // 增加上下边距，让按钮居中
 
     // 远程管理按钮
     m_remoteManagerButton = new QPushButton(tr("Remote Manager"));
@@ -127,7 +128,7 @@ void GitPushDialog::setupUI()
     m_pushButton = new QPushButton(tr("Push"));
     m_pushButton->setIcon(QIcon(":/icons/vcs-push"));
     m_pushButton->setDefault(true);
-    m_pushButton->setStyleSheet("QPushButton { font-weight: bold; padding: 6px 12px; }");
+    m_pushButton->setStyleSheet("QPushButton { font-weight: bold; }");  // 移除自定义padding
 
     m_cancelButton = new QPushButton(tr("Cancel"));
     m_cancelButton->setIcon(QIcon(":/icons/dialog-cancel"));
@@ -660,7 +661,7 @@ bool GitPushDialog::confirmForcePush()
 void GitPushDialog::onPushCompleted(bool success, const QString &message)
 {
     bool isDryRun = m_isDryRunInProgress;
-    
+
     m_isOperationInProgress = false;
     m_isDryRunInProgress = false;
     enableControls(true);
@@ -672,26 +673,23 @@ void GitPushDialog::onPushCompleted(bool success, const QString &message)
         qInfo() << "INFO: [GitPushDialog::onPushCompleted] Push completed successfully";
 
         if (isDryRun) {
-            // Dry run成功时显示结果信息
             QMessageBox::information(this, tr("Dry Run Successful"),
                                      tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
         } else {
-            // 实际push成功时直接关闭对话框，不显示弹窗
-            qInfo() << "INFO: [GitPushDialog::onPushCompleted] Push operation completed successfully, closing dialog";
+            QMessageBox::information(this, tr("Push Successful"),
+                                     tr("Push operation completed successfully.\n\n%1").arg(message));
 
-            // 显示成功状态
-            m_progressLabel->setText(tr("Push completed successfully!"));
-            m_progressLabel->setStyleSheet("color: #4CAF50; font-weight: bold;");
-            m_progressLabel->setVisible(true);
-
-            // 刷新状态
+            // 刷新状态（仅在实际push后）
             loadUnpushedCommits();
             updateRepositoryStatus();
 
-            // 延迟1.5秒后关闭对话框，让用户看到成功提示
-            QTimer::singleShot(1500, this, [this]() {
+            // 可选择关闭对话框
+            if (QMessageBox::question(this, tr("Push Complete"),
+                                      tr("Push completed successfully. Close dialog?"),
+                                      QMessageBox::Yes | QMessageBox::No)
+                == QMessageBox::Yes) {
                 accept();
-            });
+            }
         }
     } else {
         qWarning() << "WARNING: [GitPushDialog::onPushCompleted] Push failed:" << message;
@@ -728,7 +726,7 @@ void GitPushDialog::enableControls(bool enabled)
     m_previewButton->setEnabled(enabled);
     m_dryRunButton->setEnabled(enabled);
     m_pushButton->setEnabled(enabled);
-    
+
     // 在启用控件后，重新验证按钮状态
     if (enabled) {
         validatePushOptions();

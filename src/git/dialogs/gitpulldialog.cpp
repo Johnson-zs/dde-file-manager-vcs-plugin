@@ -49,7 +49,7 @@ void GitPullDialog::setupUI()
 {
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(8);
-    mainLayout->setContentsMargins(12, 12, 12, 12);
+    mainLayout->setContentsMargins(12, 12, 12, 6);
 
     // 创建主分割器
     auto *splitter = new QSplitter(Qt::Horizontal, this);
@@ -94,11 +94,12 @@ void GitPullDialog::setupUI()
 
     setupButtonGroup();
 
-    // 修复布局添加问题
+    // 优化按钮区域布局，保持按钮默认高度
     auto *buttonWidget = new QWidget;
+    buttonWidget->setFixedHeight(50);  // 减少容器高度，让按钮有更多空间
     auto *buttonLayout = new QHBoxLayout(buttonWidget);
     buttonLayout->setSpacing(6);
-    buttonLayout->setContentsMargins(0, 0, 0, 0);
+    buttonLayout->setContentsMargins(0, 8, 0, 8);  // 统一上下边距，让按钮居中
 
     // 远程管理按钮
     m_remoteManagerButton = new QPushButton(tr("Remote Manager"));
@@ -130,7 +131,7 @@ void GitPullDialog::setupUI()
     m_pullButton = new QPushButton(tr("Pull"));
     m_pullButton->setIcon(QIcon(":/icons/vcs-pull"));
     m_pullButton->setDefault(true);
-    m_pullButton->setStyleSheet("QPushButton { font-weight: bold; padding: 6px 12px; }");
+    m_pullButton->setStyleSheet("QPushButton { font-weight: bold; }");  // 移除自定义padding
 
     m_cancelButton = new QPushButton(tr("Cancel"));
     m_cancelButton->setIcon(QIcon(":/icons/dialog-cancel"));
@@ -645,34 +646,34 @@ void GitPullDialog::executePullWithOptions(const PullOptions &options)
 void GitPullDialog::onPullCompleted(bool success, const QString &message)
 {
     bool isDryRun = m_isDryRunInProgress;
-    
+
     m_isOperationInProgress = false;
     m_isDryRunInProgress = false;
     enableControls(true);
-    
+
     m_progressBar->setVisible(false);
     m_progressLabel->setVisible(false);
-    
+
     if (success) {
         qInfo() << "INFO: [GitPullDialog::onPullCompleted] Pull completed successfully";
-        
+
         if (isDryRun) {
             // Dry run成功时显示结果信息
-            QMessageBox::information(this, tr("Dry Run Successful"), 
-                                   tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
+            QMessageBox::information(this, tr("Dry Run Successful"),
+                                     tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
         } else {
             // 实际pull成功时直接关闭对话框，不显示弹窗
             qInfo() << "INFO: [GitPullDialog::onPullCompleted] Pull operation completed successfully, closing dialog";
-            
+
             // 显示成功状态
             m_progressLabel->setText(tr("Pull completed successfully!"));
             m_progressLabel->setStyleSheet("color: #4CAF50; font-weight: bold;");
             m_progressLabel->setVisible(true);
-            
+
             // 刷新状态
             checkLocalChanges();
             updateLocalStatus();
-            
+
             // 延迟1.5秒后关闭对话框，让用户看到成功提示
             QTimer::singleShot(1500, this, [this]() {
                 accept();
@@ -680,13 +681,13 @@ void GitPullDialog::onPullCompleted(bool success, const QString &message)
         }
     } else {
         qWarning() << "WARNING: [GitPullDialog::onPullCompleted] Pull failed:" << message;
-        
+
         if (isDryRun) {
-            QMessageBox::critical(this, tr("Dry Run Failed"), 
-                                tr("Dry run failed.\n\n%1").arg(message));
+            QMessageBox::critical(this, tr("Dry Run Failed"),
+                                  tr("Dry run failed.\n\n%1").arg(message));
         } else {
-            QMessageBox::critical(this, tr("Pull Failed"), 
-                                tr("Pull operation failed.\n\n%1").arg(message));
+            QMessageBox::critical(this, tr("Pull Failed"),
+                                  tr("Pull operation failed.\n\n%1").arg(message));
         }
     }
 }

@@ -20,7 +20,7 @@ class GitOperationService;
 
 /**
  * @brief 专业级Git推送对话框
- * 
+ *
  * 提供完整的Git推送功能，包括：
  * - 仓库状态概览和未推送提交显示
  * - 远程仓库选择和目标分支映射
@@ -39,27 +39,29 @@ public:
     /**
      * @brief Git推送选项配置
      */
-    struct PushOptions {
-        QString remoteName;           // 远程仓库名称
-        QString localBranch;          // 本地分支名称
-        QString remoteBranch;         // 远程分支名称
-        bool forceWithLease;          // 安全强制推送
-        bool pushTags;                // 推送标签
-        bool setUpstream;             // 设置上游分支
-        bool pushAllBranches;         // 推送所有分支
-        bool dryRun;                  // 预演模式
+    struct PushOptions
+    {
+        QString remoteName;   // 远程仓库名称
+        QString localBranch;   // 本地分支名称
+        QString remoteBranch;   // 远程分支名称
+        bool forceWithLease;   // 安全强制推送
+        bool pushTags;   // 推送标签
+        bool setUpstream;   // 设置上游分支
+        bool pushAllBranches;   // 推送所有分支
+        bool dryRun;   // 预演模式
     };
 
     /**
      * @brief 提交信息结构
      */
-    struct CommitInfo {
-        QString hash;                 // 提交哈希
-        QString shortHash;            // 短哈希
-        QString message;              // 提交消息
-        QString author;               // 作者
-        QDateTime timestamp;          // 时间戳
-        QStringList modifiedFiles;    // 修改的文件列表
+    struct CommitInfo
+    {
+        QString hash;   // 提交哈希
+        QString shortHash;   // 短哈希
+        QString message;   // 提交消息
+        QString author;   // 作者
+        QDateTime timestamp;   // 时间戳
+        QStringList modifiedFiles;   // 修改的文件列表
     };
 
 private slots:
@@ -157,4 +159,4 @@ private:
     QTimer *m_statusUpdateTimer;
 };
 
-#endif // GITPUSHDIALOG_H 
+#endif   // GITPUSHDIALOG_H
