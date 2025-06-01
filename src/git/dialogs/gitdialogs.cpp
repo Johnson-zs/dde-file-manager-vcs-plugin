@@ -8,6 +8,9 @@
 #include "gitbranchcompariondialog.h"
 #include "gitoperationdialog.h"
 #include "gitfilepreviewdialog.h"
+#include "gitpushdialog.h"
+#include "gitpulldialog.h"
+#include "gitremotemanager.h"
 
 #include <QDesktopServices>
 #include <QUrl>
@@ -239,4 +242,37 @@ GitFilePreviewDialog* GitDialogManager::showFilePreviewAtCommit(const QString &r
     auto *dialog = GitFilePreviewDialog::showFilePreviewAtCommit(repositoryPath, filePath, commitHash, parent);
     qDebug() << "[GitDialogManager] Opened file preview dialog for:" << filePath << "at commit:" << commitHash.left(8);
     return dialog;
+}
+
+void GitDialogManager::showPushDialog(const QString &repositoryPath, QWidget *parent)
+{
+    qInfo() << "INFO: [GitDialogManager::showPushDialog] Opening push dialog for repository:" << repositoryPath;
+    
+    auto *dialog = new GitPushDialog(repositoryPath, parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+
+void GitDialogManager::showPullDialog(const QString &repositoryPath, QWidget *parent)
+{
+    qInfo() << "INFO: [GitDialogManager::showPullDialog] Opening pull dialog for repository:" << repositoryPath;
+    
+    auto *dialog = new GitPullDialog(repositoryPath, parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+
+void GitDialogManager::showRemoteManager(const QString &repositoryPath, QWidget *parent)
+{
+    qInfo() << "INFO: [GitDialogManager::showRemoteManager] Opening remote manager for repository:" << repositoryPath;
+    
+    auto *dialog = new GitRemoteManager(repositoryPath, parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }

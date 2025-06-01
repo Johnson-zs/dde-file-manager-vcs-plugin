@@ -35,6 +35,11 @@ public:
     void showOperationDialog(const QString &operation, const QString &workingDir,
                              const QStringList &arguments, QWidget *parent = nullptr);
 
+    // === 高级Push/Pull对话框 ===
+    void showPushDialog(const QString &repositoryPath, QWidget *parent = nullptr);
+    void showPullDialog(const QString &repositoryPath, QWidget *parent = nullptr);
+    void showRemoteManager(const QString &repositoryPath, QWidget *parent = nullptr);
+
     // 文件预览接口
     GitFilePreviewDialog* showFilePreview(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
     GitFilePreviewDialog* showFilePreviewAtCommit(const QString &repositoryPath, const QString &filePath, 

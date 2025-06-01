@@ -334,6 +334,401 @@ void GitOperationService::commitChanges(const std::string &repositoryPath)
 }
 
 // ============================================================================
+// 高级Push/Pull操作实现
+// ============================================================================
+
+void GitOperationService::pushWithOptions(const QString &repositoryPath, const QString &remoteName, 
+                                         const QString &localBranch, const QString &remoteBranch,
+                                         bool forceWithLease, bool pushTags, 
+                                         bool setUpstream, bool dryRun)
+{
+    qInfo() << "INFO: [GitOperationService::pushWithOptions] Pushing with options:"
+            << "remote:" << remoteName << "local:" << localBranch << "remote branch:" << remoteBranch
+            << "force:" << forceWithLease << "tags:" << pushTags << "upstream:" << setUpstream << "dry-run:" << dryRun;
+
+    QStringList args;
+    args << "push";
+    
+    if (dryRun) {
+        args << "--dry-run";
+    }
+    
+    if (forceWithLease) {
+        args << "--force-with-lease";
+    }
+    
+    if (pushTags) {
+        args << "--tags";
+    }
+    
+    if (setUpstream) {
+        args << "-u";
+    }
+    
+    // 添加远程和分支
+    args << remoteName;
+    if (!remoteBranch.isEmpty()) {
+        args << QString("%1:%2").arg(localBranch, remoteBranch);
+    } else {
+        args << localBranch;
+    }
+    
+    executeInteractiveOperation("Push", repositoryPath, args);
+}
+
+void GitOperationService::pullWithOptions(const QString &repositoryPath, const QString &remoteName,
+                                         const QString &remoteBranch, const QString &strategy,
+                                         bool prune, bool autoStash, bool dryRun)
+{
+    qInfo() << "INFO: [GitOperationService::pullWithOptions] Pulling with options:"
+            << "remote:" << remoteName << "branch:" << remoteBranch << "strategy:" << strategy
+            << "prune:" << prune << "auto-stash:" << autoStash << "dry-run:" << dryRun;
+
+    QStringList args;
+    args << "pull";
+    
+    if (dryRun) {
+        args << "--dry-run";
+    }
+    
+    if (prune) {
+        args << "--prune";
+    }
+    
+    if (autoStash) {
+        args << "--autostash";
+    }
+    
+    // 合并策略
+    if (strategy == "rebase") {
+        args << "--rebase";
+    } else if (strategy == "ff-only") {
+        args << "--ff-only";
+    }
+    
+    // 添加远程和分支
+    args << remoteName;
+    if (!remoteBranch.isEmpty()) {
+        args << remoteBranch;
+    }
+    
+    executeInteractiveOperation("Pull", repositoryPath, args);
+}
+
+void GitOperationService::showAdvancedPushDialog(const QString &repositoryPath)
+{
+    qInfo() << "INFO: [GitOperationService::showAdvancedPushDialog] Opening advanced push dialog for:" << repositoryPath;
+
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitOperationService::showAdvancedPushDialog] No QApplication instance found";
+        return;
+    }
+
+    QWidget *parentWidget = QApplication::activeWindow();
+    GitDialogManager::instance()->showPushDialog(repositoryPath, parentWidget);
+}
+
+void GitOperationService::showAdvancedPullDialog(const QString &repositoryPath)
+{
+    qInfo() << "INFO: [GitOperationService::showAdvancedPullDialog] Opening advanced pull dialog for:" << repositoryPath;
+
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitOperationService::showAdvancedPullDialog] No QApplication instance found";
+        return;
+    }
+
+    QWidget *parentWidget = QApplication::activeWindow();
+    GitDialogManager::instance()->showPullDialog(repositoryPath, parentWidget);
+}
+
+// ============================================================================
+// 远程仓库管理实现
+// ============================================================================
+
+void GitOperationService::addRemote(const QString &repositoryPath, const QString &name, const QString &url)
+{
+    qInfo() << "INFO: [GitOperationService::addRemote] Adding remote:" << name << "url:" << url;
+
+    QStringList args;
+    args << "remote" << "add" << name << url;
+    
+    executeInteractiveOperation("Add Remote", repositoryPath, args);
+}
+
+void GitOperationService::removeRemote(const QString &repositoryPath, const QString &name)
+{
+    qInfo() << "INFO: [GitOperationService::removeRemote] Removing remote:" << name;
+
+    QStringList args;
+    args << "remote" << "remove" << name;
+    
+    executeInteractiveOperation("Remove Remote", repositoryPath, args);
+}
+
+void GitOperationService::renameRemote(const QString &repositoryPath, const QString &oldName, const QString &newName)
+{
+    qInfo() << "INFO: [GitOperationService::renameRemote] Renaming remote from:" << oldName << "to:" << newName;
+
+    QStringList args;
+    args << "remote" << "rename" << oldName << newName;
+    
+    executeInteractiveOperation("Rename Remote", repositoryPath, args);
+}
+
+void GitOperationService::setRemoteUrl(const QString &repositoryPath, const QString &name, const QString &url)
+{
+    qInfo() << "INFO: [GitOperationService::setRemoteUrl] Setting remote URL for:" << name << "to:" << url;
+
+    QStringList args;
+    args << "remote" << "set-url" << name << url;
+    
+    executeInteractiveOperation("Set Remote URL", repositoryPath, args);
+}
+
+bool GitOperationService::testRemoteConnection(const QString &repositoryPath, const QString &remoteName)
+{
+    qInfo() << "INFO: [GitOperationService::testRemoteConnection] Testing connection to remote:" << remoteName;
+
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "ls-remote";
+    cmd.arguments = QStringList() << "--heads" << remoteName;
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 10000; // 10秒超时
+    
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    bool success = (result == GitCommandExecutor::Result::Success);
+    
+    if (success) {
+        qInfo() << "INFO: [GitOperationService::testRemoteConnection] Remote connection successful";
+    } else {
+        qWarning() << "WARNING: [GitOperationService::testRemoteConnection] Remote connection failed:" << error;
+    }
+    
+    return success;
+}
+
+// ============================================================================
+// 分支和状态查询实现
+// ============================================================================
+
+QStringList GitOperationService::getRemotes(const QString &repositoryPath)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "remote";
+    cmd.arguments = QStringList();
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        return output.split('\n', Qt::SkipEmptyParts);
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::getRemotes] Failed to get remotes:" << error;
+    return QStringList();
+}
+
+QStringList GitOperationService::getLocalBranches(const QString &repositoryPath)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "branch";
+    cmd.arguments = QStringList();
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        QStringList branches;
+        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        
+        for (const QString &line : lines) {
+            QString branchName = line.trimmed();
+            if (branchName.startsWith("* ")) {
+                branchName = branchName.mid(2);
+            }
+            branches.append(branchName);
+        }
+        
+        return branches;
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::getLocalBranches] Failed to get local branches:" << error;
+    return QStringList();
+}
+
+QStringList GitOperationService::getRemoteBranches(const QString &repositoryPath, const QString &remoteName)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "branch";
+    cmd.arguments = QStringList() << "-r";
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        QStringList branches;
+        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        
+        for (const QString &line : lines) {
+            QString branchName = line.trimmed();
+            if (remoteName.isEmpty() || branchName.startsWith(remoteName + "/")) {
+                if (!remoteName.isEmpty()) {
+                    branchName = branchName.mid(remoteName.length() + 1);
+                }
+                if (branchName != "HEAD") {
+                    branches.append(branchName);
+                }
+            }
+        }
+        
+        return branches;
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::getRemoteBranches] Failed to get remote branches:" << error;
+    return QStringList();
+}
+
+QString GitOperationService::getCurrentBranch(const QString &repositoryPath)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "branch";
+    cmd.arguments = QStringList() << "--show-current";
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        return output.trimmed();
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::getCurrentBranch] Failed to get current branch:" << error;
+    return QString();
+}
+
+QStringList GitOperationService::getUnpushedCommits(const QString &repositoryPath, const QString &remoteBranch)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "log";
+    cmd.arguments = QStringList() << "--oneline" << "--no-merges" << (remoteBranch + "..HEAD");
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 10000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        return output.split('\n', Qt::SkipEmptyParts);
+    }
+    
+    // 如果没有找到远程分支，可能是新分支，返回所有本地提交
+    if (error.contains("unknown revision")) {
+        cmd.arguments = QStringList() << "--oneline" << "--no-merges";
+        result = executor.executeCommand(cmd, output, error);
+        if (result == GitCommandExecutor::Result::Success) {
+            return output.split('\n', Qt::SkipEmptyParts);
+        }
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::getUnpushedCommits] Failed to get unpushed commits:" << error;
+    return QStringList();
+}
+
+QStringList GitOperationService::getRemoteUpdates(const QString &repositoryPath, const QString &remoteBranch)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "log";
+    cmd.arguments = QStringList() << "--oneline" << "--no-merges" << ("HEAD.." + remoteBranch);
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 10000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        return output.split('\n', Qt::SkipEmptyParts);
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::getRemoteUpdates] Failed to get remote updates:" << error;
+    return QStringList();
+}
+
+bool GitOperationService::hasLocalChanges(const QString &repositoryPath)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "status";
+    cmd.arguments = QStringList() << "--porcelain";
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        return !output.trimmed().isEmpty();
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::hasLocalChanges] Failed to check local changes:" << error;
+    return false;
+}
+
+bool GitOperationService::hasUncommittedChanges(const QString &repositoryPath)
+{
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "status";
+    cmd.arguments = QStringList() << "--porcelain";
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        
+        for (const QString &line : lines) {
+            if (line.length() >= 2) {
+                QChar worktree = line[1];
+                if (worktree != ' ' && worktree != '?') {
+                    return true; // 有工作区修改
+                }
+            }
+        }
+        return false;
+    }
+    
+    qWarning() << "WARNING: [GitOperationService::hasUncommittedChanges] Failed to check uncommitted changes:" << error;
+    return false;
+}
+
+// ============================================================================
 // 私有辅助方法实现
 // ============================================================================
 

@@ -43,6 +43,36 @@ public:
     void pullRepository(const std::string &repositoryPath);
     void commitChanges(const std::string &repositoryPath);
 
+    // === 高级Push/Pull对话框 ===
+    void showAdvancedPushDialog(const QString &repositoryPath);
+    void showAdvancedPullDialog(const QString &repositoryPath);
+
+    // === 高级Push/Pull操作 ===
+    void pushWithOptions(const QString &repositoryPath, const QString &remoteName, 
+                        const QString &localBranch, const QString &remoteBranch,
+                        bool forceWithLease = false, bool pushTags = false, 
+                        bool setUpstream = false, bool dryRun = false);
+    void pullWithOptions(const QString &repositoryPath, const QString &remoteName,
+                        const QString &remoteBranch, const QString &strategy = "merge",
+                        bool prune = false, bool autoStash = false, bool dryRun = false);
+
+    // === 远程仓库管理 ===
+    void addRemote(const QString &repositoryPath, const QString &name, const QString &url);
+    void removeRemote(const QString &repositoryPath, const QString &name);
+    void renameRemote(const QString &repositoryPath, const QString &oldName, const QString &newName);
+    void setRemoteUrl(const QString &repositoryPath, const QString &name, const QString &url);
+    bool testRemoteConnection(const QString &repositoryPath, const QString &remoteName);
+
+    // === 分支和状态查询 ===
+    QStringList getRemotes(const QString &repositoryPath);
+    QStringList getLocalBranches(const QString &repositoryPath);
+    QStringList getRemoteBranches(const QString &repositoryPath, const QString &remoteName = QString());
+    QString getCurrentBranch(const QString &repositoryPath);
+    QStringList getUnpushedCommits(const QString &repositoryPath, const QString &remoteBranch);
+    QStringList getRemoteUpdates(const QString &repositoryPath, const QString &remoteBranch);
+    bool hasLocalChanges(const QString &repositoryPath);
+    bool hasUncommittedChanges(const QString &repositoryPath);
+
 Q_SIGNALS:
     /**
      * @brief Git操作完成信号

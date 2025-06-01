@@ -325,31 +325,63 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
 {
     const QString branchName = Utils::getBranchName(repositoryPath);
 
-    // Git Pull
+    // Git Pull - 使用高级对话框
     auto pullAction = m_proxy->createAction();
-    pullAction->setText("Git Pull");
+    pullAction->setText("Git Pull...");
     pullAction->setIcon("vcs-pull");
-    pullAction->setToolTip(QString("Pull latest changes from remote repository\nCurrent branch: %1").arg(branchName).toStdString());
+    pullAction->setToolTip(QString("Pull latest changes from remote repository with advanced options\nCurrent branch: %1").arg(branchName).toStdString());
     pullAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
+        Q_UNUSED(action)
+        Q_UNUSED(checked)
+        // 使用GitOperationService显示高级Pull对话框
+        m_operationService->showAdvancedPullDialog(repositoryPath);
+    });
+
+    menu->addAction(pullAction);
+
+    // Git Push - 使用高级对话框
+    auto pushAction = m_proxy->createAction();
+    pushAction->setText("Git Push...");
+    pushAction->setIcon("vcs-push");
+    pushAction->setToolTip(QString("Push local commits to remote repository with advanced options\nCurrent branch: %1").arg(branchName).toStdString());
+    pushAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
+        Q_UNUSED(action)
+        Q_UNUSED(checked)
+        // 使用GitOperationService显示高级Push对话框
+        m_operationService->showAdvancedPushDialog(repositoryPath);
+    });
+
+    menu->addAction(pushAction);
+
+    // 添加分隔符
+    auto separator = createSeparator();
+    menu->addAction(separator);
+
+    // 快速Pull（保留简单操作）
+    auto quickPullAction = m_proxy->createAction();
+    quickPullAction->setText("Quick Pull");
+    quickPullAction->setIcon("vcs-pull");
+    quickPullAction->setToolTip(QString("Quick pull from default remote\nCurrent branch: %1").arg(branchName).toStdString());
+    quickPullAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
         Q_UNUSED(action)
         Q_UNUSED(checked)
         m_operationService->pullRepository(repositoryPath.toStdString());
     });
 
-    menu->addAction(pullAction);
+    menu->addAction(quickPullAction);
 
-    // Git Push
-    auto pushAction = m_proxy->createAction();
-    pushAction->setText("Git Push");
-    pushAction->setIcon("vcs-push");
-    pushAction->setToolTip(QString("Push local commits to remote repository\nCurrent branch: %1").arg(branchName).toStdString());
-    pushAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
+    // 快速Push（保留简单操作）
+    auto quickPushAction = m_proxy->createAction();
+    quickPushAction->setText("Quick Push");
+    quickPushAction->setIcon("vcs-push");
+    quickPushAction->setToolTip(QString("Quick push to default remote\nCurrent branch: %1").arg(branchName).toStdString());
+    quickPushAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
         Q_UNUSED(action)
         Q_UNUSED(checked)
         m_operationService->pushRepository(repositoryPath.toStdString());
     });
 
-    menu->addAction(pushAction);
+    menu->addAction(quickPushAction);
 }
 
 QStringList GitMenuBuilder::getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList)
