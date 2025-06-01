@@ -103,6 +103,10 @@ private:
             setupXmlRules();
         } else if (m_fileType.contains("json")) {
             setupJsonRules();
+        } else if (m_fileType.contains("cmake")) {
+            setupCMakeRules();
+        } else if (m_fileType.contains("qml")) {
+            setupQmlRules();
         }
 
         // 通用规则
@@ -206,6 +210,93 @@ private:
 
         // JSON 值（布尔和null）
         rule.pattern = QRegularExpression("\\b(true|false|null)\\b");
+        rule.format = m_functionFormat;
+        m_highlightingRules.append(rule);
+    }
+
+    void setupCMakeRules()
+    {
+        HighlightingRule rule;
+
+        // CMake 命令（函数）
+        QStringList commandPatterns = {
+            "\\bcmake_minimum_required\\b", "\\bproject\\b", "\\badd_executable\\b", "\\badd_library\\b",
+            "\\btarget_link_libraries\\b", "\\btarget_include_directories\\b", "\\btarget_compile_definitions\\b",
+            "\\btarget_compile_options\\b", "\\bfind_package\\b", "\\bfind_library\\b", "\\bfind_path\\b",
+            "\\binclude_directories\\b", "\\blink_directories\\b", "\\bset\\b", "\\bunset\\b",
+            "\\blist\\b", "\\bstring\\b", "\\bmath\\b", "\\bfile\\b", "\\bget_filename_component\\b",
+            "\\bif\\b", "\\belse\\b", "\\belseif\\b", "\\bendif\\b", "\\bforeach\\b", "\\bendforeach\\b",
+            "\\bwhile\\b", "\\bendwhile\\b", "\\bfunction\\b", "\\bendfunction\\b", "\\bmacro\\b", "\\bendmacro\\b",
+            "\\binclude\\b", "\\badd_subdirectory\\b", "\\boption\\b", "\\bconfigure_file\\b",
+            "\\binstall\\b", "\\bmessage\\b", "\\breturn\\b", "\\bbreak\\b", "\\bcontinue\\b"
+        };
+
+        for (const QString &pattern : commandPatterns) {
+            rule.pattern = QRegularExpression(pattern, QRegularExpression::CaseInsensitiveOption);
+            rule.format = m_keywordFormat;
+            m_highlightingRules.append(rule);
+        }
+
+        // CMake 变量引用 ${VAR}
+        rule.pattern = QRegularExpression("\\$\\{[^}]+\\}");
+        rule.format = m_functionFormat;
+        m_highlightingRules.append(rule);
+
+        // CMake 生成器表达式 $<...>
+        rule.pattern = QRegularExpression("\\$<[^>]+>");
+        rule.format = m_functionFormat;
+        m_highlightingRules.append(rule);
+
+        // CMake 属性和目标
+        rule.pattern = QRegularExpression("\\b[A-Z_][A-Z0-9_]*\\b");
+        rule.format = m_numberFormat;
+        m_highlightingRules.append(rule);
+    }
+
+    void setupQmlRules()
+    {
+        HighlightingRule rule;
+
+        // QML 基本类型和关键字
+        QStringList keywordPatterns = {
+            "\\bimport\\b", "\\bas\\b", "\\bproperty\\b", "\\balias\\b", "\\bsignal\\b", "\\bfunction\\b",
+            "\\bif\\b", "\\belse\\b", "\\bfor\\b", "\\bwhile\\b", "\\bdo\\b", "\\bswitch\\b", "\\bcase\\b",
+            "\\bdefault\\b", "\\bbreak\\b", "\\bcontinue\\b", "\\breturn\\b", "\\btry\\b", "\\bcatch\\b",
+            "\\bfinally\\b", "\\bthrow\\b", "\\bvar\\b", "\\blet\\b", "\\bconst\\b", "\\btrue\\b", "\\bfalse\\b",
+            "\\bnull\\b", "\\bundefined\\b", "\\bthis\\b", "\\broot\\b", "\\bparent\\b"
+        };
+
+        for (const QString &pattern : keywordPatterns) {
+            rule.pattern = QRegularExpression(pattern);
+            rule.format = m_keywordFormat;
+            m_highlightingRules.append(rule);
+        }
+
+        // QML 基本类型
+        QStringList typePatterns = {
+            "\\bItem\\b", "\\bRectangle\\b", "\\bText\\b", "\\bImage\\b", "\\bMouseArea\\b",
+            "\\bColumn\\b", "\\bRow\\b", "\\bGrid\\b", "\\bFlow\\b", "\\bRepeater\\b",
+            "\\bListView\\b", "\\bGridView\\b", "\\bPathView\\b", "\\bScrollView\\b",
+            "\\bStackView\\b", "\\bLoader\\b", "\\bComponent\\b", "\\bConnections\\b",
+            "\\bTimer\\b", "\\bAnimation\\b", "\\bBehavior\\b", "\\bTransition\\b",
+            "\\bState\\b", "\\bStateGroup\\b", "\\bPropertyChanges\\b", "\\bAnchorChanges\\b",
+            "\\bint\\b", "\\breal\\b", "\\bdouble\\b", "\\bbool\\b", "\\bstring\\b", "\\bcolor\\b",
+            "\\bdate\\b", "\\burl\\b", "\\bvar\\b", "\\bvariant\\b", "\\blist\\b"
+        };
+
+        for (const QString &pattern : typePatterns) {
+            rule.pattern = QRegularExpression(pattern);
+            rule.format = m_functionFormat;
+            m_highlightingRules.append(rule);
+        }
+
+        // QML 属性绑定
+        rule.pattern = QRegularExpression("\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*:)");
+        rule.format = m_numberFormat;
+        m_highlightingRules.append(rule);
+
+        // QML ID 引用
+        rule.pattern = QRegularExpression("\\bid\\s*:\\s*[a-zA-Z_][a-zA-Z0-9_]*");
         rule.format = m_functionFormat;
         m_highlightingRules.append(rule);
     }
@@ -521,6 +612,7 @@ QString GitFilePreviewDialog::detectFileType() const
 {
     QFileInfo fileInfo(m_filePath);
     QString suffix = fileInfo.suffix().toLower();
+    QString fileName = fileInfo.fileName().toLower();
     
     // 根据文件扩展名检测类型
     if (suffix == "cpp" || suffix == "cxx" || suffix == "cc" || suffix == "c++" ||
@@ -546,6 +638,10 @@ QString GitFilePreviewDialog::detectFileType() const
         return "php";
     } else if (suffix == "sh" || suffix == "bash") {
         return "shell";
+    } else if (suffix == "qml" || suffix == "qmldir") {
+        return "qml";
+    } else if (suffix == "cmake" || fileName == "cmakelists.txt" || fileName.startsWith("cmake")) {
+        return "cmake";
     }
     
     return QString(); // 未知类型，不应用语法高亮
