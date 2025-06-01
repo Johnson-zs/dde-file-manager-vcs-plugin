@@ -63,6 +63,7 @@ public:
     void renameRemote(const QString &repositoryPath, const QString &oldName, const QString &newName);
     void setRemoteUrl(const QString &repositoryPath, const QString &name, const QString &url);
     bool testRemoteConnection(const QString &repositoryPath, const QString &remoteName);
+    void testRemoteConnectionAsync(const QString &repositoryPath, const QString &remoteName);
 
     // === 分支和状态查询 ===
     QStringList getRemotes(const QString &repositoryPath);
@@ -82,6 +83,14 @@ Q_SIGNALS:
      * @param message 结果消息
      */
     void operationCompleted(const QString &operation, bool success, const QString &message = QString());
+
+    /**
+     * @brief 远程连接测试完成信号
+     * @param remoteName 远程仓库名称
+     * @param success 是否连接成功
+     * @param message 结果消息
+     */
+    void remoteConnectionTestCompleted(const QString &remoteName, bool success, const QString &message = QString());
 
     /**
      * @brief 需要刷新文件管理器信号
@@ -106,6 +115,7 @@ private:
                                   const std::list<std::string> &pathList);
 
     GitCommandExecutor *m_executor;
+    QString m_currentTestingRemote; // 当前正在测试的远程名称
 };
 
 #endif // GITOPERATIONSERVICE_H 

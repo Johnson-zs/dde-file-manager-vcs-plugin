@@ -16,6 +16,7 @@
 #include <QInputDialog>
 
 class GitOperationService;
+class CharacterAnimationWidget;
 
 /**
  * @brief Git远程仓库管理器
@@ -55,6 +56,7 @@ private slots:
     void testAllConnections();
     void refreshRemotes();
     void onOperationCompleted(bool success, const QString &message);
+    void onRemoteConnectionTestCompleted(const QString &remoteName, bool success, const QString &message);
 
 private:
     // === UI设置方法 ===
@@ -82,6 +84,11 @@ private:
     void showProgress(const QString &message);
     void hideProgress();
     QString formatRemoteInfo(const RemoteInfo &info) const;
+
+    // === 批量测试方法 ===
+    void startBatchTesting();
+    void processNextRemoteTest();
+    void finishBatchTesting();
 
     // === 成员变量 ===
     QString m_repositoryPath;
@@ -114,11 +121,18 @@ private:
     // 进度显示
     QProgressBar *m_progressBar;
     QLabel *m_progressLabel;
+    CharacterAnimationWidget *m_animationWidget;
 
     // === 数据成员 ===
     QVector<RemoteInfo> m_remotes;
     QString m_selectedRemote;
     bool m_isOperationInProgress;
+
+    // === 批量测试相关 ===
+    QStringList m_testQueue;          // 待测试的远程仓库队列
+    int m_testSuccessCount;           // 测试成功的数量
+    int m_testTotalCount;             // 总测试数量
+    bool m_isBatchTesting;            // 是否正在进行批量测试
 };
 
 #endif // GITREMOTEMANAGER_H 

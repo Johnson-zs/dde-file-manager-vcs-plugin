@@ -12,6 +12,8 @@
 
 #include "gitcommandexecutor.h"
 
+class CharacterAnimationWidget;
+
 /**
  * @brief Git操作进度对话框 - 重构版本
  *
@@ -54,9 +56,6 @@ private Q_SLOTS:
     void onRetryClicked();
     void onDetailsToggled(bool visible);
 
-    // 字符动画槽函数
-    void onAnimationTimer();
-
 private:
     void setupUI();
     void setupProgressSection();
@@ -64,11 +63,6 @@ private:
     void setupButtonSection();
     void updateUIState(bool isExecuting);
     void showResult(GitCommandExecutor::Result result, const QString &output, const QString &error);
-
-    // 动画控制方法
-    void startCharacterAnimation();
-    void stopCharacterAnimation();
-    void updateStatusWithAnimation();
 
     QString m_operation;
     QString m_currentDescription;
@@ -94,10 +88,7 @@ private:
     bool m_showDetails;
 
     // 字符动画组件
-    QTimer *m_animationTimer;
-    QString m_baseStatusText;
-    int m_animationStep;
-    QStringList m_animationFrames;
+    CharacterAnimationWidget *m_animationWidget;
 };
 
 #endif   // GITOPERATIONDIALOG_H

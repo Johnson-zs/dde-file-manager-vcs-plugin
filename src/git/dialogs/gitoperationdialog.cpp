@@ -1,5 +1,6 @@
 #include "gitoperationdialog.h"
 #include "gitcommandexecutor.h"
+#include "../widgets/characteranimationwidget.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -10,27 +11,9 @@ GitOperationDialog::GitOperationDialog(const QString &operation, QWidget *parent
       m_executionResult(GitCommandExecutor::Result::Success),
       m_executor(new GitCommandExecutor(this)),
       m_isExecuting(false),
-      m_showDetails(false),
-      m_animationTimer(nullptr),
-      m_animationStep(0)
+      m_showDetails(false)
 {
     setupUI();
-
-    // 初始化字符动画
-    m_animationFrames << "⠋"
-                      << "⠙"
-                      << "⠹"
-                      << "⠸"
-                      << "⠼"
-                      << "⠴"
-                      << "⠦"
-                      << "⠧"
-                      << "⠇"
-                      << "⠏";
-
-    m_animationTimer = new QTimer(this);
-    m_animationTimer->setInterval(100);   // 100ms间隔
-    connect(m_animationTimer, &QTimer::timeout, this, &GitOperationDialog::onAnimationTimer);
 
     connect(m_executor, &GitCommandExecutor::commandFinished,
             this, &GitOperationDialog::onCommandFinished);
@@ -43,8 +26,6 @@ GitOperationDialog::~GitOperationDialog()
     if (m_isExecuting) {
         m_executor->cancelCurrentCommand();
     }
-
-    stopCharacterAnimation();
 }
 
 void GitOperationDialog::setupUI()
@@ -62,10 +43,12 @@ void GitOperationDialog::setupUI()
 
     mainLayout->addWidget(m_descriptionLabel);
     mainLayout->addWidget(m_statusLabel);
+    mainLayout->addWidget(m_animationWidget);
     mainLayout->addWidget(m_outputWidget);
     mainLayout->addWidget(m_buttonWidget);
 
     m_outputWidget->setVisible(false);
+    m_animationWidget->setVisible(false);
     adjustSize();
 }
 
@@ -76,6 +59,10 @@ void GitOperationDialog::setupProgressSection()
 
     m_statusLabel = new QLabel(tr("Preparing to execute %1 operation...").arg(m_operation));
     m_statusLabel->setStyleSheet("QLabel { color: #555; }");
+
+    // 创建字符动画组件
+    m_animationWidget = new CharacterAnimationWidget(this);
+    m_animationWidget->setTextStyleSheet("QLabel { color: #2196F3; font-weight: bold; }");
 }
 
 void GitOperationDialog::setupOutputSection()
@@ -130,9 +117,10 @@ void GitOperationDialog::executeCommand(const QString &repoPath, const QStringLi
     updateUIState(true);
     m_outputText->clear();
 
-    // 设置基础状态文本并启动动画
-    m_baseStatusText = tr("Executing: git %1").arg(arguments.join(' '));
-    startCharacterAnimation();
+    // 启动字符动画
+    QString animationText = tr("Executing: git %1").arg(arguments.join(' '));
+    m_animationWidget->setVisible(true);
+    m_animationWidget->startAnimation(animationText);
 
     GitCommandExecutor::GitCommand cmd;
     cmd.command = m_operation;
@@ -166,7 +154,8 @@ void GitOperationDialog::onCommandFinished(const QString &command, GitCommandExe
     m_executionResult = result;
 
     // 停止字符动画
-    stopCharacterAnimation();
+    m_animationWidget->stopAnimation();
+    m_animationWidget->setVisible(false);
 
     updateUIState(false);
     showResult(result, output, error);
@@ -201,7 +190,8 @@ void GitOperationDialog::onCancelClicked()
         m_statusLabel->setText(tr("Operation cancelled"));
 
         // 停止字符动画
-        stopCharacterAnimation();
+        m_animationWidget->stopAnimation();
+        m_animationWidget->setVisible(false);
 
         updateUIState(false);
         qInfo() << "INFO: [GitOperationDialog::onCancelClicked] User cancelled operation:" << m_operation;
@@ -294,43 +284,5 @@ void GitOperationDialog::showResult(GitCommandExecutor::Result result, const QSt
 
     if (!output.isEmpty()) {
         m_outputText->append("\n--- Operation completed ---\n" + output);
-    }
-}
-
-void GitOperationDialog::startCharacterAnimation()
-{
-    if (m_animationTimer) {
-        m_animationStep = 0;
-        m_animationTimer->start();
-        updateStatusWithAnimation();
-
-        // 更新状态标签样式
-        m_statusLabel->setStyleSheet("QLabel { color: #2196F3; font-weight: bold; }");
-
-        qInfo() << "INFO: [GitOperationDialog::startCharacterAnimation] Character animation started";
-    }
-}
-
-void GitOperationDialog::stopCharacterAnimation()
-{
-    if (m_animationTimer) {
-        m_animationTimer->stop();
-        qInfo() << "INFO: [GitOperationDialog::stopCharacterAnimation] Character animation stopped";
-    }
-}
-
-void GitOperationDialog::onAnimationTimer()
-{
-    if (m_isExecuting) {
-        updateStatusWithAnimation();
-        m_animationStep = (m_animationStep + 1) % m_animationFrames.size();
-    }
-}
-
-void GitOperationDialog::updateStatusWithAnimation()
-{
-    if (!m_baseStatusText.isEmpty() && m_animationStep < m_animationFrames.size()) {
-        QString animatedText = m_animationFrames[m_animationStep] + " " + m_baseStatusText;
-        m_statusLabel->setText(animatedText);
     }
 }

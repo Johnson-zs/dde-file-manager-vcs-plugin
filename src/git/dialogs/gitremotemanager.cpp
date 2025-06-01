@@ -2,6 +2,7 @@
 #include "../gitoperationservice.h"
 #include "../gitcommandexecutor.h"
 #include "../utils.h"
+#include "../widgets/characteranimationwidget.h"
 
 #include <QApplication>
 #include <QVBoxLayout>
@@ -20,7 +21,10 @@
 #include <QUrl>
 
 GitRemoteManager::GitRemoteManager(const QString &repositoryPath, QWidget *parent)
-    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_isOperationInProgress(false)
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_isOperationInProgress(false),
+      m_testSuccessCount(0),
+      m_testTotalCount(0),
+      m_isBatchTesting(false)
 {
     setWindowTitle(tr("Git Remote Manager"));
     setWindowIcon(QIcon(":/icons/vcs-branch"));
@@ -71,14 +75,26 @@ void GitRemoteManager::setupUI()
 
     mainLayout->addWidget(splitter);
 
-    // 进度条
+    // 进度显示区域 - 重新设计布局
+    auto *progressWidget = new QWidget;
+    progressWidget->setFixedHeight(40);
+    auto *progressLayout = new QVBoxLayout(progressWidget);
+    progressLayout->setContentsMargins(16, 8, 16, 8);
+    progressLayout->setSpacing(4);
+
+    // 字符动画组件
+    m_animationWidget = new CharacterAnimationWidget(progressWidget);
+    m_animationWidget->setVisible(false);
+    m_animationWidget->setTextStyleSheet("QLabel { color: #2196F3; font-weight: bold; font-size: 14px; }");
+    progressLayout->addWidget(m_animationWidget);
+
+    // 保留原有的进度条和标签（隐藏状态）
     m_progressBar = new QProgressBar;
     m_progressBar->setVisible(false);
     m_progressLabel = new QLabel;
     m_progressLabel->setVisible(false);
 
-    mainLayout->addWidget(m_progressLabel);
-    mainLayout->addWidget(m_progressBar);
+    mainLayout->addWidget(progressWidget);
 
     setupButtonGroup();
 
@@ -249,6 +265,10 @@ void GitRemoteManager::setupConnections()
                 Q_UNUSED(operation)
                 onOperationCompleted(success, message);
             });
+
+    // 异步测试连接完成信号
+    connect(m_operationService, &GitOperationService::remoteConnectionTestCompleted,
+            this, &GitRemoteManager::onRemoteConnectionTestCompleted);
 }
 
 void GitRemoteManager::loadRemotes()
@@ -482,29 +502,8 @@ void GitRemoteManager::testConnection()
 
     showProgress(tr("Testing connection to %1...").arg(m_selectedRemote));
 
-    bool success = m_operationService->testRemoteConnection(m_repositoryPath, m_selectedRemote);
-
-    hideProgress();
-
-    // 更新连接状态
-    for (auto &remote : m_remotes) {
-        if (remote.name == m_selectedRemote) {
-            remote.isConnected = success;
-            break;
-        }
-    }
-
-    if (success) {
-        m_connectionStatusLabel->setText(tr("Connected"));
-        m_connectionStatusLabel->setStyleSheet("color: #4CAF50;");
-        QMessageBox::information(this, tr("Connection Test"),
-                                 tr("Successfully connected to remote '%1'.").arg(m_selectedRemote));
-    } else {
-        m_connectionStatusLabel->setText(tr("Connection Failed"));
-        m_connectionStatusLabel->setStyleSheet("color: #F44336;");
-        QMessageBox::warning(this, tr("Connection Test"),
-                             tr("Failed to connect to remote '%1'.").arg(m_selectedRemote));
-    }
+    // 使用异步测试连接
+    m_operationService->testRemoteConnectionAsync(m_repositoryPath, m_selectedRemote);
 }
 
 void GitRemoteManager::testAllConnections()
@@ -513,28 +512,8 @@ void GitRemoteManager::testAllConnections()
         return;
     }
 
-    showProgress(tr("Testing all connections..."));
-
-    int successCount = 0;
-    for (auto &remote : m_remotes) {
-        bool success = m_operationService->testRemoteConnection(m_repositoryPath, remote.name);
-        remote.isConnected = success;
-        if (success) {
-            successCount++;
-        }
-    }
-
-    hideProgress();
-
-    // 刷新当前选择的远程详情
-    if (!m_selectedRemote.isEmpty()) {
-        loadRemoteDetails(m_selectedRemote);
-    }
-
-    QMessageBox::information(this, tr("Connection Test Results"),
-                             tr("Successfully connected to %1 out of %2 remotes.")
-                                     .arg(successCount)
-                                     .arg(m_remotes.size()));
+    // 开始批量测试
+    startBatchTesting();
 }
 
 void GitRemoteManager::refreshRemotes()
@@ -553,6 +532,53 @@ void GitRemoteManager::onOperationCompleted(bool success, const QString &message
     } else {
         qWarning() << "WARNING: [GitRemoteManager::onOperationCompleted] Operation failed:" << message;
         QMessageBox::critical(this, tr("Operation Failed"), message);
+    }
+}
+
+void GitRemoteManager::onRemoteConnectionTestCompleted(const QString &remoteName, bool success, const QString &message)
+{
+    Q_UNUSED(remoteName)
+    
+    // 更新连接状态
+    for (auto &remote : m_remotes) {
+        if (remote.name == remoteName) {
+            remote.isConnected = success;
+            break;
+        }
+    }
+
+    if (m_isBatchTesting) {
+        // 批量测试模式
+        if (success) {
+            m_testSuccessCount++;
+        }
+        
+        // 更新进度信息
+        QString progressText = tr("Testing connections... (%1/%2)")
+                                   .arg(m_testTotalCount - m_testQueue.size())
+                                   .arg(m_testTotalCount);
+        m_animationWidget->setBaseText(progressText);
+        
+        // 继续测试下一个或完成
+        processNextRemoteTest();
+    } else {
+        // 单个测试模式
+        hideProgress();
+
+        if (success) {
+            m_connectionStatusLabel->setText(tr("Connected"));
+            m_connectionStatusLabel->setStyleSheet("color: #4CAF50;");
+            QMessageBox::information(this, tr("Connection Test"),
+                                     tr("Successfully connected to remote '%1'.").arg(m_selectedRemote));
+        } else {
+            m_connectionStatusLabel->setText(tr("Connection Failed"));
+            m_connectionStatusLabel->setStyleSheet("color: #F44336;");
+            QMessageBox::warning(this, tr("Connection Test"),
+                                 tr("Failed to connect to remote '%1'.\n%2").arg(m_selectedRemote, message));
+        }
+
+        qInfo() << "INFO: [GitRemoteManager::onRemoteConnectionTestCompleted] Test completed for remote:" 
+                << m_selectedRemote << "success:" << success;
     }
 }
 
@@ -637,10 +663,14 @@ void GitRemoteManager::showProgress(const QString &message)
     m_isOperationInProgress = true;
     enableControls(false);
 
-    m_progressBar->setVisible(true);
-    m_progressLabel->setVisible(true);
-    m_progressBar->setRange(0, 0);   // 不确定进度
-    m_progressLabel->setText(message);
+    // 使用字符动画替代进度条
+    m_progressBar->setVisible(false);
+    m_progressLabel->setVisible(false);
+    
+    m_animationWidget->setVisible(true);
+    m_animationWidget->startAnimation(message);
+
+    qInfo() << "INFO: [GitRemoteManager::showProgress] Started progress animation:" << message;
 }
 
 void GitRemoteManager::hideProgress()
@@ -650,9 +680,86 @@ void GitRemoteManager::hideProgress()
 
     m_progressBar->setVisible(false);
     m_progressLabel->setVisible(false);
+    m_animationWidget->setVisible(false);
+    m_animationWidget->stopAnimation();
+
+    qInfo() << "INFO: [GitRemoteManager::hideProgress] Stopped progress animation";
 }
 
 QString GitRemoteManager::formatRemoteInfo(const RemoteInfo &info) const
 {
     return QString("%1 (%2)").arg(info.name, info.fetchUrl);
+}
+
+// ============================================================================
+// 批量测试方法实现
+// ============================================================================
+
+void GitRemoteManager::startBatchTesting()
+{
+    if (m_remotes.isEmpty()) {
+        return;
+    }
+
+    qInfo() << "INFO: [GitRemoteManager::startBatchTesting] Starting batch testing for" << m_remotes.size() << "remotes";
+
+    // 初始化批量测试状态
+    m_isBatchTesting = true;
+    m_testSuccessCount = 0;
+    m_testTotalCount = m_remotes.size();
+    m_testQueue.clear();
+
+    // 填充测试队列
+    for (const auto &remote : m_remotes) {
+        m_testQueue.append(remote.name);
+    }
+
+    // 显示进度动画
+    QString progressText = tr("Testing connections... (0/%1)").arg(m_testTotalCount);
+    showProgress(progressText);
+
+    // 开始测试第一个远程
+    processNextRemoteTest();
+}
+
+void GitRemoteManager::processNextRemoteTest()
+{
+    if (m_testQueue.isEmpty()) {
+        // 所有测试完成
+        finishBatchTesting();
+        return;
+    }
+
+    // 取出下一个要测试的远程
+    QString remoteName = m_testQueue.takeFirst();
+    
+    qInfo() << "INFO: [GitRemoteManager::processNextRemoteTest] Testing remote:" << remoteName 
+            << "remaining:" << m_testQueue.size();
+
+    // 异步测试连接
+    m_operationService->testRemoteConnectionAsync(m_repositoryPath, remoteName);
+}
+
+void GitRemoteManager::finishBatchTesting()
+{
+    qInfo() << "INFO: [GitRemoteManager::finishBatchTesting] Batch testing completed. Success:" 
+            << m_testSuccessCount << "Total:" << m_testTotalCount;
+
+    // 重置批量测试状态
+    m_isBatchTesting = false;
+    m_testQueue.clear();
+
+    // 隐藏进度动画
+    hideProgress();
+
+    // 刷新当前选择的远程详情
+    if (!m_selectedRemote.isEmpty()) {
+        loadRemoteDetails(m_selectedRemote);
+    }
+
+    // 显示测试结果
+    QMessageBox::information(this, tr("Connection Test Results"),
+                             tr("Successfully connected to %1 out of %2 remotes.")
+                                     .arg(m_testSuccessCount)
+                                     .arg(m_testTotalCount));
 }

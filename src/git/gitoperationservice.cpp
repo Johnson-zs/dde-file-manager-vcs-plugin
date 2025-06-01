@@ -525,6 +525,23 @@ bool GitOperationService::testRemoteConnection(const QString &repositoryPath, co
     return success;
 }
 
+void GitOperationService::testRemoteConnectionAsync(const QString &repositoryPath, const QString &remoteName)
+{
+    qInfo() << "INFO: [GitOperationService::testRemoteConnectionAsync] Starting async test for remote:" << remoteName;
+
+    // 存储当前测试的远程名称
+    m_currentTestingRemote = remoteName;
+
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "ls-remote";
+    cmd.arguments = QStringList() << "ls-remote" << "--heads" << remoteName;
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 10000; // 10秒超时
+
+    // 使用异步执行，结果会通过信号返回
+    m_executor->executeCommandAsync(cmd);
+}
+
 // ============================================================================
 // 分支和状态查询实现
 // ============================================================================
@@ -865,10 +882,29 @@ QStringList GitOperationService::buildFileArguments(const QString &operation, co
 void GitOperationService::onCommandFinished(const QString &command, GitCommandExecutor::Result result,
                                            const QString &output, const QString &error)
 {
-    Q_UNUSED(output)
-    Q_UNUSED(error)
-    
     bool success = (result == GitCommandExecutor::Result::Success);
+    
+    // 特殊处理测试连接命令
+    if (command == "ls-remote") {
+        QString remoteName = m_currentTestingRemote.isEmpty() ? "unknown" : m_currentTestingRemote;
+        QString message;
+        
+        if (success) {
+            message = tr("Remote connection successful");
+            qInfo() << "INFO: [GitOperationService::onCommandFinished] Remote connection test successful for:" << remoteName;
+        } else {
+            message = tr("Remote connection failed: %1").arg(error);
+            qWarning() << "WARNING: [GitOperationService::onCommandFinished] Remote connection test failed for:" << remoteName << "error:" << error;
+        }
+        
+        emit remoteConnectionTestCompleted(remoteName, success, message);
+        
+        // 清空当前测试的远程名称
+        m_currentTestingRemote.clear();
+        return;
+    }
+    
+    // 处理其他命令
     emit operationCompleted(command, success);
     
     if (success) {
