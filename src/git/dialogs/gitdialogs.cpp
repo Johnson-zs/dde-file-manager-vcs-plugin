@@ -30,6 +30,7 @@
 #include <QFileDialog>
 #include <QRegularExpression>
 #include <QSettings>
+#include <functional>
 
 GitDialogManager *GitDialogManager::s_instance = nullptr;
 
@@ -53,6 +54,28 @@ void GitDialogManager::showCommitDialog(const QString &repositoryPath, const QSt
     auto *dialog = new GitCommitDialog(repositoryPath, files, parent);
     dialog->show();
     qDebug() << "[GitDialogManager] Opened commit dialog for files:" << files;
+}
+
+void GitDialogManager::showCommitDialog(const QString &repositoryPath, QWidget *parent, std::function<void(bool)> onFinished)
+{
+    auto *dialog = new GitCommitDialog(repositoryPath, parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    
+    // 连接对话框完成信号
+    QObject::connect(dialog, &QDialog::accepted, [onFinished]() {
+        if (onFinished) {
+            onFinished(true); // commit成功
+        }
+    });
+    
+    QObject::connect(dialog, &QDialog::rejected, [onFinished]() {
+        if (onFinished) {
+            onFinished(false); // commit取消或失败
+        }
+    });
+    
+    dialog->show();
+    qDebug() << "[GitDialogManager] Opened commit dialog with callback for repository:" << repositoryPath;
 }
 
 void GitDialogManager::showStatusDialog(const QString &repositoryPath, QWidget *parent)

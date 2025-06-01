@@ -737,7 +737,16 @@ void GitStatusDialog::commitSelectedFiles()
 {
     qInfo() << "INFO: [GitStatusDialog::commitSelectedFiles] Opening commit dialog for repository:" << m_repositoryPath;
 
-    GitDialogManager::instance()->showCommitDialog(m_repositoryPath, this);
+    // 使用带回调的commit对话框
+    GitDialogManager::instance()->showCommitDialog(m_repositoryPath, this, [this](bool success) {
+        if (success) {
+            qInfo() << "INFO: [GitStatusDialog] Commit completed successfully, closing status dialog";
+            accept(); // 关闭status窗口
+        } else {
+            qDebug() << "[GitStatusDialog] Commit cancelled or failed, refreshing status";
+            onRefreshClicked(); // 刷新状态以反映可能的更改
+        }
+    });
 }
 
 void GitStatusDialog::onRefreshClicked()

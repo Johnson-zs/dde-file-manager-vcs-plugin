@@ -4,6 +4,7 @@
 #include <QString>
 #include <QWidget>
 #include <QStringList>
+#include <functional>
 
 // Forward declarations
 class GitFilePreviewDialog;
@@ -22,6 +23,7 @@ public:
     // 对话框创建接口
     void showCommitDialog(const QString &repositoryPath, QWidget *parent = nullptr);
     void showCommitDialog(const QString &repositoryPath, const QStringList &files, QWidget *parent = nullptr);
+    void showCommitDialog(const QString &repositoryPath, QWidget *parent, std::function<void(bool)> onFinished);
     void showStatusDialog(const QString &repositoryPath, QWidget *parent = nullptr);
     void showLogDialog(const QString &repositoryPath, QWidget *parent = nullptr);
     void showLogDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
