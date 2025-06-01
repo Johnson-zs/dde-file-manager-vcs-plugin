@@ -352,34 +352,99 @@ void GitLogDialog::loadCommitHistory(bool append)
     for (const QString &line : lines) {
         if (line.trimmed().isEmpty()) continue;
         
-        // 解析git log输出
-        QStringList parts = line.split('|');
-        if (parts.size() >= 5) {
+        // 解析git log输出 - 正确处理graph和commit信息的分离
+        // 使用正则表达式找到commit hash的位置，从那里开始解析commit数据
+        QRegularExpression commitRegex(R"(([a-f0-9]{7,})\|(.+)\|(.+)\|(.+)\|([a-f0-9]{40})$)");
+        QRegularExpressionMatch match = commitRegex.match(line);
+        
+        if (match.hasMatch()) {
             auto *item = new QTreeWidgetItem(m_commitTree);
             
-            // Graph列 - 简化的图形显示
-            QString graphPart = parts[0];
-            item->setText(0, "●"); // 简单的圆点表示commit
+            // 提取commit数据
+            QString shortHash = match.captured(1);
+            QString message = match.captured(2);
+            QString author = match.captured(3);
+            QString date = match.captured(4);
+            QString fullHash = match.captured(5);
+            
+            // 提取graph部分 - 从行开始到commit hash之前的所有内容
+            int commitDataStart = match.capturedStart();
+            QString graphPart = line.left(commitDataStart).trimmed();
+            
+            // Graph列 - 保留原始的图形信息，但简化显示
+            if (graphPart.isEmpty()) {
+                item->setText(0, "●"); // 简单的圆点表示commit
+            } else {
+                // 保留图形的基本结构，但清理和简化显示
+                QString cleanGraph = graphPart;
+                cleanGraph.replace("*", "●");
+                // 限制显示长度，避免过长的graph字符串
+                if (cleanGraph.length() > 10) {
+                    cleanGraph = cleanGraph.left(8) + "…";
+                }
+                item->setText(0, cleanGraph);
+            }
+            item->setToolTip(0, graphPart.isEmpty() ? "Commit" : graphPart);
             
             // Message列
-            item->setText(1, parts[1].trimmed());
+            item->setText(1, message.trimmed());
             
             // Author列
-            item->setText(2, parts[2].trimmed());
+            item->setText(2, author.trimmed());
             
             // Date列
-            item->setText(3, parts[3].trimmed());
+            item->setText(3, date.trimmed());
             
             // Hash列 - 显示短哈希
-            QString fullHash = parts[4].trimmed();
-            item->setText(4, fullHash.left(8));
+            item->setText(4, shortHash);
             item->setData(4, Qt::UserRole, fullHash); // 存储完整哈希
             
             // 设置工具提示
-            item->setToolTip(1, parts[1].trimmed());
+            item->setToolTip(1, message.trimmed());
             item->setToolTip(4, fullHash);
             
             loadedCount++;
+        } else {
+            // 如果正则表达式匹配失败，尝试备用解析方法
+            qDebug() << "[GitLogDialog] Failed to parse line with regex, trying fallback:" << line;
+            
+            // 备用方法：从右侧查找最后5个|分隔的字段
+            QStringList allParts = line.split('|');
+            if (allParts.size() >= 5) {
+                // 取最后5个部分作为commit数据
+                QStringList commitParts = allParts.mid(allParts.size() - 5);
+                
+                auto *item = new QTreeWidgetItem(m_commitTree);
+                
+                // Graph部分是除了最后5个字段之外的所有内容
+                QStringList graphParts = allParts.mid(0, allParts.size() - 5);
+                QString graphPart = graphParts.join("|").trimmed();
+                
+                if (graphPart.isEmpty()) {
+                    item->setText(0, "●");
+                } else {
+                    QString cleanGraph = graphPart;
+                    cleanGraph.replace("*", "●");
+                    if (cleanGraph.length() > 10) {
+                        cleanGraph = cleanGraph.left(8) + "…";
+                    }
+                    item->setText(0, cleanGraph);
+                }
+                item->setToolTip(0, graphPart.isEmpty() ? "Commit" : graphPart);
+                
+                // Commit数据
+                item->setText(1, commitParts[1].trimmed()); // Message
+                item->setText(2, commitParts[2].trimmed()); // Author
+                item->setText(3, commitParts[3].trimmed()); // Date
+                item->setText(4, commitParts[0].trimmed()); // Short Hash
+                item->setData(4, Qt::UserRole, commitParts[4].trimmed()); // Full Hash
+                
+                // 设置工具提示
+                item->setToolTip(1, commitParts[1].trimmed());
+                item->setToolTip(4, commitParts[4].trimmed());
+                
+                loadedCount++;
+            }
         }
     }
     
