@@ -1,6 +1,7 @@
 #include "gitfilepreviewdialog.h"
 #include "gitdialogs.h"
 #include "widgets/linenumbertextedit.h"
+#include "widgets/filerenderer.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -23,6 +24,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <QStringConverter>
+#include <QStackedWidget>
+#include <QTextBrowser>
 
 /**
  * @brief 简单的语法高亮器，支持常见文件类型
@@ -357,14 +360,19 @@ GitFilePreviewDialog::GitFilePreviewDialog(const QString &repositoryPath, const 
     , m_isCommitMode(false)
     , m_fileInfoLabel(nullptr)
     , m_textEdit(nullptr)
+    , m_specialRendererWidget(nullptr)
     , m_openFileButton(nullptr)
     , m_showInFolderButton(nullptr)
+    , m_toggleViewButton(nullptr)
     , m_closeButton(nullptr)
+    , m_specialRenderer(nullptr)
+    , m_usingSpecialRenderer(false)
 {
     qInfo() << "INFO: [GitFilePreviewDialog] Initializing file preview for:" << filePath;
     
     setupUI();
     loadFileContent();
+    setupSpecialRenderer();
     setupSyntaxHighlighter();
     
     qInfo() << "INFO: [GitFilePreviewDialog] File preview dialog initialized successfully";
@@ -379,18 +387,29 @@ GitFilePreviewDialog::GitFilePreviewDialog(const QString &repositoryPath, const 
     , m_isCommitMode(true)
     , m_fileInfoLabel(nullptr)
     , m_textEdit(nullptr)
+    , m_specialRendererWidget(nullptr)
     , m_openFileButton(nullptr)
     , m_showInFolderButton(nullptr)
+    , m_toggleViewButton(nullptr)
     , m_closeButton(nullptr)
+    , m_specialRenderer(nullptr)
+    , m_usingSpecialRenderer(false)
 {
     qInfo() << "INFO: [GitFilePreviewDialog] Initializing file preview for:" << filePath 
             << "at commit:" << commitHash.left(8);
     
     setupUI();
     loadFileContentAtCommit();
+    setupSpecialRenderer();
     setupSyntaxHighlighter();
     
     qInfo() << "INFO: [GitFilePreviewDialog] File preview dialog (commit mode) initialized successfully";
+}
+
+GitFilePreviewDialog::~GitFilePreviewDialog()
+{
+    delete m_specialRenderer;
+    m_specialRenderer = nullptr;
 }
 
 GitFilePreviewDialog* GitFilePreviewDialog::showFilePreview(const QString &repositoryPath, 
@@ -453,6 +472,13 @@ void GitFilePreviewDialog::setupUI()
     } else {
         infoText = tr("File: %1\nPress Space to close").arg(m_filePath);
     }
+    
+    // 检查是否有特殊渲染器
+    if (FileRendererFactory::hasRenderer(m_filePath)) {
+        infoText += tr("\nSpecial renderer available - Toggle view with button below");
+        m_usingSpecialRenderer = true;
+    }
+    
     m_fileInfoLabel->setText(infoText);
     mainLayout->addWidget(m_fileInfoLabel);
     
@@ -474,6 +500,11 @@ void GitFilePreviewDialog::setupUI()
         "}"
     );
     
+    if (m_usingSpecialRenderer) {
+        // 如果有特殊渲染器，先隐藏文本编辑器
+        m_textEdit->hide();
+    }
+    
     mainLayout->addWidget(m_textEdit);
     
     // === 按钮区域 ===
@@ -493,6 +524,16 @@ void GitFilePreviewDialog::setupUI()
         
         connect(m_openFileButton, &QPushButton::clicked, this, &GitFilePreviewDialog::onOpenFileClicked);
         connect(m_showInFolderButton, &QPushButton::clicked, this, &GitFilePreviewDialog::onShowInFolderClicked);
+    }
+    
+    // 特殊渲染器模式切换按钮
+    if (m_usingSpecialRenderer) {
+        m_toggleViewButton = new QPushButton(tr("Show Source"), this);
+        m_toggleViewButton->setIcon(QIcon::fromTheme("text-x-generic"));
+        m_toggleViewButton->setToolTip(tr("Toggle between rendered view and source code"));
+        buttonLayout->addWidget(m_toggleViewButton);
+        
+        connect(m_toggleViewButton, &QPushButton::clicked, this, &GitFilePreviewDialog::onToggleViewModeClicked);
     }
     
     buttonLayout->addStretch();
@@ -517,13 +558,17 @@ void GitFilePreviewDialog::loadFileContent()
     QFileInfo fileInfo(absolutePath);
     
     if (!fileInfo.exists()) {
-        m_textEdit->setPlainText(tr("File not found: %1").arg(absolutePath));
+        QString errorMsg = tr("File not found: %1").arg(absolutePath);
+        m_fileContent = errorMsg;
+        m_textEdit->setPlainText(errorMsg);
         qWarning() << "WARNING: [GitFilePreviewDialog] File not found:" << absolutePath;
         return;
     }
     
     if (!fileInfo.isFile()) {
-        m_textEdit->setPlainText(tr("Path is not a file: %1").arg(absolutePath));
+        QString errorMsg = tr("Path is not a file: %1").arg(absolutePath);
+        m_fileContent = errorMsg;
+        m_textEdit->setPlainText(errorMsg);
         qWarning() << "WARNING: [GitFilePreviewDialog] Path is not a file:" << absolutePath;
         return;
     }
@@ -531,17 +576,21 @@ void GitFilePreviewDialog::loadFileContent()
     // 检查文件大小，避免加载过大的文件
     const qint64 maxFileSize = 10 * 1024 * 1024; // 10MB
     if (fileInfo.size() > maxFileSize) {
-        m_textEdit->setPlainText(tr("File is too large to preview (size: %1 MB)\n\n"
-                                    "Maximum preview size: 10 MB\n"
-                                    "Use 'Open File' button to view with external application.")
-                                 .arg(fileInfo.size() / (1024.0 * 1024.0), 0, 'f', 2));
+        QString errorMsg = tr("File is too large to preview (size: %1 MB)\n\n"
+                              "Maximum preview size: 10 MB\n"
+                              "Use 'Open File' button to view with external application.")
+                           .arg(fileInfo.size() / (1024.0 * 1024.0), 0, 'f', 2);
+        m_fileContent = errorMsg;
+        m_textEdit->setPlainText(errorMsg);
         return;
     }
     
     QFile file(absolutePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        m_textEdit->setPlainText(tr("Failed to open file: %1\nError: %2")
-                                 .arg(absolutePath, file.errorString()));
+        QString errorMsg = tr("Failed to open file: %1\nError: %2")
+                           .arg(absolutePath, file.errorString());
+        m_fileContent = errorMsg;
+        m_textEdit->setPlainText(errorMsg);
         qWarning() << "WARNING: [GitFilePreviewDialog] Failed to open file:" << absolutePath 
                    << "Error:" << file.errorString();
         return;
@@ -552,8 +601,10 @@ void GitFilePreviewDialog::loadFileContent()
     QString content = stream.readAll();
     
     if (content.isEmpty()) {
-        m_textEdit->setPlainText(tr("File is empty or could not be read as text."));
+        m_fileContent = tr("File is empty or could not be read as text.");
+        m_textEdit->setPlainText(m_fileContent);
     } else {
+        m_fileContent = content;
         m_textEdit->setPlainText(content);
         qDebug() << "[GitFilePreviewDialog] Successfully loaded file content, size:" << content.length() << "characters";
     }
@@ -571,16 +622,20 @@ void GitFilePreviewDialog::loadFileContentAtCommit()
     
     process.start("git", args);
     if (!process.waitForFinished(10000)) {
-        m_textEdit->setPlainText(tr("Failed to load file content from Git: %1\nError: %2")
-                                 .arg(m_filePath, process.errorString()));
+        QString errorMsg = tr("Failed to load file content from Git: %1\nError: %2")
+                           .arg(m_filePath, process.errorString());
+        m_fileContent = errorMsg;
+        m_textEdit->setPlainText(errorMsg);
         qWarning() << "WARNING: [GitFilePreviewDialog] Git command failed:" << process.errorString();
         return;
     }
     
     if (process.exitCode() != 0) {
         QString errorOutput = QString::fromUtf8(process.readAllStandardError());
-        m_textEdit->setPlainText(tr("Git command failed: %1\nError output: %2")
-                                 .arg(m_filePath, errorOutput));
+        QString errorMsg = tr("Git command failed: %1\nError output: %2")
+                           .arg(m_filePath, errorOutput);
+        m_fileContent = errorMsg;
+        m_textEdit->setPlainText(errorMsg);
         qWarning() << "WARNING: [GitFilePreviewDialog] Git command exit code:" << process.exitCode()
                    << "Error:" << errorOutput;
         return;
@@ -589,9 +644,11 @@ void GitFilePreviewDialog::loadFileContentAtCommit()
     QString content = QString::fromUtf8(process.readAllStandardOutput());
     
     if (content.isEmpty()) {
-        m_textEdit->setPlainText(tr("File is empty or could not be read from commit %1")
-                                 .arg(m_commitHash.left(8)));
+        m_fileContent = tr("File is empty or could not be read from commit %1")
+                        .arg(m_commitHash.left(8));
+        m_textEdit->setPlainText(m_fileContent);
     } else {
+        m_fileContent = content;
         m_textEdit->setPlainText(content);
         qDebug() << "[GitFilePreviewDialog] Successfully loaded file content from commit, size:" 
                  << content.length() << "characters";
@@ -642,26 +699,108 @@ QString GitFilePreviewDialog::detectFileType() const
         return "qml";
     } else if (suffix == "cmake" || fileName == "cmakelists.txt" || fileName.startsWith("cmake")) {
         return "cmake";
+    } else if (suffix == "md" || suffix == "markdown" || suffix == "mdown" || 
+               fileName == "readme" || fileName == "readme.md" || fileName == "readme.txt") {
+        return "markdown";
     }
     
     return QString(); // 未知类型，不应用语法高亮
 }
 
-void GitFilePreviewDialog::keyPressEvent(QKeyEvent *event)
+bool GitFilePreviewDialog::isMarkdownFile() const
 {
-    // 空格键关闭对话框
-    if (event->key() == Qt::Key_Space) {
-        close();
+    QFileInfo fileInfo(m_filePath);
+    QString suffix = fileInfo.suffix().toLower();
+    QString fileName = fileInfo.fileName().toLower();
+
+    return (suffix == "md" || suffix == "markdown" || suffix == "mdown" ||
+            fileName == "readme" || fileName == "readme.md" || fileName == "readme.txt");
+}
+
+void GitFilePreviewDialog::setupSpecialRenderer()
+{
+    if (!m_usingSpecialRenderer || m_fileContent.isEmpty()) {
         return;
     }
     
-    // Escape键也关闭对话框
-    if (event->key() == Qt::Key_Escape) {
-        close();
+    // 创建特殊渲染器
+    auto renderer = FileRendererFactory::createRenderer(m_filePath);
+    if (!renderer) {
+        qWarning() << "WARNING: [GitFilePreviewDialog] Failed to create special renderer for:" << m_filePath;
+        m_usingSpecialRenderer = false;
         return;
     }
     
-    QDialog::keyPressEvent(event);
+    m_specialRenderer = renderer.release(); // 转移所有权到原始指针
+    
+    // 创建渲染器 Widget
+    m_specialRendererWidget = m_specialRenderer->createWidget(this);
+    if (!m_specialRendererWidget) {
+        qWarning() << "WARNING: [GitFilePreviewDialog] Failed to create special renderer widget";
+        delete m_specialRenderer;
+        m_specialRenderer = nullptr;
+        m_usingSpecialRenderer = false;
+        return;
+    }
+    
+    // 设置内容
+    m_specialRenderer->setContent(m_fileContent);
+    
+    // 添加到布局中（替换文本编辑器）
+    auto *mainLayout = qobject_cast<QVBoxLayout*>(layout());
+    if (mainLayout) {
+        // 找到文本编辑器的位置并替换
+        int textEditIndex = mainLayout->indexOf(m_textEdit);
+        if (textEditIndex >= 0) {
+            mainLayout->insertWidget(textEditIndex, m_specialRendererWidget);
+            m_textEdit->hide();
+        }
+    }
+    
+    updateToggleButton();
+    
+    qInfo() << "INFO: [GitFilePreviewDialog] Special renderer setup completed for type:" 
+            << m_specialRenderer->getRendererType();
+}
+
+void GitFilePreviewDialog::updateToggleButton()
+{
+    if (!m_toggleViewButton || !m_specialRenderer) {
+        return;
+    }
+    
+    if (m_specialRenderer->supportsViewToggle()) {
+        m_toggleViewButton->setText(m_specialRenderer->getCurrentViewModeDescription());
+        m_toggleViewButton->setVisible(true);
+    } else {
+        m_toggleViewButton->setVisible(false);
+    }
+}
+
+void GitFilePreviewDialog::onToggleViewModeClicked()
+{
+    if (!m_specialRenderer || !m_usingSpecialRenderer) {
+        return;
+    }
+    
+    if (m_specialRenderer->supportsViewToggle()) {
+        // 切换特殊渲染器的视图模式
+        m_specialRenderer->toggleViewMode();
+        updateToggleButton();
+    } else {
+        // 在特殊渲染器和源码视图之间切换
+        if (m_specialRendererWidget->isVisible()) {
+            m_specialRendererWidget->hide();
+            m_textEdit->show();
+            m_toggleViewButton->setText(tr("Show Rendered"));
+        } else {
+            m_textEdit->hide();
+            m_specialRendererWidget->show();
+            m_toggleViewButton->setText(tr("Show Source"));
+        }
+    }
+    
+    qDebug() << "[GitFilePreviewDialog] View mode toggled";
 }
 
 void GitFilePreviewDialog::onCloseClicked()
@@ -687,6 +826,23 @@ void GitFilePreviewDialog::onShowInFolderClicked()
     
     QString absolutePath = QDir(m_repositoryPath).absoluteFilePath(m_filePath);
     GitDialogManager::instance()->showFileInFolder(absolutePath, this);
+}
+
+void GitFilePreviewDialog::keyPressEvent(QKeyEvent *event)
+{
+    // 空格键关闭对话框
+    if (event->key() == Qt::Key_Space) {
+        close();
+        return;
+    }
+    
+    // Escape键也关闭对话框
+    if (event->key() == Qt::Key_Escape) {
+        close();
+        return;
+    }
+    
+    QDialog::keyPressEvent(event);
 }
 
 #include "gitfilepreviewdialog.moc" 
