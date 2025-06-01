@@ -75,6 +75,7 @@ private slots:
     void onRemoteChanged();
     void onStrategyChanged();
     void onAutoStashToggled(bool enabled);
+    void showRemoteManager();
     void fetchUpdates();
     void stashAndPull();
     void executePull();
@@ -146,6 +147,7 @@ private:
     QLabel *m_downloadStatsLabel;
 
     // 按钮组
+    QPushButton *m_remoteManagerButton;
     QPushButton *m_fetchButton;
     QPushButton *m_stashPullButton;
     QPushButton *m_dryRunButton;
@@ -164,6 +166,7 @@ private:
     bool m_hasLocalChanges;
     bool m_hasUncommittedChanges;
     bool m_isOperationInProgress;
+    bool m_isDryRunInProgress;
     QTimer *m_statusUpdateTimer;
 };
 

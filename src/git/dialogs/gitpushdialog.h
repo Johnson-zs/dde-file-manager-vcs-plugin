@@ -153,6 +153,7 @@ private:
     QStringList m_remoteBranches;
     QString m_currentBranch;
     bool m_isOperationInProgress;
+    bool m_isDryRunInProgress;
     QTimer *m_statusUpdateTimer;
 };
 

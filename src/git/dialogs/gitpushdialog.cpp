@@ -23,12 +23,12 @@
 #include <QDir>
 
 GitPushDialog::GitPushDialog(const QString &repositoryPath, QWidget *parent)
-    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_isOperationInProgress(false), m_statusUpdateTimer(new QTimer(this))
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_statusUpdateTimer(new QTimer(this))
 {
     setWindowTitle(tr("Git Push"));
     setWindowIcon(QIcon(":/icons/vcs-push"));
-    setMinimumSize(800, 600);
-    resize(900, 700);
+    setMinimumSize(800, 500);
+    resize(900, 600);
 
     qInfo() << "INFO: [GitPushDialog] Initializing push dialog for repository:" << repositoryPath;
 
@@ -51,8 +51,8 @@ GitPushDialog::~GitPushDialog()
 void GitPushDialog::setupUI()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(12);
-    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(8);
+    mainLayout->setContentsMargins(12, 12, 12, 12);
 
     // 创建主分割器
     auto *splitter = new QSplitter(Qt::Horizontal, this);
@@ -60,7 +60,8 @@ void GitPushDialog::setupUI()
     // 左侧面板
     auto *leftWidget = new QWidget;
     auto *leftLayout = new QVBoxLayout(leftWidget);
-    leftLayout->setSpacing(12);
+    leftLayout->setSpacing(8);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
 
     setupStatusGroup();
     setupConfigGroup();
@@ -72,7 +73,8 @@ void GitPushDialog::setupUI()
     // 右侧面板
     auto *rightWidget = new QWidget;
     auto *rightLayout = new QVBoxLayout(rightWidget);
-    rightLayout->setSpacing(12);
+    rightLayout->setSpacing(8);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
 
     setupCommitsGroup();
     rightLayout->addWidget(m_commitsGroup);
@@ -98,7 +100,8 @@ void GitPushDialog::setupUI()
     // 修复布局添加问题
     auto *buttonWidget = new QWidget;
     auto *buttonLayout = new QHBoxLayout(buttonWidget);
-    buttonLayout->setSpacing(8);
+    buttonLayout->setSpacing(6);
+    buttonLayout->setContentsMargins(0, 0, 0, 0);
 
     // 远程管理按钮
     m_remoteManagerButton = new QPushButton(tr("Remote Manager"));
@@ -124,7 +127,7 @@ void GitPushDialog::setupUI()
     m_pushButton = new QPushButton(tr("Push"));
     m_pushButton->setIcon(QIcon(":/icons/vcs-push"));
     m_pushButton->setDefault(true);
-    m_pushButton->setStyleSheet("QPushButton { font-weight: bold; padding: 8px 16px; }");
+    m_pushButton->setStyleSheet("QPushButton { font-weight: bold; padding: 6px 12px; }");
 
     m_cancelButton = new QPushButton(tr("Cancel"));
     m_cancelButton->setIcon(QIcon(":/icons/dialog-cancel"));
@@ -607,6 +610,7 @@ void GitPushDialog::executePush()
 void GitPushDialog::executePushWithOptions(const PushOptions &options)
 {
     m_isOperationInProgress = true;
+    m_isDryRunInProgress = options.dryRun;
     enableControls(false);
 
     m_progressBar->setVisible(true);
@@ -655,7 +659,10 @@ bool GitPushDialog::confirmForcePush()
 
 void GitPushDialog::onPushCompleted(bool success, const QString &message)
 {
+    bool isDryRun = m_isDryRunInProgress;
+    
     m_isOperationInProgress = false;
+    m_isDryRunInProgress = false;
     enableControls(true);
 
     m_progressBar->setVisible(false);
@@ -664,25 +671,35 @@ void GitPushDialog::onPushCompleted(bool success, const QString &message)
     if (success) {
         qInfo() << "INFO: [GitPushDialog::onPushCompleted] Push completed successfully";
 
-        QMessageBox::information(this, tr("Push Successful"),
-                                 tr("Push operation completed successfully.\n\n%1").arg(message));
+        if (isDryRun) {
+            QMessageBox::information(this, tr("Dry Run Successful"),
+                                     tr("Dry run completed successfully. No changes were made.\n\n%1").arg(message));
+        } else {
+            QMessageBox::information(this, tr("Push Successful"),
+                                     tr("Push operation completed successfully.\n\n%1").arg(message));
 
-        // 刷新状态
-        loadUnpushedCommits();
-        updateRepositoryStatus();
+            // 刷新状态（仅在实际push后）
+            loadUnpushedCommits();
+            updateRepositoryStatus();
 
-        // 可选择关闭对话框
-        if (QMessageBox::question(this, tr("Push Complete"),
-                                  tr("Push completed successfully. Close dialog?"),
-                                  QMessageBox::Yes | QMessageBox::No)
-            == QMessageBox::Yes) {
-            accept();
+            // 可选择关闭对话框
+            if (QMessageBox::question(this, tr("Push Complete"),
+                                      tr("Push completed successfully. Close dialog?"),
+                                      QMessageBox::Yes | QMessageBox::No)
+                == QMessageBox::Yes) {
+                accept();
+            }
         }
     } else {
         qWarning() << "WARNING: [GitPushDialog::onPushCompleted] Push failed:" << message;
 
-        QMessageBox::critical(this, tr("Push Failed"),
-                              tr("Push operation failed.\n\n%1").arg(message));
+        if (isDryRun) {
+            QMessageBox::critical(this, tr("Dry Run Failed"),
+                                  tr("Dry run failed.\n\n%1").arg(message));
+        } else {
+            QMessageBox::critical(this, tr("Push Failed"),
+                                  tr("Push operation failed.\n\n%1").arg(message));
+        }
     }
 }
 
@@ -708,4 +725,9 @@ void GitPushDialog::enableControls(bool enabled)
     m_previewButton->setEnabled(enabled);
     m_dryRunButton->setEnabled(enabled);
     m_pushButton->setEnabled(enabled);
+    
+    // 在启用控件后，重新验证按钮状态
+    if (enabled) {
+        validatePushOptions();
+    }
 }

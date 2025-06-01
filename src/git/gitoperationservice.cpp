@@ -1,5 +1,6 @@
 #include "gitoperationservice.h"
 #include "dialogs/gitdialogs.h"
+#include "dialogs/gitoperationdialog.h"
 #include "utils.h"
 
 #include <QApplication>
@@ -776,8 +777,39 @@ void GitOperationService::executeInteractiveOperation(const QString &operation, 
         }
     }
 
-    // Use the enhanced showOperationDialog method that actually executes the command
-    GitDialogManager::instance()->showOperationDialog(operation, workingDir, arguments, parentWidget);
+    // 创建操作对话框
+    auto *dialog = new GitOperationDialog(operation, parentWidget);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    QString description = QObject::tr("Preparing to execute %1 operation in repository").arg(operation);
+    dialog->setOperationDescription(description);
+
+    // 连接完成信号，确保能够正确传递操作结果
+    connect(dialog, &QDialog::finished, this, [this, operation, dialog](int result) {
+        bool success = (result == QDialog::Accepted);
+        QString message;
+        
+        if (success) {
+            message = QObject::tr("%1 operation completed successfully").arg(operation);
+            qInfo() << "INFO: [GitOperationService::executeInteractiveOperation] Operation completed successfully:" << operation;
+            emit fileManagerRefreshRequested();
+        } else {
+            auto executionResult = dialog->getExecutionResult();
+            if (result == QDialog::Rejected) {
+                message = QObject::tr("%1 operation was cancelled").arg(operation);
+            } else {
+                message = QObject::tr("%1 operation failed").arg(operation);
+            }
+            qWarning() << "WARNING: [GitOperationService::executeInteractiveOperation] Operation failed or cancelled:" << operation;
+        }
+        
+        // 发射操作完成信号
+        emit operationCompleted(operation, success, message);
+    });
+
+    // 执行命令并显示对话框
+    dialog->executeCommand(workingDir, arguments);
+    dialog->show();
     
     qInfo() << "INFO: [GitOperationService::executeInteractiveOperation] Started interactive operation:" 
             << operation << "with arguments:" << arguments;
