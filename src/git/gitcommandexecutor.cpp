@@ -195,30 +195,44 @@ void GitCommandExecutor::cancelCurrentCommand()
     if (m_isExecuting && m_currentProcess) {
         qInfo() << "INFO: [GitCommandExecutor::cancelCurrentCommand] Cancelling current command:" << m_currentCommand.command;
         
+        // 停止超时定时器
         m_timeoutTimer->stop();
+        
+        // 断开所有信号连接，防止在进程终止时触发槽函数
+        m_currentProcess->disconnect();
+        
+        // 强制终止进程
         m_currentProcess->kill();
         m_currentProcess->waitForFinished(3000);
         
+        // 安全删除进程对象
         m_currentProcess->deleteLater();
         m_currentProcess = nullptr;
         m_isExecuting = false;
+        
+        // 发送取消信号
+        emit commandFinished(m_currentCommand.command, Result::ProcessError, QString(), tr("Operation cancelled by user"));
     }
 }
 
 void GitCommandExecutor::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
+    // 检查进程是否已经被取消或清理
+    if (!m_currentProcess || !m_isExecuting) {
+        qInfo() << "INFO: [GitCommandExecutor::onProcessFinished] Process already cancelled or cleaned up";
+        return;
+    }
+
     m_timeoutTimer->stop();
     m_isExecuting = false;
 
     QString output, error;
-    if (m_currentProcess) {
-        output = QString::fromUtf8(m_currentProcess->readAllStandardOutput());
-        error = QString::fromUtf8(m_currentProcess->readAllStandardError());
-        
-        // 清理进程
-        m_currentProcess->deleteLater();
-        m_currentProcess = nullptr;
-    }
+    output = QString::fromUtf8(m_currentProcess->readAllStandardOutput());
+    error = QString::fromUtf8(m_currentProcess->readAllStandardError());
+    
+    // 清理进程
+    m_currentProcess->deleteLater();
+    m_currentProcess = nullptr;
 
     Result result = processToResult(exitCode, exitStatus, QProcess::UnknownError);
     
@@ -234,6 +248,12 @@ void GitCommandExecutor::onProcessFinished(int exitCode, QProcess::ExitStatus ex
 
 void GitCommandExecutor::onProcessError(QProcess::ProcessError error)
 {
+    // 检查进程是否已经被取消或清理
+    if (!m_currentProcess || !m_isExecuting) {
+        qInfo() << "INFO: [GitCommandExecutor::onProcessError] Process already cancelled or cleaned up";
+        return;
+    }
+
     m_timeoutTimer->stop();
     m_isExecuting = false;
 
@@ -262,10 +282,9 @@ void GitCommandExecutor::onProcessError(QProcess::ProcessError error)
 
     qWarning() << "ERROR: [GitCommandExecutor::onProcessError]" << errorString << "for command:" << m_currentCommand.command;
 
-    if (m_currentProcess) {
-        m_currentProcess->deleteLater();
-        m_currentProcess = nullptr;
-    }
+    // 清理进程
+    m_currentProcess->deleteLater();
+    m_currentProcess = nullptr;
 
     emit commandFinished(m_currentCommand.command, result, QString(), errorString);
 }
@@ -274,9 +293,22 @@ void GitCommandExecutor::onProcessTimeout()
 {
     qWarning() << "WARNING: [GitCommandExecutor::onProcessTimeout] Command timed out:" << m_currentCommand.command;
     
-    if (m_currentProcess) {
+    // 检查进程是否仍然存在且正在执行
+    if (m_currentProcess && m_isExecuting) {
+        // 断开信号连接，防止在强制终止时触发其他槽函数
+        m_currentProcess->disconnect();
+        
+        // 强制终止进程
         m_currentProcess->kill();
-        // onProcessFinished 会被调用来清理
+        m_currentProcess->waitForFinished(3000);
+        
+        // 清理状态
+        m_isExecuting = false;
+        m_currentProcess->deleteLater();
+        m_currentProcess = nullptr;
+        
+        // 发送超时信号
+        emit commandFinished(m_currentCommand.command, Result::Timeout, QString(), tr("Command execution timed out"));
     }
 }
 
