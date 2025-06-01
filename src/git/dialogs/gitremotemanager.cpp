@@ -193,17 +193,26 @@ void GitRemoteManager::setupRemoteDetailsGroup()
 
     layout->addLayout(actionLayout, 4, 0, 1, 2);
 
-    // 远程分支
-    layout->addWidget(new QLabel(tr("Remote Branches:")), 5, 0, 1, 2);
+    // 远程分支区域 - 优化布局和间距
+    auto *branchesLabel = new QLabel(tr("Remote Branches:"));
+    branchesLabel->setStyleSheet("font-weight: bold; margin-top: 8px;");
+    layout->addWidget(branchesLabel, 5, 0, 1, 2);
+
+    // 分支数量标签，减少上边距
     m_branchesCountLabel = new QLabel;
+    m_branchesCountLabel->setStyleSheet("margin-top: 2px; color: #666;");
     layout->addWidget(m_branchesCountLabel, 6, 0, 1, 2);
 
+    // 分支列表，设置为stretch状态并减少上边距
     m_branchesWidget = new QListWidget;
-    m_branchesWidget->setMaximumHeight(150);
     m_branchesWidget->setAlternatingRowColors(true);
+    m_branchesWidget->setStyleSheet("margin-top: 4px;");
     layout->addWidget(m_branchesWidget, 7, 0, 1, 2);
 
+    // 设置列拉伸和行拉伸
     layout->setColumnStretch(1, 1);
+    // 让分支列表行具有最大的拉伸权重，充分利用剩余空间
+    layout->setRowStretch(7, 1);
 }
 
 void GitRemoteManager::setupButtonGroup()
