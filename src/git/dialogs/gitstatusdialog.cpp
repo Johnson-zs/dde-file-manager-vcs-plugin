@@ -218,7 +218,7 @@ void GitStatusDialog::setupUI()
     m_mainSplitter->addWidget(previewGroup);
 
     // 设置主分割器比例和属性
-    m_mainSplitter->setSizes({ 800, 600 });   // 调整初始比例，给文件列表更多空间
+    m_mainSplitter->setSizes({ 600, 800 });   // 调整初始比例，给文件预览更多空间
     m_mainSplitter->setStretchFactor(0, 1);   // 文件列表区域可拉伸
     m_mainSplitter->setStretchFactor(1, 1);   // 预览区域也可拉伸
     m_mainSplitter->setChildrenCollapsible(false);   // 防止子窗口被完全折叠
@@ -741,10 +741,10 @@ void GitStatusDialog::commitSelectedFiles()
     GitDialogManager::instance()->showCommitDialog(m_repositoryPath, this, [this](bool success) {
         if (success) {
             qInfo() << "INFO: [GitStatusDialog] Commit completed successfully, closing status dialog";
-            accept(); // 关闭status窗口
+            accept();   // 关闭status窗口
         } else {
             qDebug() << "[GitStatusDialog] Commit cancelled or failed, refreshing status";
-            onRefreshClicked(); // 刷新状态以反映可能的更改
+            onRefreshClicked();   // 刷新状态以反映可能的更改
         }
     });
 }
@@ -884,20 +884,19 @@ void GitStatusDialog::keyPressEvent(QKeyEvent *event)
                 previewSelectedFile();
             }
         }
-        event->accept(); // 标记事件已处理
+        event->accept();   // 标记事件已处理
         return;
     }
-    
+
     QDialog::keyPressEvent(event);
 }
 
 bool GitStatusDialog::eventFilter(QObject *watched, QEvent *event)
 {
     // 捕获TreeWidget的键盘事件
-    if ((watched == m_workingTreeWidget || watched == m_stagingAreaWidget) && 
-        event->type() == QEvent::KeyPress) {
-        QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
-        
+    if ((watched == m_workingTreeWidget || watched == m_stagingAreaWidget) && event->type() == QEvent::KeyPress) {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
+
         // 空格键预览文件
         if (keyEvent->key() == Qt::Key_Space) {
             QString filePath = getCurrentSelectedFilePath();
@@ -910,11 +909,11 @@ bool GitStatusDialog::eventFilter(QObject *watched, QEvent *event)
                     // 打开新的预览对话框
                     previewSelectedFile();
                 }
-                return true; // 事件已处理，不再传播
+                return true;   // 事件已处理，不再传播
             }
         }
     }
-    
+
     return QDialog::eventFilter(watched, event);
 }
 
@@ -924,7 +923,7 @@ QString GitStatusDialog::getCurrentSelectedFilePath() const
     if (selectedFiles.isEmpty()) {
         return QString();
     }
-    
+
     return selectedFiles.first()->text(0);
 }
 
@@ -932,25 +931,25 @@ void GitStatusDialog::previewSelectedFile()
 {
     QString filePath = getCurrentSelectedFilePath();
     if (filePath.isEmpty()) {
-        QMessageBox::information(this, tr("No File Selected"), 
+        QMessageBox::information(this, tr("No File Selected"),
                                  tr("Please select a file to preview."));
         return;
     }
-    
+
     // 关闭之前的预览对话框
     if (m_currentPreviewDialog) {
         m_currentPreviewDialog->close();
         m_currentPreviewDialog = nullptr;
     }
-    
+
     // 创建新的预览对话框
     m_currentPreviewDialog = GitDialogManager::instance()->showFilePreview(m_repositoryPath, filePath, this);
-    
+
     // 连接对话框关闭信号，以便清理引用
     connect(m_currentPreviewDialog, &QDialog::finished, this, [this]() {
         m_currentPreviewDialog = nullptr;
     });
-    
+
     qInfo() << "INFO: [GitStatusDialog] Opened file preview for:" << filePath;
 }
 
