@@ -442,6 +442,19 @@ void GitOperationService::showAdvancedPullDialog(const QString &repositoryPath)
     GitDialogManager::instance()->showPullDialog(repositoryPath, parentWidget);
 }
 
+void GitOperationService::showRemoteManager(const QString &repositoryPath)
+{
+    qInfo() << "INFO: [GitOperationService::showRemoteManager] Opening remote manager for:" << repositoryPath;
+
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitOperationService::showRemoteManager] No QApplication instance found";
+        return;
+    }
+
+    QWidget *parentWidget = QApplication::activeWindow();
+    GitDialogManager::instance()->showRemoteManager(repositoryPath, parentWidget);
+}
+
 // ============================================================================
 // 远程仓库管理实现
 // ============================================================================

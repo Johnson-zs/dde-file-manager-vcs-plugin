@@ -46,6 +46,7 @@ public:
     // === 高级Push/Pull对话框 ===
     void showAdvancedPushDialog(const QString &repositoryPath);
     void showAdvancedPullDialog(const QString &repositoryPath);
+    void showRemoteManager(const QString &repositoryPath);
 
     // === 高级Push/Pull操作 ===
     void pushWithOptions(const QString &repositoryPath, const QString &remoteName, 

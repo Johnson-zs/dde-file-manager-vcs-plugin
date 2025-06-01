@@ -382,6 +382,23 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     });
 
     menu->addAction(quickPushAction);
+
+    // 添加分隔符
+    auto separator2 = createSeparator();
+    menu->addAction(separator2);
+
+    // Git Remote Manager
+    auto remoteManagerAction = m_proxy->createAction();
+    remoteManagerAction->setText("Git Remote Manager...");
+    remoteManagerAction->setIcon("vcs-branch");
+    remoteManagerAction->setToolTip(QString("Manage remote repositories\nCurrent branch: %1").arg(branchName).toStdString());
+    remoteManagerAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
+        Q_UNUSED(action)
+        Q_UNUSED(checked)
+        m_operationService->showRemoteManager(repositoryPath);
+    });
+
+    menu->addAction(remoteManagerAction);
 }
 
 QStringList GitMenuBuilder::getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList)
