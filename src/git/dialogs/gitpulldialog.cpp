@@ -299,6 +299,10 @@ void GitPullDialog::setupConnections()
     // 右键菜单信号
     connect(m_updatesWidget, &QListWidget::customContextMenuRequested,
             this, &GitPullDialog::showUpdatesContextMenu);
+    
+    // 双击列表项信号 - 打开浏览器
+    connect(m_updatesWidget, &QListWidget::itemDoubleClicked,
+            this, &GitPullDialog::onItemDoubleClicked);
 }
 
 void GitPullDialog::loadRepositoryInfo()
@@ -1544,4 +1548,19 @@ GitPullDialog::RemoteUpdateInfo GitPullDialog::getCurrentSelectedUpdate() const
     }
 
     return m_remoteUpdates[currentRow];
+}
+
+void GitPullDialog::onItemDoubleClicked(QListWidgetItem *item)
+{
+    if (!item) {
+        return;
+    }
+
+    RemoteUpdateInfo updateInfo = getCurrentSelectedUpdate();
+    if (updateInfo.hash.isEmpty()) {
+        return;
+    }
+
+    // 打开浏览器
+    openCommitInBrowser();
 }

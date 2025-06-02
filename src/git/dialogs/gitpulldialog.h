@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QPushButton>
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QProgressBar>
 #include <QTimer>
 #include <QDateTime>
@@ -101,6 +102,9 @@ private slots:
     void copyCommitHash();
     void copyCommitMessage();
     void showCommitDetails();
+    
+    // 双击列表项槽函数
+    void onItemDoubleClicked(QListWidgetItem *item);
 
 private:
     // === UI设置方法 ===
