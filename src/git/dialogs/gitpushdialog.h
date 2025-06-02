@@ -100,6 +100,7 @@ private:
     bool confirmForcePush();
     bool checkRemoteStatus();
     void showImpactAssessment();
+    void showQuickPreview();
     void executePushWithOptions(const PushOptions &options);
 
     // === 辅助方法 ===
@@ -109,6 +110,7 @@ private:
     void enableControls(bool enabled);
     QString formatCommitInfo(const CommitInfo &commit) const;
     QString getStatusDescription() const;
+    QString getFileChangesPreview() const;
 
     // === 成员变量 ===
     QString m_repositoryPath;

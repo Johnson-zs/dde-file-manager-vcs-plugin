@@ -2,6 +2,7 @@
 #include "gitoperationservice.h"
 #include "gitcommandexecutor.h"
 #include "gitdialogs.h"
+#include "widgets/linenumbertextedit.h"
 
 #include <QApplication>
 #include <QVBoxLayout>
@@ -21,6 +22,9 @@
 #include <QHeaderView>
 #include <QFileInfo>
 #include <QDir>
+#include <QFont>
+#include <QMenu>
+#include <QAction>
 
 GitPushDialog::GitPushDialog(const QString &repositoryPath, QWidget *parent)
     : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_statusUpdateTimer(new QTimer(this))
@@ -119,9 +123,16 @@ void GitPushDialog::setupUI()
     m_dryRunButton->setIcon(QIcon(":/icons/vcs-status"));
     m_dryRunButton->setToolTip(tr("Test push without actually pushing"));
 
+    // 影响评估按钮
+    auto *impactButton = new QPushButton(tr("Impact Assessment"));
+    impactButton->setIcon(QIcon(":/icons/vcs-status"));
+    impactButton->setToolTip(tr("Analyze the impact of this push operation"));
+    connect(impactButton, &QPushButton::clicked, this, &GitPushDialog::showImpactAssessment);
+
     buttonLayout->addWidget(m_remoteManagerButton);
     buttonLayout->addWidget(m_previewButton);
     buttonLayout->addWidget(m_dryRunButton);
+    buttonLayout->addWidget(impactButton);
     buttonLayout->addStretch();
 
     // 主要操作按钮
@@ -251,7 +262,20 @@ void GitPushDialog::setupConnections()
 
     // 按钮信号
     connect(m_remoteManagerButton, &QPushButton::clicked, this, &GitPushDialog::showRemoteManager);
-    connect(m_previewButton, &QPushButton::clicked, this, &GitPushDialog::previewChanges);
+    connect(m_previewButton, &QPushButton::clicked, this, [this]() {
+        // 创建预览选择菜单
+        QMenu *previewMenu = new QMenu(this);
+        
+        auto *branchCompareAction = previewMenu->addAction(QIcon(":/icons/vcs-branch"), tr("Branch Comparison Preview"));
+        branchCompareAction->setToolTip(tr("Use advanced branch comparison dialog"));
+        connect(branchCompareAction, &QAction::triggered, this, &GitPushDialog::previewChanges);
+        
+        auto *quickPreviewAction = previewMenu->addAction(QIcon(":/icons/vcs-diff"), tr("Quick Preview"));
+        quickPreviewAction->setToolTip(tr("Show simple preview with commit list and file changes"));
+        connect(quickPreviewAction, &QAction::triggered, this, &GitPushDialog::showQuickPreview);
+        
+        previewMenu->exec(m_previewButton->mapToGlobal(QPoint(0, m_previewButton->height())));
+    });
     connect(m_dryRunButton, &QPushButton::clicked, this, &GitPushDialog::executeDryRun);
     connect(m_pushButton, &QPushButton::clicked, this, &GitPushDialog::executePush);
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
@@ -271,6 +295,7 @@ void GitPushDialog::loadRepositoryInfo()
     loadRemotes();
     loadBranches();
     loadUnpushedCommits();
+    loadRemoteStatus();
     updateRepositoryStatus();
 }
 
@@ -485,10 +510,7 @@ void GitPushDialog::loadUnpushedCommits()
 void GitPushDialog::updateRepositoryStatus()
 {
     // 更新状态标签
-    updateStatusLabels();
-
-    // 验证推送选项
-    validatePushOptions();
+    updateUI();
 }
 
 void GitPushDialog::updateStatusLabels()
@@ -540,6 +562,9 @@ void GitPushDialog::onForceToggled(bool enabled)
                              tr("Force push can overwrite remote changes and cause data loss.\n"
                                 "Only use this if you are certain about what you're doing.\n\n"
                                 "Consider using 'git pull' first to merge remote changes."));
+        
+        // 显示影响评估
+        showImpactAssessment();
     }
 }
 
@@ -564,9 +589,20 @@ void GitPushDialog::showRemoteManager()
 
 void GitPushDialog::previewChanges()
 {
-    // TODO: 实现变更预览
-    QMessageBox::information(this, tr("Preview Changes"),
-                             tr("Changes preview functionality will be implemented in the next phase."));
+    qInfo() << "INFO: [GitPushDialog::previewChanges] Starting changes preview";
+
+    if (m_unpushedCommits.isEmpty()) {
+        QMessageBox::information(this, tr("No Changes to Preview"),
+                                 tr("There are no unpushed commits to preview."));
+        return;
+    }
+
+    // 使用GitBranchComparisonDialog来预览推送内容
+    QString remoteBranch = m_remoteCombo->currentText() + "/" + m_remoteBranchCombo->currentText();
+    QString localBranch = m_localBranchCombo->currentText();
+    
+    // 调用GitDialogManager来显示分支比较，比较远程分支和本地分支的差异
+    GitDialogManager::instance()->showBranchComparisonDialog(m_repositoryPath, remoteBranch, localBranch, this);
 }
 
 void GitPushDialog::executeDryRun()
@@ -723,4 +759,309 @@ void GitPushDialog::enableControls(bool enabled)
     if (enabled) {
         validatePushOptions();
     }
+}
+
+QString GitPushDialog::getFileChangesPreview() const
+{
+    qInfo() << "INFO: [GitPushDialog::getFileChangesPreview] Generating file changes preview";
+
+    if (m_unpushedCommits.isEmpty()) {
+        return tr("No commits to preview.");
+    }
+
+    GitCommandExecutor executor;
+    QString output, error;
+    QString remoteBranch = m_remoteCombo->currentText() + "/" + m_currentBranch;
+
+    // 获取文件变更统计
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "diff";
+    cmd.arguments = QStringList() << "diff"
+                                  << "--stat"
+                                  << remoteBranch + ".." + m_currentBranch;
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 10000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    if (result == GitCommandExecutor::Result::Success && !output.trimmed().isEmpty()) {
+        return output;
+    } else {
+        // 如果没有远程分支比较，显示所有未推送提交的文件变更
+        QString allChanges;
+        for (const auto &commit : m_unpushedCommits) {
+            GitCommandExecutor::GitCommand commitCmd;
+            commitCmd.command = "show";
+            commitCmd.arguments = QStringList() << "show"
+                                                << "--stat"
+                                                << "--format=format:Commit: %h - %s"
+                                                << commit.hash;
+            commitCmd.workingDirectory = m_repositoryPath;
+            commitCmd.timeout = 5000;
+
+            QString commitOutput, commitError;
+            auto commitResult = executor.executeCommand(commitCmd, commitOutput, commitError);
+
+            if (commitResult == GitCommandExecutor::Result::Success) {
+                allChanges += commitOutput + "\n\n";
+            }
+        }
+
+        return allChanges.isEmpty() ? tr("Unable to generate file changes preview.") : allChanges;
+    }
+}
+
+void GitPushDialog::loadRemoteStatus()
+{
+    qInfo() << "INFO: [GitPushDialog::loadRemoteStatus] Loading remote status";
+
+    if (m_remoteCombo->currentText().isEmpty()) {
+        m_lastPushLabel->setText(tr("No remote selected"));
+        return;
+    }
+
+    GitCommandExecutor executor;
+    QString output, error;
+
+    // 获取最后一次推送的信息（通过reflog）
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "reflog";
+    cmd.arguments = QStringList() << "reflog"
+                                  << "--grep=push"
+                                  << "--format=%cd"
+                                  << "--date=relative"
+                                  << "-1";
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    if (result == GitCommandExecutor::Result::Success && !output.trimmed().isEmpty()) {
+        m_lastPushLabel->setText(output.trimmed());
+    } else {
+        m_lastPushLabel->setText(tr("Never"));
+    }
+}
+
+bool GitPushDialog::checkRemoteStatus()
+{
+    qInfo() << "INFO: [GitPushDialog::checkRemoteStatus] Checking remote status";
+
+    if (m_remoteCombo->currentText().isEmpty()) {
+        return false;
+    }
+
+    // 使用GitOperationService测试远程连接
+    return m_operationService->testRemoteConnection(m_repositoryPath, m_remoteCombo->currentText());
+}
+
+void GitPushDialog::showImpactAssessment()
+{
+    qInfo() << "INFO: [GitPushDialog::showImpactAssessment] Showing impact assessment";
+
+    if (m_unpushedCommits.isEmpty()) {
+        QMessageBox::information(this, tr("No Impact"),
+                                 tr("There are no unpushed commits. No impact on remote repository."));
+        return;
+    }
+
+    // 创建影响评估对话框
+    auto *assessmentDialog = new QDialog(this);
+    assessmentDialog->setWindowTitle(tr("Push Impact Assessment"));
+    assessmentDialog->setWindowIcon(QIcon(":/icons/vcs-status"));
+    assessmentDialog->setMinimumSize(600, 400);
+    assessmentDialog->resize(700, 500);
+    assessmentDialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    auto *layout = new QVBoxLayout(assessmentDialog);
+    layout->setSpacing(8);
+    layout->setContentsMargins(12, 12, 12, 12);
+
+    // 标题
+    auto *titleLabel = new QLabel(tr("Impact Assessment for Push Operation"));
+    titleLabel->setStyleSheet("font-weight: bold; font-size: 14px; color: #FF9800;");
+    layout->addWidget(titleLabel);
+
+    // 影响信息
+    auto *infoText = new QTextEdit;
+    infoText->setReadOnly(true);
+
+    QString impactInfo;
+    impactInfo += tr("Target: %1/%2\n").arg(m_remoteCombo->currentText(), m_remoteBranchCombo->currentText());
+    impactInfo += tr("Local Branch: %1\n").arg(m_localBranchCombo->currentText());
+    impactInfo += tr("Commits to Push: %1\n\n").arg(m_unpushedCommits.size());
+
+    impactInfo += tr("Potential Impact:\n");
+    impactInfo += tr("• %1 new commits will be added to remote branch\n").arg(m_unpushedCommits.size());
+
+    if (m_forceCheckBox->isChecked()) {
+        impactInfo += tr("• ⚠️  FORCE PUSH: May overwrite remote changes\n");
+        impactInfo += tr("• ⚠️  Risk of data loss if others have pushed changes\n");
+    }
+
+    if (m_tagsCheckBox->isChecked()) {
+        impactInfo += tr("• Local tags will be pushed to remote\n");
+    }
+
+    if (m_upstreamCheckBox->isChecked()) {
+        impactInfo += tr("• Upstream tracking will be set for local branch\n");
+    }
+
+    if (m_allBranchesCheckBox->isChecked()) {
+        impactInfo += tr("• ⚠️  ALL local branches will be pushed\n");
+    }
+
+    impactInfo += tr("\nRecommendations:\n");
+    if (m_forceCheckBox->isChecked()) {
+        impactInfo += tr("• Consider using 'git pull' first to merge remote changes\n");
+        impactInfo += tr("• Verify that no one else is working on the same branch\n");
+    } else {
+        impactInfo += tr("• This is a safe push operation\n");
+        impactInfo += tr("• No risk of overwriting remote changes\n");
+    }
+
+    infoText->setPlainText(impactInfo);
+    layout->addWidget(infoText);
+
+    // 按钮
+    auto *buttonLayout = new QHBoxLayout;
+    buttonLayout->addStretch();
+
+    auto *closeButton = new QPushButton(tr("Close"));
+    closeButton->setIcon(QIcon(":/icons/dialog-close"));
+    connect(closeButton, &QPushButton::clicked, assessmentDialog, &QDialog::accept);
+
+    buttonLayout->addWidget(closeButton);
+    layout->addLayout(buttonLayout);
+
+    assessmentDialog->show();
+}
+
+void GitPushDialog::showQuickPreview()
+{
+    qInfo() << "INFO: [GitPushDialog::showQuickPreview] Showing quick push preview";
+
+    if (m_unpushedCommits.isEmpty()) {
+        QMessageBox::information(this, tr("No Changes to Preview"),
+                                 tr("There are no unpushed commits to preview."));
+        return;
+    }
+
+    // 创建简洁的预览对话框
+    auto *previewDialog = new QDialog(this);
+    previewDialog->setWindowTitle(tr("Quick Push Preview"));
+    previewDialog->setWindowIcon(QIcon(":/icons/vcs-diff"));
+    previewDialog->setMinimumSize(700, 500);
+    previewDialog->resize(800, 600);
+    previewDialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    auto *layout = new QVBoxLayout(previewDialog);
+    layout->setSpacing(8);
+    layout->setContentsMargins(12, 12, 12, 12);
+
+    // 预览信息
+    QString previewInfo = tr("Push Target: %1 → %2/%3\n")
+                                 .arg(m_localBranchCombo->currentText())
+                                 .arg(m_remoteCombo->currentText())
+                                 .arg(m_remoteBranchCombo->currentText());
+    previewInfo += tr("Commits to Push: %1\n\n").arg(m_unpushedCommits.size());
+
+    // 提交列表
+    previewInfo += tr("Commits:\n");
+    for (const auto &commit : m_unpushedCommits) {
+        previewInfo += tr("• %1 %2\n").arg(commit.shortHash, commit.message);
+    }
+
+    // 文件变更统计
+    QString fileChanges = getFileChangesPreview();
+    if (!fileChanges.isEmpty()) {
+        previewInfo += tr("\nFile Changes:\n") + fileChanges;
+    }
+
+    // 使用带行号的文本编辑器显示（如果可用）
+    auto *textEdit = new LineNumberTextEdit;
+    textEdit->setReadOnly(true);
+    textEdit->setFont(QFont("Consolas", 9));
+    textEdit->setPlainText(previewInfo);
+    layout->addWidget(textEdit);
+
+    // 按钮区域
+    auto *buttonLayout = new QHBoxLayout;
+    buttonLayout->addStretch();
+
+    auto *closeButton = new QPushButton(tr("Close"));
+    closeButton->setIcon(QIcon(":/icons/dialog-close"));
+    connect(closeButton, &QPushButton::clicked, previewDialog, &QDialog::accept);
+
+    auto *pushButton = new QPushButton(tr("Push Now"));
+    pushButton->setIcon(QIcon(":/icons/vcs-push"));
+    pushButton->setDefault(true);
+    pushButton->setStyleSheet("QPushButton { font-weight: bold; }");
+    connect(pushButton, &QPushButton::clicked, [this, previewDialog]() {
+        previewDialog->accept();
+        executePush();
+    });
+
+    buttonLayout->addWidget(closeButton);
+    buttonLayout->addWidget(pushButton);
+    layout->addLayout(buttonLayout);
+
+    previewDialog->show();
+}
+
+void GitPushDialog::updateUI()
+{
+    qInfo() << "INFO: [GitPushDialog::updateUI] Updating UI state";
+
+    updateStatusLabels();
+    updateCommitsList();
+    validatePushOptions();
+    loadRemoteStatus();
+}
+
+void GitPushDialog::updateCommitsList()
+{
+    qInfo() << "INFO: [GitPushDialog::updateCommitsList] Updating commits list";
+
+    m_commitsWidget->clear();
+
+    if (m_unpushedCommits.isEmpty()) {
+        m_commitsCountLabel->setText(tr("No commits to push"));
+
+        auto *item = new QListWidgetItem(tr("No unpushed commits found"));
+        item->setIcon(QIcon(":/icons/vcs-normal"));
+        m_commitsWidget->addItem(item);
+    } else {
+        m_commitsCountLabel->setText(tr("%1 commits to push").arg(m_unpushedCommits.size()));
+
+        for (const auto &commit : m_unpushedCommits) {
+            auto *item = new QListWidgetItem(formatCommitInfo(commit));
+            item->setIcon(QIcon(":/icons/vcs-commit"));
+            item->setToolTip(tr("Hash: %1\nAuthor: %2\nMessage: %3")
+                                     .arg(commit.hash, commit.author, commit.message));
+            m_commitsWidget->addItem(item);
+        }
+    }
+}
+
+QString GitPushDialog::getStatusDescription() const
+{
+    if (m_unpushedCommits.isEmpty()) {
+        return tr("Repository is up to date with remote");
+    }
+
+    QString description = tr("Ready to push %1 commits to %2/%3")
+                                  .arg(m_unpushedCommits.size())
+                                  .arg(m_remoteCombo->currentText())
+                                  .arg(m_remoteBranchCombo->currentText());
+
+    if (m_forceCheckBox->isChecked()) {
+        description += tr(" (Force Push)");
+    }
+
+    if (m_tagsCheckBox->isChecked()) {
+        description += tr(" (Including Tags)");
+    }
+
+    return description;
 }
