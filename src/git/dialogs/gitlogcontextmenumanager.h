@@ -12,7 +12,7 @@ class GitOperationDialog;
 
 /**
  * @brief Git日志右键菜单管理器
- * 
+ *
  * 专门负责创建和管理Git日志界面中的右键菜单：
  * - 提交相关操作菜单
  * - 文件相关操作菜单
@@ -39,7 +39,7 @@ Q_SIGNALS:
     // Git操作信号
     void gitOperationRequested(const QString &operation, const QStringList &args, bool needsConfirmation = false);
     void refreshRequested();
-    
+
     // 界面操作信号
     void showCommitDetailsRequested(const QString &commitHash);
     void showFileDiffRequested(const QString &commitHash, const QString &filePath);
@@ -47,7 +47,7 @@ Q_SIGNALS:
     void showFileBlameRequested(const QString &filePath);
     void compareWithWorkingTreeRequested(const QString &commitHash);
     void viewFileAtCommitRequested(const QString &commitHash, const QString &filePath);
-    
+
     // 文件操作信号
     void openFileRequested(const QString &filePath);
     void showFileInFolderRequested(const QString &filePath);
@@ -62,7 +62,6 @@ private Q_SLOTS:
     void onHardResetToCommit();
     void onRevertCommit();
     void onCherryPickCommit();
-    void onShowCommitDetails();
     void onCompareWithWorkingTree();
     void onCopyCommitHash();
     void onCopyShortHash();
@@ -85,12 +84,12 @@ private:
     void updateFileMenuState(const QString &commitHash, const QString &filePath);
 
     QString m_repositoryPath;
-    
+
     // 当前上下文
     QString m_currentCommitHash;
     QString m_currentCommitMessage;
     QString m_currentFilePath;
-    
+
     // === 提交右键菜单 ===
     QMenu *m_commitContextMenu;
     QAction *m_checkoutCommitAction;
@@ -102,7 +101,6 @@ private:
     QAction *m_hardResetAction;
     QAction *m_revertCommitAction;
     QAction *m_cherryPickAction;
-    QAction *m_showDetailsAction;
     QAction *m_compareWorkingTreeAction;
     QAction *m_copyHashAction;
     QAction *m_copyShortHashAction;
@@ -120,4 +118,4 @@ private:
     QAction *m_copyFileNameAction;
 };
 
-#endif // GITLOGCONTEXTMENUMANAGER_H 
+#endif   // GITLOGCONTEXTMENUMANAGER_H

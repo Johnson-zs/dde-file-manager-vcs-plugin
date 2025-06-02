@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QDebug>
+#include <QTimer>
 
 GitLogDataManager::GitLogDataManager(const QString &repositoryPath, QObject *parent)
     : QObject(parent)
@@ -19,6 +20,12 @@ bool GitLogDataManager::loadCommitHistory(const QString &branch, int offset, int
     if (m_currentProcess && m_currentProcess->state() != QProcess::NotRunning) {
         qWarning() << "WARNING: [GitLogDataManager] Previous git process still running, skipping load";
         return false;
+    }
+
+    // 检查是否需要加载远程commits
+    if (shouldLoadRemoteCommits(branch)) {
+        qInfo() << "INFO: [GitLogDataManager] Branch might be behind remote, loading with remote commits";
+        return loadCommitHistoryWithRemote(branch, offset, limit);
     }
 
     QStringList args;
@@ -38,7 +45,7 @@ bool GitLogDataManager::loadCommitHistory(const QString &branch, int offset, int
     }
 
     // 如果选择了特定分支
-    if (!branch.isEmpty() && branch != "HEAD" && branch != tr("All Branches")) {
+    if (!branch.isEmpty() && branch != "HEAD") {
         args.insert(1, branch);
     }
 
@@ -63,12 +70,156 @@ bool GitLogDataManager::loadCommitHistory(const QString &branch, int offset, int
 
     Q_EMIT commitHistoryLoaded(commits, append);
 
+    // 重要修复：对于初始加载和追加加载都要更新远程状态
+    if (!branch.isEmpty() && branch != "HEAD") {
+        qInfo() << "INFO: [GitLogDataManager] Loading commit history completed, updating remote status for branch:" << branch << "(append:" << append << ")";
+        updateCommitRemoteStatus(branch);
+    }
+
     qInfo() << QString("INFO: [GitLogDataManager] Loaded %1 commits (total: %2, append: %3)")
                        .arg(commits.size())
                        .arg(m_commits.size())
                        .arg(append);
 
     return true;
+}
+
+bool GitLogDataManager::loadCommitHistoryWithRemote(const QString &branch, int offset, int limit)
+{
+    if (m_currentProcess && m_currentProcess->state() != QProcess::NotRunning) {
+        qWarning() << "WARNING: [GitLogDataManager] Previous git process still running, skipping load";
+        return false;
+    }
+
+    // 先加载跟踪信息以获取远程分支
+    if (!loadAllRemoteTrackingInfo(branch)) {
+        qWarning() << "WARNING: [GitLogDataManager] Failed to load tracking info, falling back to local only";
+        return loadCommitHistory(branch, offset, limit);
+    }
+
+    if (!m_trackingInfo.hasRemote) {
+        qInfo() << "INFO: [GitLogDataManager] No remote tracking for branch, loading local only";
+        return loadCommitHistory(branch, offset, limit);
+    }
+
+    QStringList args;
+    args << "log"
+         << "--oneline"
+         << "--graph"
+         << "--pretty=format:%h|%s|%an|%ad|%H"
+         << "--date=short"
+         << QString("--skip=%1").arg(offset)
+         << QString("--max-count=%1").arg(limit);
+
+    // 如果指定了文件路径，只显示该文件的历史
+    if (!m_filePath.isEmpty()) {
+        QDir repoDir(m_repositoryPath);
+        QString relativePath = repoDir.relativeFilePath(m_filePath);
+        args << "--" << relativePath;
+    }
+
+    // 关键修复：直接指定要显示的本地和远程分支
+    QString localBranch = branch.isEmpty() ? "HEAD" : branch;
+    QString remoteBranch = m_trackingInfo.remoteBranch;
+    
+    // 不使用--all，直接指定我们想要的分支
+    // 这样可以确保只显示指定分支的commits
+    args << localBranch << remoteBranch;
+
+    qInfo() << "INFO: [GitLogDataManager] Loading commits with local:" << localBranch << "and remote:" << remoteBranch;
+
+    QString output, error;
+    if (!executeGitCommand(args, output, error)) {
+        qWarning() << "WARNING: [GitLogDataManager] Failed to load with remote, falling back to local only";
+        return loadCommitHistory(branch, offset, limit);
+    }
+
+    QList<CommitInfo> commits = parseCommitHistory(output);
+    
+    // 增强：标记每个commit的来源（本地/远程/两者都有）
+    markCommitSources(commits, localBranch, remoteBranch);
+    
+    // 如果这是追加加载，添加到现有列表
+    bool append = (offset > 0);
+    if (append) {
+        m_commits.append(commits);
+    } else {
+        m_commits = commits;
+    }
+
+    // 检查是否还有更多提交
+    m_hasMoreCommits = (commits.size() == limit);
+
+    Q_EMIT commitHistoryLoaded(commits, append);
+
+    // 更新远程状态
+    if (!branch.isEmpty() && branch != "HEAD") {
+        qInfo() << "INFO: [GitLogDataManager] Loading commit history with remote completed, updating remote status for branch:" << branch << "(append:" << append << ")";
+        updateCommitRemoteStatus(branch);
+    }
+
+    qInfo() << QString("INFO: [GitLogDataManager] Loaded %1 commits with remote (total: %2, append: %3)")
+                       .arg(commits.size())
+                       .arg(m_commits.size())
+                       .arg(append);
+
+    return true;
+}
+
+bool GitLogDataManager::shouldLoadRemoteCommits(const QString &branch)
+{
+    if (branch.isEmpty() || branch == "HEAD") {
+        return false;
+    }
+
+    // 快速检查是否有远程跟踪分支
+    if (!loadAllRemoteTrackingInfo(branch)) {
+        return false;
+    }
+
+    if (!m_trackingInfo.hasRemote) {
+        return false;
+    }
+
+    qInfo() << "INFO: [GitLogDataManager] Branch" << branch << "has remote tracking:" << m_trackingInfo.remoteBranch;
+
+    // 修复：更激进的策略 - 只要有远程跟踪分支就加载远程commits
+    // 这样用户总能看到完整的本地+远程历史，类似GitKraken/VSCode
+    qInfo() << "INFO: [GitLogDialog] Branch" << branch << "has remote tracking, will load complete local+remote history";
+    return true;
+
+    // 注释掉原来的复杂检测逻辑，采用更简单直接的方案
+    /*
+    // 检查本地是否落后于远程
+    QStringList checkArgs = {"rev-list", "--count", 
+                            QString("%1..%2").arg(branch, m_trackingInfo.remoteBranch)};
+    QString output, error;
+    int behindCount = 0;
+    
+    if (executeGitCommand(checkArgs, output, error)) {
+        behindCount = output.trimmed().toInt();
+        if (behindCount > 0) {
+            qInfo() << "INFO: [GitLogDataManager] Branch" << branch << "is" << behindCount << "commits behind remote, will load remote commits";
+            return true;
+        }
+    }
+
+    // 即使不落后，如果用户reset hard了，也应该显示远程commits
+    // 检查是否有远程领先的commits（这意味着可能用户做了reset）
+    QStringList aheadCheckArgs = {"rev-list", "--count", 
+                                 QString("%1..%2").arg(m_trackingInfo.remoteBranch, branch)};
+    if (executeGitCommand(aheadCheckArgs, output, error)) {
+        int aheadCount = output.trimmed().toInt();
+        if (aheadCount == 0 && behindCount == 0) {
+            // 如果既不领先也不落后，但有远程分支，仍然应该显示远程commits
+            // 这样可以让用户看到完整的历史
+            qInfo() << "INFO: [GitLogDataManager] Branch" << branch << "is synchronized with remote, will still load remote commits for complete view";
+            return true;
+        }
+    }
+
+    return false;
+    */
 }
 
 bool GitLogDataManager::loadBranches()
@@ -223,6 +374,7 @@ void GitLogDataManager::clearCache()
     m_commitDetailsCache.clear();
     m_commitFilesCache.clear();
     m_fileDiffCache.clear();
+    m_trackingInfoCache.clear();
     qInfo() << "INFO: [GitLogDataManager] All caches cleared";
 }
 
@@ -230,6 +382,8 @@ void GitLogDataManager::clearCommitCache()
 {
     m_commits.clear();
     m_commitDetailsCache.clear();
+    // 清除跟踪信息，因为commit状态会改变
+    m_trackingInfoCache.clear();
     qInfo() << "INFO: [GitLogDataManager] Commit cache cleared";
 }
 
@@ -242,7 +396,7 @@ void GitLogDataManager::clearFileCache()
 
 int GitLogDataManager::getCacheSize() const
 {
-    return m_commitDetailsCache.size() + m_commitFilesCache.size() + m_fileDiffCache.size();
+    return m_commitDetailsCache.size() + m_commitFilesCache.size() + m_fileDiffCache.size() + m_trackingInfoCache.size();
 }
 
 bool GitLogDataManager::executeGitCommand(const QStringList &args, QString &output, QString &error)
@@ -390,4 +544,348 @@ QList<GitLogDataManager::FileChangeInfo> GitLogDataManager::parseFileStats(const
     }
 
     return result;
+}
+
+bool GitLogDataManager::loadBranchTrackingInfo(const QString &branch)
+{
+    if (branch.isEmpty()) {
+        qWarning() << "WARNING: [GitLogDataManager] Empty branch name for tracking info";
+        return false;
+    }
+
+    // 检查缓存
+    if (m_trackingInfoCache.contains(branch)) {
+        m_trackingInfo = m_trackingInfoCache[branch];
+        qDebug() << "[GitLogDataManager] Using cached tracking info for branch:" << branch;
+        return true;
+    }
+
+    // 获取分支跟踪信息
+    QStringList args = {"for-each-ref", "--format=%(refname:short) %(upstream:short) %(upstream:track)", "refs/heads/" + branch};
+    QString output, error;
+
+    if (!executeGitCommand(args, output, error)) {
+        // 如果没有跟踪分支，这不是错误
+        if (error.contains("no upstream") || output.trimmed().isEmpty()) {
+            m_trackingInfo = BranchTrackingInfo();
+            m_trackingInfo.localBranch = branch;
+            m_trackingInfo.hasRemote = false;
+            m_trackingInfoCache[branch] = m_trackingInfo;
+            
+            qInfo() << "INFO: [GitLogDataManager] Branch" << branch << "has no tracking branch";
+            return true;
+        }
+        
+        Q_EMIT dataLoadError("Load Branch Tracking Info", error);
+        return false;
+    }
+
+    m_trackingInfo = parseBranchTrackingInfo(output, branch);
+    m_trackingInfoCache[branch] = m_trackingInfo;
+
+    qInfo() << QString("INFO: [GitLogDataManager] Loaded tracking info for branch %1 -> %2 (ahead: %3, behind: %4)")
+                       .arg(m_trackingInfo.localBranch)
+                       .arg(m_trackingInfo.remoteBranch)
+                       .arg(m_trackingInfo.aheadCount)
+                       .arg(m_trackingInfo.behindCount);
+
+    return true;
+}
+
+void GitLogDataManager::updateCommitRemoteStatus(const QString &branch)
+{
+    if (branch.isEmpty()) {
+        qWarning() << "WARNING: [GitLogDataManager::updateCommitRemoteStatus] Empty branch name";
+        return;
+    }
+    
+    qInfo() << "INFO: [GitLogDataManager::updateCommitRemoteStatus] Starting remote status update for branch:" << branch;
+    
+    // 先尝试加载所有remote信息
+    if (!loadAllRemoteTrackingInfo(branch)) {
+        // 如果失败，回退到常规tracking info
+        if (!loadBranchTrackingInfo(branch)) {
+            qWarning() << "WARNING: [GitLogDataManager] Failed to load tracking info for branch:" << branch;
+            return;
+        }
+    }
+
+    if (!m_trackingInfo.hasRemote) {
+        qInfo() << "INFO: [GitLogDataManager] Branch" << branch << "has no remote tracking, marking all commits as NotTracked";
+        // 没有远程跟踪分支，设置所有commit为NotTracked
+        for (auto &commit : m_commits) {
+            commit.remoteStatus = RemoteStatus::NotTracked;
+            commit.remoteRef.clear();
+        }
+        Q_EMIT remoteStatusUpdated(branch);
+        return;
+    }
+
+    qInfo() << "INFO: [GitLogDataManager] Branch" << branch << "tracks remote:" << m_trackingInfo.remoteBranch;
+    
+    if (m_trackingInfo.allUpstreams.size() > 1) {
+        qInfo() << "INFO: [GitLogDataManager] Multiple upstreams detected:" << m_trackingInfo.allUpstreams;
+    }
+
+    // 获取本地领先的提交
+    QStringList aheadArgs = {"log", "--oneline", "--format=%H", 
+                            QString("%1..%2").arg(m_trackingInfo.remoteBranch, m_trackingInfo.localBranch)};
+    QString aheadOutput, error;
+    QStringList aheadCommits;
+    
+    if (executeGitCommand(aheadArgs, aheadOutput, error)) {
+        aheadCommits = aheadOutput.split('\n', Qt::SkipEmptyParts);
+        qInfo() << "INFO: [GitLogDataManager] Found" << aheadCommits.size() << "ahead commits";
+    } else {
+        qWarning() << "WARNING: [GitLogDataManager] Failed to get ahead commits:" << error;
+    }
+
+    // 获取本地落后的提交  
+    QStringList behindArgs = {"log", "--oneline", "--format=%H",
+                             QString("%1..%2").arg(m_trackingInfo.localBranch, m_trackingInfo.remoteBranch)};
+    QString behindOutput;
+    QStringList behindCommits;
+    
+    if (executeGitCommand(behindArgs, behindOutput, error)) {
+        behindCommits = behindOutput.split('\n', Qt::SkipEmptyParts);
+        qInfo() << "INFO: [GitLogDataManager] Found" << behindCommits.size() << "behind commits";
+    } else {
+        qWarning() << "WARNING: [GitLogDataManager] Failed to get behind commits:" << error;
+    }
+
+    // 分配远程状态到提交
+    if (m_trackingInfo.allUpstreams.size() > 1) {
+        assignMultiRemoteStatusToCommits(aheadCommits, behindCommits, m_trackingInfo.remoteBranch);
+    } else {
+        assignRemoteStatusToCommits(aheadCommits, behindCommits);
+    }
+
+    Q_EMIT remoteStatusUpdated(branch);
+
+    qInfo() << QString("INFO: [GitLogDataManager] Updated remote status for %1 commits (ahead: %2, behind: %3)")
+                       .arg(m_commits.size())
+                       .arg(aheadCommits.size())
+                       .arg(behindCommits.size());
+}
+
+GitLogDataManager::BranchTrackingInfo GitLogDataManager::parseBranchTrackingInfo(const QString &output, const QString &branch)
+{
+    BranchTrackingInfo info;
+    info.localBranch = branch;
+    
+    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    if (lines.isEmpty()) {
+        info.hasRemote = false;
+        return info;
+    }
+
+    QString line = lines.first().trimmed();
+    QStringList parts = line.split(' ', Qt::SkipEmptyParts);
+    
+    if (parts.size() >= 2) {
+        info.remoteBranch = parts[1];
+        info.hasRemote = !info.remoteBranch.isEmpty();
+        
+        // 解析ahead/behind信息：[ahead 2, behind 1] 或 [ahead 2] 或 [behind 1]
+        if (parts.size() >= 3) {
+            QString trackInfo = parts[2];
+            
+            QRegularExpression aheadRegex(R"(\[ahead (\d+))");
+            QRegularExpressionMatch aheadMatch = aheadRegex.match(trackInfo);
+            if (aheadMatch.hasMatch()) {
+                info.aheadCount = aheadMatch.captured(1).toInt();
+            }
+            
+            QRegularExpression behindRegex(R"(behind (\d+)\])");
+            QRegularExpressionMatch behindMatch = behindRegex.match(trackInfo);
+            if (behindMatch.hasMatch()) {
+                info.behindCount = behindMatch.captured(1).toInt();
+            }
+        }
+    } else {
+        info.hasRemote = false;
+    }
+
+    return info;
+}
+
+void GitLogDataManager::assignRemoteStatusToCommits(const QStringList &aheadCommits, const QStringList &behindCommits)
+{
+    QSet<QString> aheadSet(aheadCommits.begin(), aheadCommits.end());
+    QSet<QString> behindSet(behindCommits.begin(), behindCommits.end());
+    
+    for (auto &commit : m_commits) {
+        commit.remoteRef = m_trackingInfo.remoteBranch;
+        
+        bool isAhead = aheadSet.contains(commit.fullHash);
+        bool isBehind = behindSet.contains(commit.fullHash);
+        
+        if (isAhead && isBehind) {
+            // 不应该发生，但以防万一
+            commit.remoteStatus = RemoteStatus::Diverged;
+        } else if (isAhead) {
+            commit.remoteStatus = RemoteStatus::Ahead;
+        } else if (isBehind) {
+            commit.remoteStatus = RemoteStatus::Behind;
+        } else {
+            // 既不在ahead也不在behind列表中，说明已同步
+            commit.remoteStatus = RemoteStatus::Synchronized;
+        }
+    }
+    
+    // 如果有分叉情况（同时有ahead和behind），标记为Diverged
+    if (!aheadCommits.isEmpty() && !behindCommits.isEmpty()) {
+        qInfo() << "INFO: [GitLogDataManager] Branch has diverged - ahead:" << aheadCommits.size() 
+                << "behind:" << behindCommits.size();
+    }
+}
+
+bool GitLogDataManager::loadAllRemoteTrackingInfo(const QString &branch)
+{
+    if (branch.isEmpty()) {
+        qWarning() << "WARNING: [GitLogDataManager] Empty branch name for all remote tracking info";
+        return false;
+    }
+
+    // 获取所有remotes
+    QStringList remotesArgs = {"remote"};
+    QString remotesOutput, error;
+    
+    if (!executeGitCommand(remotesArgs, remotesOutput, error)) {
+        qWarning() << "WARNING: [GitLogDataManager] Failed to get remotes:" << error;
+        return false;
+    }
+
+    QStringList remotes = remotesOutput.split('\n', Qt::SkipEmptyParts);
+    m_trackingInfo.allRemotes = remotes;
+    m_trackingInfo.allUpstreams.clear();
+    
+    qInfo() << "INFO: [GitLogDataManager] Found" << remotes.size() << "remotes:" << remotes;
+
+    // 检查每个remote上是否有对应的分支
+    for (const QString &remote : remotes) {
+        QString remoteBranch = remote + "/" + branch;
+        
+        // 检查远程分支是否存在
+        QStringList checkArgs = {"show-ref", "--verify", "--quiet", "refs/remotes/" + remoteBranch};
+        QString checkOutput;
+        
+        if (executeGitCommand(checkArgs, checkOutput, error)) {
+            m_trackingInfo.allUpstreams.append(remoteBranch);
+            qInfo() << "INFO: [GitLogDataManager] Found upstream branch:" << remoteBranch;
+        }
+    }
+
+    // 如果只有一个upstream，使用常规逻辑
+    if (m_trackingInfo.allUpstreams.size() == 1) {
+        m_trackingInfo.remoteBranch = m_trackingInfo.allUpstreams.first();
+        m_trackingInfo.hasRemote = true;
+    } else if (m_trackingInfo.allUpstreams.size() > 1) {
+        // 多个upstream，优先使用origin
+        QString originBranch = "origin/" + branch;
+        if (m_trackingInfo.allUpstreams.contains(originBranch)) {
+            m_trackingInfo.remoteBranch = originBranch;
+        } else {
+            m_trackingInfo.remoteBranch = m_trackingInfo.allUpstreams.first();
+        }
+        m_trackingInfo.hasRemote = true;
+        qInfo() << "INFO: [GitLogDataManager] Multiple upstreams found, using:" << m_trackingInfo.remoteBranch;
+    } else {
+        m_trackingInfo.hasRemote = false;
+        qInfo() << "INFO: [GitLogDataManager] No upstream branches found for:" << branch;
+    }
+
+    m_trackingInfo.localBranch = branch;
+    return true;
+}
+
+void GitLogDataManager::assignMultiRemoteStatusToCommits(const QStringList &aheadCommits, const QStringList &behindCommits, const QString &remoteBranch)
+{
+    QSet<QString> aheadSet(aheadCommits.begin(), aheadCommits.end());
+    QSet<QString> behindSet(behindCommits.begin(), behindCommits.end());
+    
+    for (auto &commit : m_commits) {
+        commit.remoteRef = remoteBranch;
+        
+        bool isAhead = aheadSet.contains(commit.fullHash);
+        bool isBehind = behindSet.contains(commit.fullHash);
+        
+        if (isAhead && isBehind) {
+            // 不应该发生，但以防万一
+            commit.remoteStatus = RemoteStatus::Diverged;
+        } else if (isAhead) {
+            commit.remoteStatus = RemoteStatus::Ahead;
+        } else if (isBehind) {
+            commit.remoteStatus = RemoteStatus::Behind;
+        } else {
+            // 既不在ahead也不在behind列表中，说明已同步
+            commit.remoteStatus = RemoteStatus::Synchronized;
+        }
+    }
+    
+    // 如果有分叉情况（同时有ahead和behind），标记为Diverged
+    if (!aheadCommits.isEmpty() && !behindCommits.isEmpty()) {
+        qInfo() << "INFO: [GitLogDataManager] Branch has diverged from" << remoteBranch << "- ahead:" << aheadCommits.size() 
+                << "behind:" << behindCommits.size();
+    }
+    
+    // 额外信息：显示多个upstreams情况
+    if (m_trackingInfo.allUpstreams.size() > 1) {
+        qInfo() << "INFO: [GitLogDataManager] Multiple upstreams available:" << m_trackingInfo.allUpstreams 
+                << ", currently using:" << remoteBranch;
+    }
+}
+
+void GitLogDataManager::markCommitSources(QList<CommitInfo> &commits, const QString &localBranch, const QString &remoteBranch)
+{
+    // 获取本地分支的commits
+    QStringList localArgs = {"log", "--format=%H", localBranch};
+    QString localOutput, error;
+    QSet<QString> localCommits;
+    
+    if (executeGitCommand(localArgs, localOutput, error)) {
+        QStringList localHashes = localOutput.split('\n', Qt::SkipEmptyParts);
+        localCommits = QSet<QString>(localHashes.begin(), localHashes.end());
+    }
+    
+    // 获取远程分支的commits
+    QStringList remoteArgs = {"log", "--format=%H", remoteBranch};
+    QString remoteOutput;
+    QSet<QString> remoteCommits;
+    
+    if (executeGitCommand(remoteArgs, remoteOutput, error)) {
+        QStringList remoteHashes = remoteOutput.split('\n', Qt::SkipEmptyParts);
+        remoteCommits = QSet<QString>(remoteHashes.begin(), remoteHashes.end());
+    }
+    
+    // 标记每个commit的来源
+    for (auto &commit : commits) {
+        bool inLocal = localCommits.contains(commit.fullHash);
+        bool inRemote = remoteCommits.contains(commit.fullHash);
+        
+        if (inLocal && inRemote) {
+            commit.source = CommitSource::Both;
+        } else if (inLocal) {
+            commit.source = CommitSource::Local;
+        } else if (inRemote) {
+            commit.source = CommitSource::Remote;
+        } else {
+            commit.source = CommitSource::Local; // 默认为本地
+        }
+        
+        // 构建分支列表
+        commit.branches.clear();
+        if (inLocal) {
+            commit.branches.append(localBranch);
+        }
+        if (inRemote) {
+            commit.branches.append(remoteBranch);
+        }
+    }
+    
+    qInfo() << QString("INFO: [GitLogDataManager] Marked commit sources: %1 total commits, %2 local-only, %3 remote-only, %4 both")
+                       .arg(commits.size())
+                       .arg(std::count_if(commits.begin(), commits.end(), [](const CommitInfo &c) { return c.source == CommitSource::Local; }))
+                       .arg(std::count_if(commits.begin(), commits.end(), [](const CommitInfo &c) { return c.source == CommitSource::Remote; }))
+                       .arg(std::count_if(commits.begin(), commits.end(), [](const CommitInfo &c) { return c.source == CommitSource::Both; }));
 } 

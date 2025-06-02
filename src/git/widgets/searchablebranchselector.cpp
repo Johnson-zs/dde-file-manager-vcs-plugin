@@ -226,10 +226,8 @@ void SearchableBranchSelector::setBranches(const QStringList &localBranches,
     m_allItems.clear();
     m_currentBranch = currentBranch;
 
-    // 添加特殊项目
-    m_allItems.append(BranchTagItem(tr("All Branches"), BranchTagItem::AllBranches));
-
-    // 添加当前分支（如果有）
+    // 移除All Branches选项，因为它没有实际用途
+    // 直接添加当前分支（如果有）
     if (!currentBranch.isEmpty()) {
         m_allItems.append(BranchTagItem(currentBranch, BranchTagItem::CurrentBranch, true));
     }
@@ -261,8 +259,9 @@ void SearchableBranchSelector::setBranches(const QStringList &localBranches,
     // 设置当前选择
     if (!currentBranch.isEmpty()) {
         setCurrentSelection(currentBranch);
-    } else {
-        setCurrentSelection(tr("All Branches"));
+    } else if (!localBranches.isEmpty()) {
+        // 如果没有当前分支，选择第一个本地分支
+        setCurrentSelection(localBranches.first());
     }
 
     qInfo() << QString("INFO: [SearchableBranchSelector] Loaded %1 total items")
@@ -289,8 +288,8 @@ QString SearchableBranchSelector::getCurrentSelection() const
 void SearchableBranchSelector::updateDisplayText()
 {
     // 更新显示框的文本
-    if (m_selectedBranch == "HEAD" || m_selectedBranch.isEmpty()) {
-        m_displayEdit->setText(tr("All Branches"));
+    if (m_selectedBranch.isEmpty()) {
+        m_displayEdit->setText(tr("No branch selected"));
     } else {
         m_displayEdit->setText(m_selectedBranch);
     }

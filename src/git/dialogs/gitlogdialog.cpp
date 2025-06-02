@@ -59,11 +59,11 @@ void GitLogDialog::initializeDialog(const QString &repositoryPath, const QString
     // 安装事件过滤器
     m_changedFilesTree->installEventFilter(this);
 
-    // 异步加载数据
+    // 修复：改进初始化加载逻辑，确保远程commits能在初始加载时显示
     QTimer::singleShot(0, this, [this]() {
         m_dataManager->setFilePath(m_filePath);
         m_dataManager->loadBranches();
-        m_dataManager->loadCommitHistory(m_initialBranch);
+        // 重要修复：不直接加载commits，等待分支加载完成后在onBranchesLoaded中处理
     });
 
     qInfo() << "INFO: [GitLogDialog] Refactored GitLogDialog initialized successfully";
@@ -291,10 +291,14 @@ void GitLogDialog::connectSignals()
             this, &GitLogDialog::onFileDiffLoaded);
     connect(m_dataManager, &GitLogDataManager::dataLoadError,
             this, &GitLogDialog::onDataLoadError);
+    connect(m_dataManager, &GitLogDataManager::remoteStatusUpdated,
+            this, &GitLogDialog::onRemoteStatusUpdated);
 
     // 右键菜单管理器信号
     connect(m_contextMenuManager, &GitLogContextMenuManager::gitOperationRequested,
             this, &GitLogDialog::onGitOperationRequested);
+    connect(m_contextMenuManager, &GitLogContextMenuManager::compareWithWorkingTreeRequested,
+            this, &GitLogDialog::onCompareWithWorkingTreeRequested);
     connect(m_contextMenuManager, &GitLogContextMenuManager::viewFileAtCommitRequested,
             this, &GitLogDialog::onViewFileAtCommitRequested);
     connect(m_contextMenuManager, &GitLogContextMenuManager::showFileDiffRequested,
@@ -363,7 +367,15 @@ void GitLogDialog::onRefreshClicked()
     qInfo() << "INFO: [GitLogDialog] Refreshing commit history";
     m_dataManager->clearCache();
     m_dataManager->loadBranches();
-    m_dataManager->loadCommitHistory(m_branchSelector->getCurrentSelection());
+
+    QString currentBranch = m_branchSelector->getCurrentSelection();
+    m_dataManager->loadCommitHistory(currentBranch);
+
+    // 直接刷新远程状态（移除异步调用）
+    if (!currentBranch.isEmpty() && currentBranch != "HEAD") {
+        qInfo() << "INFO: [GitLogDialog] Refreshing remote status for:" << currentBranch;
+        m_dataManager->updateCommitRemoteStatus(currentBranch);
+    }
 }
 
 void GitLogDialog::onSettingsClicked()
@@ -429,8 +441,43 @@ void GitLogDialog::onSettingsClicked()
 void GitLogDialog::onBranchSelectorChanged(const QString &branchName)
 {
     qInfo() << "INFO: [GitLogDialog] Branch selector changed to:" << branchName;
+    
+    // 跳过"All Branches"选项，因为它没有实际用途
+    if (branchName == tr("All Branches")) {
+        qInfo() << "INFO: [GitLogDialog] Skipping 'All Branches' selection - not implemented";
+        return;
+    }
+    
     m_dataManager->clearCommitCache();
-    m_dataManager->loadCommitHistory(branchName);
+    
+    // 根据分支类型采用不同的加载策略
+    if (!branchName.isEmpty() && branchName != "HEAD") {
+        qInfo() << "INFO: [GitLogDialog] Loading commits for branch:" << branchName;
+        
+        // 先加载远程跟踪信息
+        m_dataManager->loadAllRemoteTrackingInfo(branchName);
+        
+        // 检查是否需要加载远程commits
+        if (m_dataManager->shouldLoadRemoteCommits(branchName)) {
+            qInfo() << "INFO: [GitLogDialog] Branch has remote tracking, loading with remote commits";
+            m_dataManager->loadCommitHistoryWithRemote(branchName);
+        } else {
+            qInfo() << "INFO: [GitLogDialog] Loading local commits only";
+            m_dataManager->loadCommitHistory(branchName);
+        }
+        
+        // 延迟更新远程状态
+        QTimer::singleShot(200, this, [this, branchName]() {
+            if (m_dataManager) {
+                qInfo() << "INFO: [GitLogDialog] Updating remote status for:" << branchName;
+                m_dataManager->updateCommitRemoteStatus(branchName);
+            }
+        });
+    } else {
+        // 加载默认的commits (当前HEAD)
+        qInfo() << "INFO: [GitLogDialog] Loading default commits";
+        m_dataManager->loadCommitHistory();
+    }
 }
 
 void GitLogDialog::onSearchTextChanged()
@@ -453,6 +500,23 @@ void GitLogDialog::onScrollValueChanged(int value)
 
 void GitLogDialog::onCommitHistoryLoaded(const QList<GitLogDataManager::CommitInfo> &commits, bool append)
 {
+    // 在append模式时，保存当前滚动位置和选中项的hash
+    int savedScrollPosition = -1;
+    QString selectedCommitHash;
+    
+    if (append && m_commitTree && m_commitScrollBar) {
+        savedScrollPosition = m_commitScrollBar->value();
+        
+        // 保存当前选中项的commit hash而不是指针，避免悬垂指针
+        QTreeWidgetItem *currentItem = m_commitTree->currentItem();
+        if (currentItem) {
+            selectedCommitHash = currentItem->data(4, Qt::UserRole).toString();
+        }
+        
+        qDebug() << "DEBUG: [GitLogDialog] Saving scroll position:" << savedScrollPosition
+                 << "selected commit:" << selectedCommitHash.left(8);
+    }
+
     populateCommitList(commits, append);
 
     // 创建搜索管理器（延迟创建）
@@ -465,9 +529,37 @@ void GitLogDialog::onCommitHistoryLoaded(const QList<GitLogDataManager::CommitIn
         m_searchManager->onNewCommitsLoaded();
     }
 
-    // 如果是首次加载且有结果，选中第一项
+    // 修复：只在首次加载时选中第一个本地commit，append模式时保持原有选中状态
     if (!append && m_commitTree->topLevelItemCount() > 0) {
-        m_commitTree->setCurrentItem(m_commitTree->topLevelItem(0));
+        selectFirstLocalCommit();
+        qInfo() << "INFO: [GitLogDialog] Auto-selected first commit after initial loading";
+    } else if (append && savedScrollPosition >= 0) {
+        // 在append模式时，恢复滚动位置和选中状态
+        // 使用QTimer延迟恢复，但增加安全检查
+        QTimer::singleShot(50, this, [this, savedScrollPosition, selectedCommitHash]() {
+            // 安全检查：确保对象仍然有效
+            if (!this || !m_commitTree || !m_commitScrollBar) {
+                qWarning() << "WARNING: [GitLogDialog] Object destroyed during delayed scroll restore";
+                return;
+            }
+            
+            // 恢复滚动位置
+            m_commitScrollBar->setValue(savedScrollPosition);
+            qDebug() << "DEBUG: [GitLogDialog] Restored scroll position:" << savedScrollPosition;
+            
+            // 恢复选中项（根据commit hash查找）
+            if (!selectedCommitHash.isEmpty()) {
+                for (int i = 0; i < m_commitTree->topLevelItemCount(); ++i) {
+                    QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
+                    if (item && item->data(4, Qt::UserRole).toString() == selectedCommitHash) {
+                        m_commitTree->setCurrentItem(item);
+                        qDebug() << "DEBUG: [GitLogDialog] Restored selected commit:" << selectedCommitHash.left(8);
+                        break;
+                    }
+                }
+            }
+        });
+        qInfo() << "INFO: [GitLogDialog] Appended commits, will restore scroll position";
     }
 
     m_isLoadingMore = false;
@@ -479,10 +571,42 @@ void GitLogDialog::onBranchesLoaded(const GitLogDataManager::BranchInfo &branchI
                                   branchInfo.tags, branchInfo.currentBranch);
 
     // 设置初始分支
+    QString initialBranch;
     if (!m_initialBranch.isEmpty()) {
+        initialBranch = m_initialBranch;
         m_branchSelector->setCurrentSelection(m_initialBranch);
     } else if (!branchInfo.currentBranch.isEmpty()) {
+        initialBranch = branchInfo.currentBranch;
         m_branchSelector->setCurrentSelection(branchInfo.currentBranch);
+    }
+
+    // 关键修复：分支加载完成后，立即加载commits（包括远程commits）
+    if (!initialBranch.isEmpty() && initialBranch != "HEAD") {
+        qInfo() << "INFO: [GitLogDialog] Branches loaded, loading commits for initial branch:" << initialBranch;
+
+        // 先加载远程跟踪信息
+        m_dataManager->loadAllRemoteTrackingInfo(initialBranch);
+
+        // 检查是否需要加载远程commits并直接加载
+        if (m_dataManager->shouldLoadRemoteCommits(initialBranch)) {
+            qInfo() << "INFO: [GitLogDialog] Initial branch needs remote commits, loading with remote";
+            m_dataManager->loadCommitHistoryWithRemote(initialBranch);
+        } else {
+            qInfo() << "INFO: [GitLogDialog] Initial branch loading regular commits";
+            m_dataManager->loadCommitHistory(initialBranch);
+        }
+
+        // 延迟更新远程状态（让commits先加载）
+        QTimer::singleShot(200, this, [this, initialBranch]() {
+            if (m_dataManager) {
+                qInfo() << "INFO: [GitLogDialog] Updating remote status for initial branch:" << initialBranch;
+                m_dataManager->updateCommitRemoteStatus(initialBranch);
+            }
+        });
+    } else {
+        // 如果没有有效的初始分支，加载默认的commits
+        qInfo() << "INFO: [GitLogDialog] No valid initial branch, loading default commits";
+        m_dataManager->loadCommitHistory();
     }
 }
 
@@ -536,6 +660,36 @@ void GitLogDialog::onDataLoadError(const QString &operation, const QString &erro
                          tr("Failed to %1:\n%2").arg(operation, error));
 }
 
+void GitLogDialog::onRemoteStatusUpdated(const QString &branch)
+{
+    if (!m_dataManager) {
+        qCritical() << "CRITICAL: [GitLogDialog::onRemoteStatusUpdated] m_dataManager is null";
+        return;
+    }
+
+    qInfo() << "INFO: [GitLogDialog] Received remote status update for branch:" << branch;
+
+    // 重新渲染commit列表以显示更新的远程状态
+    const auto &commits = m_dataManager->getCommits();
+
+    if (commits.isEmpty()) {
+        qWarning() << "WARNING: [GitLogDialog] No commits to update remote status for";
+        return;
+    }
+
+    populateCommitList(commits, false);
+
+    // 修复：远程状态更新后，如果没有选中项，选中第一个本地commit
+    if (m_commitTree->topLevelItemCount() > 0 && !m_commitTree->currentItem()) {
+        selectFirstLocalCommit();
+        qInfo() << "INFO: [GitLogDialog] Auto-selected first commit after remote status update";
+    }
+
+    qInfo() << QString("INFO: [GitLogDialog] Remote status updated for branch: %1, refreshed %2 commits display")
+                       .arg(branch)
+                       .arg(commits.size());
+}
+
 // === 搜索管理器信号响应 ===
 
 void GitLogDialog::onSearchStarted(const QString &searchText)
@@ -587,70 +741,30 @@ void GitLogDialog::onGitOperationRequested(const QString &operation, const QStri
                        .arg(operation, args.join(" "));
 }
 
-void GitLogDialog::onShowCommitDetailsRequested(const QString &commitHash)
+void GitLogDialog::onCompareWithWorkingTreeRequested(const QString &commitHash)
 {
-    Q_UNUSED(commitHash)
-    // 可以在这里实现专门的提交详情对话框
-    QMessageBox::information(this, tr("Commit Details"),
-                             tr("Detailed commit dialog will be implemented in future version.\n"
-                                "Current commit: %1")
-                                     .arg(commitHash));
+    if (commitHash.isEmpty()) {
+        qWarning() << "WARNING: [GitLogDialog] Empty commit hash for compare with working tree";
+        return;
+    }
+
+    qInfo() << "INFO: [GitLogDialog] Comparing commit" << commitHash.left(8) << "with working tree";
+
+    // 复用GitBranchComparisonDialog来比较提交与工作树
+    // 使用 commitHash 作为基础分支，"HEAD" 作为比较分支
+    GitDialogManager::instance()->showBranchComparisonDialog(
+            m_repositoryPath, commitHash, "HEAD", this);
 }
 
 void GitLogDialog::onShowFileDiffRequested(const QString &commitHash, const QString &filePath)
 {
-    // 创建专门的文件差异查看对话框
-    QDialog *diffDialog = new QDialog(this);
-    diffDialog->setWindowTitle(tr("File Diff - %1 at %2")
-                                       .arg(QFileInfo(filePath).fileName(), commitHash.left(8)));
-    diffDialog->resize(1000, 700);
-    diffDialog->setAttribute(Qt::WA_DeleteOnClose);
+    // 复用GitDialogManager的diff对话框来显示文件差异
+    // 注意：GitDiffDialog可能需要扩展以支持特定commit的文件差异查看
+    // 目前先使用工作树差异作为替代方案
+    GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
 
-    auto *layout = new QVBoxLayout(diffDialog);
-
-    // 添加文件信息标签
-    auto *infoLabel = new QLabel(tr("File: %1\nCommit: %2").arg(filePath, commitHash));
-    infoLabel->setStyleSheet("QLabel { background-color: #f0f0f0; padding: 8px; border: 1px solid #ccc; }");
-    layout->addWidget(infoLabel);
-
-    // 创建差异显示区域
-    auto *diffTextEdit = new LineNumberTextEdit;
-    diffTextEdit->setReadOnly(true);
-    diffTextEdit->setFont(QFont("Consolas", 9));
-    diffTextEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
-    layout->addWidget(diffTextEdit);
-
-    // 添加语法高亮
-    auto *highlighter = new GitDiffSyntaxHighlighter(diffTextEdit->document());
-    Q_UNUSED(highlighter)
-
-    // 加载文件差异并显示
-    QString diff = m_dataManager->getFileDiff(commitHash, filePath);
-    if (diff.isEmpty()) {
-        // 如果缓存中没有，异步加载
-        connect(m_dataManager, &GitLogDataManager::fileDiffLoaded,
-                this, [diffTextEdit](const QString &hash, const QString &path, const QString &diffContent) {
-                    Q_UNUSED(hash)
-                    Q_UNUSED(path)
-                    diffTextEdit->setPlainText(diffContent);
-                });
-        m_dataManager->loadFileDiff(commitHash, filePath);
-        diffTextEdit->setPlainText(tr("Loading file diff..."));
-    } else {
-        diffTextEdit->setPlainText(diff);
-    }
-
-    // 添加按钮
-    auto *buttonLayout = new QHBoxLayout;
-    buttonLayout->addStretch();
-
-    auto *closeButton = new QPushButton(tr("Close"));
-    connect(closeButton, &QPushButton::clicked, diffDialog, &QDialog::accept);
-    buttonLayout->addWidget(closeButton);
-
-    layout->addLayout(buttonLayout);
-
-    diffDialog->show();
+    qInfo() << "INFO: [GitLogDialog] Showing file diff for:" << filePath
+            << "at commit:" << commitHash.left(8);
 }
 
 void GitLogDialog::onViewFileAtCommitRequested(const QString &commitHash, const QString &filePath)
@@ -704,24 +818,101 @@ QString GitLogDialog::getCurrentSelectedFilePath() const
 
 void GitLogDialog::populateCommitList(const QList<GitLogDataManager::CommitInfo> &commits, bool append)
 {
+    if (!m_commitTree) {
+        qCritical() << "CRITICAL: [GitLogDialog::populateCommitList] m_commitTree is null";
+        return;
+    }
+
     if (!append) {
         m_commitTree->clear();
     }
 
+    qInfo() << QString("INFO: [GitLogDialog] Populating commit list with %1 commits (append: %2)")
+                       .arg(commits.size())
+                       .arg(append);
+
+    int remoteStatusCount = 0;
+    int remoteOnlyCount = 0;
     for (const auto &commit : commits) {
         auto *item = new QTreeWidgetItem(m_commitTree);
-        item->setText(0, commit.graphInfo);
+
+        // Graph列：显示图表信息和远程状态
+        QString graphText = commit.graphInfo;
+
+        // 添加远程状态指示器
+        if (commit.remoteStatus != GitLogDataManager::RemoteStatus::Unknown) {
+            QString statusText = getRemoteStatusText(commit.remoteStatus);
+            graphText = QString("%1 %2").arg(statusText, commit.graphInfo);
+
+            // 设置远程状态颜色
+            QColor statusColor = getRemoteStatusColor(commit.remoteStatus);
+            item->setForeground(0, QBrush(statusColor));
+
+            // 设置工具提示
+            QString tooltip = getRemoteStatusTooltip(commit.remoteStatus, commit.remoteRef);
+            item->setToolTip(0, tooltip);
+
+            remoteStatusCount++;
+        } else {
+            item->setToolTip(0, commit.graphInfo == "●" ? "Commit" : commit.graphInfo);
+        }
+
+        item->setText(0, graphText);
         item->setText(1, commit.message);
         item->setText(2, commit.author);
         item->setText(3, commit.date);
         item->setText(4, commit.shortHash);
         item->setData(4, Qt::UserRole, commit.fullHash);
 
-        // 设置工具提示
-        item->setToolTip(0, commit.graphInfo == "●" ? "Commit" : commit.graphInfo);
-        item->setToolTip(1, commit.message);
-        item->setToolTip(4, commit.fullHash);
+        // 重要新增：根据commit来源设置不同的显示样式
+        QColor baseColor = getCommitSourceColor(commit.source);
+
+        // 设置行的颜色以区分本地和远程commits
+        if (commit.source == GitLogDataManager::CommitSource::Remote) {
+            // 远程专有commits使用紫色背景（类似VSCode）
+            item->setBackground(0, QBrush(QColor(138, 43, 226, 30)));   // 紫色半透明背景
+            item->setBackground(1, QBrush(QColor(138, 43, 226, 30)));
+            item->setBackground(2, QBrush(QColor(138, 43, 226, 30)));
+            item->setBackground(3, QBrush(QColor(138, 43, 226, 30)));
+            item->setBackground(4, QBrush(QColor(138, 43, 226, 30)));
+
+            // 设置紫色文字
+            item->setForeground(1, QBrush(QColor(138, 43, 226)));   // 紫色文字
+            item->setForeground(2, QBrush(QColor(138, 43, 226)));
+            item->setForeground(3, QBrush(QColor(138, 43, 226)));
+            item->setForeground(4, QBrush(QColor(138, 43, 226)));
+
+            remoteOnlyCount++;
+        } else if (commit.source == GitLogDataManager::CommitSource::Both) {
+            // 本地和远程都有的commits使用默认样式但添加标记
+            // 可以考虑添加特殊图标或边框
+        }
+
+        // 增强工具提示，显示分支信息
+        QString enhancedTooltip = QString("Commit: %1\nMessage: %2\nBranches: %3")
+                                          .arg(commit.fullHash.left(8))
+                                          .arg(commit.message)
+                                          .arg(commit.branches.join(", "));
+
+        if (commit.source == GitLogDataManager::CommitSource::Remote) {
+            enhancedTooltip += QString("\n[Remote Only] - Only exists on remote branch");
+        } else if (commit.source == GitLogDataManager::CommitSource::Local) {
+            enhancedTooltip += QString("\n[Local Only] - Only exists locally");
+        } else {
+            enhancedTooltip += QString("\n[Both] - Exists on both local and remote");
+        }
+
+        // 设置其他列的工具提示
+        item->setToolTip(1, enhancedTooltip);
+        item->setToolTip(2, QString("Author: %1").arg(commit.author));
+        item->setToolTip(3, QString("Date: %1").arg(commit.date));
+        item->setToolTip(4, QString("Full Hash: %1").arg(commit.fullHash));
     }
+
+    qInfo() << QString("INFO: [GitLogDialog] Populated %1 commits, %2 have remote status, %3 are remote-only")
+                       .arg(commits.size())
+                       .arg(remoteStatusCount)
+                       .arg(remoteOnlyCount);
 }
 
 void GitLogDialog::populateFilesList(const QList<GitLogDataManager::FileChangeInfo> &files)
@@ -805,6 +996,41 @@ void GitLogDialog::refreshAfterOperation()
     });
 }
 
+void GitLogDialog::selectFirstLocalCommit()
+{
+    if (!m_commitTree || m_commitTree->topLevelItemCount() == 0) {
+        return;
+    }
+
+    const auto &commits = m_dataManager->getCommits();
+    
+    // 查找第一个本地commit（Local或Both类型）
+    for (int i = 0; i < m_commitTree->topLevelItemCount() && i < commits.size(); ++i) {
+        const auto &commit = commits[i];
+        
+        // 优先选择Local或Both类型的commit
+        if (commit.source == GitLogDataManager::CommitSource::Local || 
+            commit.source == GitLogDataManager::CommitSource::Both) {
+            
+            QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
+            m_commitTree->setCurrentItem(item);
+            m_commitTree->scrollToItem(item);
+            
+            qInfo() << QString("INFO: [GitLogDialog] Auto-selected first local commit at index %1: %2")
+                               .arg(i)
+                               .arg(commit.shortHash);
+            return;
+        }
+    }
+    
+    // 如果没有找到本地commit，回退到选择第一个commit
+    QTreeWidgetItem *firstItem = m_commitTree->topLevelItem(0);
+    m_commitTree->setCurrentItem(firstItem);
+    m_commitTree->scrollToItem(firstItem);
+    
+    qInfo() << "INFO: [GitLogDialog] No local commits found, selected first commit";
+}
+
 QIcon GitLogDialog::getFileStatusIcon(const QString &status) const
 {
     if (status == "A") return QIcon::fromTheme("list-add");
@@ -813,6 +1039,109 @@ QIcon GitLogDialog::getFileStatusIcon(const QString &status) const
     if (status == "R") return QIcon::fromTheme("edit-rename");
     if (status == "C") return QIcon::fromTheme("edit-copy");
     return QIcon::fromTheme("document-properties");
+}
+
+QIcon GitLogDialog::getRemoteStatusIcon(GitLogDataManager::RemoteStatus status) const
+{
+    switch (status) {
+    case GitLogDataManager::RemoteStatus::Synchronized:
+        return QIcon::fromTheme("emblem-default", QIcon(":/icons/status-synced.png"));
+    case GitLogDataManager::RemoteStatus::Ahead:
+        return QIcon::fromTheme("go-up", QIcon(":/icons/status-ahead.png"));
+    case GitLogDataManager::RemoteStatus::Behind:
+        return QIcon::fromTheme("go-down", QIcon(":/icons/status-behind.png"));
+    case GitLogDataManager::RemoteStatus::Diverged:
+        return QIcon::fromTheme("dialog-warning", QIcon(":/icons/status-diverged.png"));
+    case GitLogDataManager::RemoteStatus::NotTracked:
+        return QIcon::fromTheme("emblem-unreadable", QIcon(":/icons/status-untracked.png"));
+    case GitLogDataManager::RemoteStatus::Unknown:
+    default:
+        return QIcon::fromTheme("help-about", QIcon(":/icons/status-unknown.png"));
+    }
+}
+
+QColor GitLogDialog::getRemoteStatusColor(GitLogDataManager::RemoteStatus status) const
+{
+    switch (status) {
+    case GitLogDataManager::RemoteStatus::Synchronized:
+        return QColor(76, 175, 80);   // 绿色
+    case GitLogDataManager::RemoteStatus::Ahead:
+        return QColor(255, 193, 7);   // 黄色
+    case GitLogDataManager::RemoteStatus::Behind:
+        return QColor(244, 67, 54);   // 红色
+    case GitLogDataManager::RemoteStatus::Diverged:
+        return QColor(255, 152, 0);   // 橙色
+    case GitLogDataManager::RemoteStatus::NotTracked:
+        return QColor(158, 158, 158);   // 灰色
+    case GitLogDataManager::RemoteStatus::Unknown:
+    default:
+        return QColor(189, 189, 189);   // 浅灰色
+    }
+}
+
+QString GitLogDialog::getRemoteStatusTooltip(GitLogDataManager::RemoteStatus status, const QString &remoteRef) const
+{
+    QString baseText;
+    switch (status) {
+    case GitLogDataManager::RemoteStatus::Synchronized:
+        baseText = tr("Synchronized with remote");
+        break;
+    case GitLogDataManager::RemoteStatus::Ahead:
+        baseText = tr("Local commit ahead of remote");
+        break;
+    case GitLogDataManager::RemoteStatus::Behind:
+        baseText = tr("Remote commit not in local branch");
+        break;
+    case GitLogDataManager::RemoteStatus::Diverged:
+        baseText = tr("Branch has diverged from remote");
+        break;
+    case GitLogDataManager::RemoteStatus::NotTracked:
+        baseText = tr("Branch is not tracking any remote");
+        break;
+    case GitLogDataManager::RemoteStatus::Unknown:
+    default:
+        baseText = tr("Remote status unknown");
+        break;
+    }
+
+    if (!remoteRef.isEmpty()) {
+        QString tooltip = QString("%1\nRemote: %2").arg(baseText, remoteRef);
+
+        // 如果有多个远程分支信息，添加额外提示
+        const auto &trackingInfo = m_dataManager->getBranchTrackingInfo();
+        if (trackingInfo.allUpstreams.size() > 1) {
+            tooltip += QString("\n\nMultiple upstreams available:");
+            for (const QString &upstream : trackingInfo.allUpstreams) {
+                if (upstream == remoteRef) {
+                    tooltip += QString("\n• %1 (current)").arg(upstream);
+                } else {
+                    tooltip += QString("\n• %1").arg(upstream);
+                }
+            }
+        }
+
+        return tooltip;
+    }
+    return baseText;
+}
+
+QString GitLogDialog::getRemoteStatusText(GitLogDataManager::RemoteStatus status) const
+{
+    switch (status) {
+    case GitLogDataManager::RemoteStatus::Synchronized:
+        return "✓";
+    case GitLogDataManager::RemoteStatus::Ahead:
+        return "↑";
+    case GitLogDataManager::RemoteStatus::Behind:
+        return "↓";
+    case GitLogDataManager::RemoteStatus::Diverged:
+        return "⚠";
+    case GitLogDataManager::RemoteStatus::NotTracked:
+        return "○";
+    case GitLogDataManager::RemoteStatus::Unknown:
+    default:
+        return "?";
+    }
 }
 
 QString GitLogDialog::formatChangeStats(int additions, int deletions) const
@@ -946,4 +1275,18 @@ void GitDiffSyntaxHighlighter::highlightBlock(const QString &text)
         setFormat(0, text.length(), m_contextFormat);
     }
     // 其他行使用默认格式
+}
+
+QColor GitLogDialog::getCommitSourceColor(GitLogDataManager::CommitSource source) const
+{
+    switch (source) {
+    case GitLogDataManager::CommitSource::Local:
+        return QColor(0, 0, 0);   // 黑色（默认）
+    case GitLogDataManager::CommitSource::Remote:
+        return QColor(138, 43, 226);   // 紫色（类似VSCode）
+    case GitLogDataManager::CommitSource::Both:
+        return QColor(0, 100, 0);   // 深绿色
+    default:
+        return QColor(0, 0, 0);   // 默认黑色
+    }
 }

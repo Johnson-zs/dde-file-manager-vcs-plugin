@@ -30,7 +30,7 @@ class GitFilePreviewDialog;
 
 /**
  * @brief Git差异文本的语法高亮器
- * 
+ *
  * 为diff文本提供颜色高亮，包括：
  * - 添加的行（绿色背景）
  * - 删除的行（红色背景）
@@ -64,7 +64,7 @@ private:
  * - GitLogDataManager: 数据加载和缓存管理
  * - GitLogSearchManager: 搜索和过滤功能
  * - GitLogContextMenuManager: 右键菜单管理
- * 
+ *
  * 主要职责简化为：
  * - UI布局管理
  * - 组件间的协调
@@ -102,6 +102,7 @@ private Q_SLOTS:
     void onFileStatsLoaded(const QString &commitHash, const QList<GitLogDataManager::FileChangeInfo> &files);
     void onFileDiffLoaded(const QString &commitHash, const QString &filePath, const QString &diff);
     void onDataLoadError(const QString &operation, const QString &error);
+    void onRemoteStatusUpdated(const QString &branch);
 
     // === 搜索管理器信号响应 ===
     void onSearchStarted(const QString &searchText);
@@ -111,7 +112,7 @@ private Q_SLOTS:
 
     // === 右键菜单信号响应 ===
     void onGitOperationRequested(const QString &operation, const QStringList &args, bool needsConfirmation);
-    void onShowCommitDetailsRequested(const QString &commitHash);
+    void onCompareWithWorkingTreeRequested(const QString &commitHash);
     void onShowFileDiffRequested(const QString &commitHash, const QString &filePath);
     void onViewFileAtCommitRequested(const QString &commitHash, const QString &filePath);
     void onShowFileHistoryRequested(const QString &filePath);
@@ -123,6 +124,7 @@ private Q_SLOTS:
     void previewSelectedFile();
     void loadMoreCommitsIfNeeded();
     void refreshAfterOperation();
+    void selectFirstLocalCommit();
 
 private:
     // === UI初始化 ===
@@ -144,6 +146,13 @@ private:
     QIcon getFileStatusIcon(const QString &status) const;
     QString formatChangeStats(int additions, int deletions) const;
     void setChangeStatsColor(QTreeWidgetItem *item, int additions, int deletions) const;
+
+    // === 远程状态渲染方法 ===
+    QIcon getRemoteStatusIcon(GitLogDataManager::RemoteStatus status) const;
+    QColor getRemoteStatusColor(GitLogDataManager::RemoteStatus status) const;
+    QString getRemoteStatusTooltip(GitLogDataManager::RemoteStatus status, const QString &remoteRef) const;
+    QString getRemoteStatusText(GitLogDataManager::RemoteStatus status) const;
+    QColor getCommitSourceColor(GitLogDataManager::CommitSource source) const;
 
     // === 基础成员变量 ===
     QString m_repositoryPath;
@@ -192,4 +201,4 @@ private:
     bool m_enableChangeStats;
 };
 
-#endif // GITLOGDIALOG_H 
+#endif   // GITLOGDIALOG_H
