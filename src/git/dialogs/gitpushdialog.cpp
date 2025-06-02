@@ -3,6 +3,9 @@
 #include "gitcommandexecutor.h"
 #include "gitdialogs.h"
 #include "widgets/linenumbertextedit.h"
+#include "widgets/gitcommitdetailswidget.h"
+#include "gitlogdialog.h"
+#include "gitlogdatamanager.h"
 
 #include <QApplication>
 #include <QVBoxLayout>
@@ -25,6 +28,11 @@
 #include <QFont>
 #include <QMenu>
 #include <QAction>
+#include <QInputDialog>
+#include <QClipboard>
+#include <QTreeWidget>
+#include <QSyntaxHighlighter>
+#include <QTextCharFormat>
 
 GitPushDialog::GitPushDialog(const QString &repositoryPath, QWidget *parent)
     : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_statusUpdateTimer(new QTimer(this))
@@ -38,6 +46,7 @@ GitPushDialog::GitPushDialog(const QString &repositoryPath, QWidget *parent)
 
     setupUI();
     setupConnections();
+    setupCommitsContextMenu();
     loadRepositoryInfo();
 
     // 设置定时器更新状态
@@ -239,6 +248,7 @@ void GitPushDialog::setupCommitsGroup()
     m_commitsWidget = new QListWidget;
     m_commitsWidget->setAlternatingRowColors(true);
     m_commitsWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_commitsWidget->setContextMenuPolicy(Qt::CustomContextMenu);
     layout->addWidget(m_commitsWidget);
 }
 
@@ -279,6 +289,17 @@ void GitPushDialog::setupConnections()
     connect(m_dryRunButton, &QPushButton::clicked, this, &GitPushDialog::executeDryRun);
     connect(m_pushButton, &QPushButton::clicked, this, &GitPushDialog::executePush);
     connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+
+    // 提交列表右键菜单信号
+    connect(m_commitsWidget, &QListWidget::customContextMenuRequested,
+            this, &GitPushDialog::showCommitsContextMenu);
+
+    // 提交列表双击信号
+    connect(m_commitsWidget, &QListWidget::itemDoubleClicked,
+            this, [this](QListWidgetItem *item) {
+                Q_UNUSED(item)
+                showCommitDetails();
+            });
 
     // 操作服务信号 - 修复参数匹配问题
     connect(m_operationService, &GitOperationService::operationCompleted,
@@ -1064,4 +1085,473 @@ QString GitPushDialog::getStatusDescription() const
     }
 
     return description;
+}
+
+void GitPushDialog::setupCommitsContextMenu()
+{
+    m_commitsContextMenu = new QMenu(this);
+
+    // === 查看操作 ===
+    m_showDetailsAction = m_commitsContextMenu->addAction(QIcon(":/icons/document-properties"), tr("Show Commit Details"));
+    m_showDetailsAction->setToolTip(tr("Show detailed commit information and changes"));
+
+    m_commitsContextMenu->addSeparator();
+
+    // === 复制操作 ===
+    m_copyHashAction = m_commitsContextMenu->addAction(QIcon(":/icons/edit-copy"), tr("Copy Full Hash"));
+    m_copyHashAction->setToolTip(tr("Copy full commit hash to clipboard"));
+
+    m_copyShortHashAction = m_commitsContextMenu->addAction(QIcon(":/icons/edit-copy"), tr("Copy Short Hash"));
+    m_copyShortHashAction->setToolTip(tr("Copy short commit hash to clipboard"));
+
+    m_copyMessageAction = m_commitsContextMenu->addAction(QIcon(":/icons/edit-copy"), tr("Copy Commit Message"));
+    m_copyMessageAction->setToolTip(tr("Copy commit message to clipboard"));
+
+    m_commitsContextMenu->addSeparator();
+
+    // === Git操作 ===
+    m_createBranchAction = m_commitsContextMenu->addAction(QIcon(":/icons/vcs-branch"), tr("Create Branch from Here"));
+    m_createBranchAction->setToolTip(tr("Create a new branch starting from this commit"));
+
+    m_createTagAction = m_commitsContextMenu->addAction(QIcon(":/icons/vcs-tag"), tr("Create Tag"));
+    m_createTagAction->setToolTip(tr("Create a tag for this commit"));
+
+    // === 连接信号 ===
+    connect(m_showDetailsAction, &QAction::triggered, this, &GitPushDialog::showCommitDetails);
+    connect(m_copyHashAction, &QAction::triggered, this, &GitPushDialog::copyCommitHash);
+    connect(m_copyShortHashAction, &QAction::triggered, this, &GitPushDialog::copyShortHash);
+    connect(m_copyMessageAction, &QAction::triggered, this, &GitPushDialog::copyCommitMessage);
+    connect(m_createBranchAction, &QAction::triggered, this, &GitPushDialog::createBranchFromCommit);
+    connect(m_createTagAction, &QAction::triggered, this, &GitPushDialog::createTagFromCommit);
+
+    qInfo() << "INFO: [GitPushDialog::setupCommitsContextMenu] Commits context menu setup completed";
+}
+
+void GitPushDialog::showCommitsContextMenu(const QPoint &pos)
+{
+    QListWidgetItem *item = m_commitsWidget->itemAt(pos);
+    if (!item) {
+        return;
+    }
+
+    // 确保选中了右键点击的项目
+    m_commitsWidget->setCurrentItem(item);
+
+    // 检查是否有选中的提交
+    if (m_commitsWidget->currentRow() < 0 || m_commitsWidget->currentRow() >= m_unpushedCommits.size()) {
+        return;
+    }
+
+    const CommitInfo &commit = m_unpushedCommits[m_commitsWidget->currentRow()];
+
+    // 更新菜单项文本以显示commit信息
+    m_showDetailsAction->setText(tr("Show Details for %1").arg(commit.shortHash));
+    m_copyHashAction->setText(tr("Copy Hash (%1)").arg(commit.hash));
+    m_copyShortHashAction->setText(tr("Copy Short Hash (%1)").arg(commit.shortHash));
+
+    // 显示菜单
+    m_commitsContextMenu->exec(m_commitsWidget->mapToGlobal(pos));
+}
+
+void GitPushDialog::showCommitDetails()
+{
+    int currentRow = m_commitsWidget->currentRow();
+    if (currentRow < 0 || currentRow >= m_unpushedCommits.size()) {
+        return;
+    }
+
+    const CommitInfo &commit = m_unpushedCommits[currentRow];
+
+    qInfo() << "INFO: [GitPushDialog::showCommitDetails] Showing details for commit:" << commit.shortHash;
+
+    // 创建提交详情对话框
+    auto *detailsDialog = new QDialog(this);
+    detailsDialog->setWindowTitle(tr("Commit Details - %1").arg(commit.shortHash));
+    detailsDialog->setWindowIcon(QIcon(":/icons/document-properties"));
+    detailsDialog->setMinimumSize(1200, 800);
+    detailsDialog->resize(1400, 900);
+    detailsDialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    auto *mainLayout = new QVBoxLayout(detailsDialog);
+    mainLayout->setSpacing(8);
+    mainLayout->setContentsMargins(12, 12, 12, 12);
+
+    // 创建垂直分割器，模仿GitLogDialog右侧区域
+    auto *rightSplitter = new QSplitter(Qt::Vertical, detailsDialog);
+
+    // === 1. 提交详情区域 (30%) ===
+    auto *detailsWidget = new GitCommitDetailsWidget(detailsDialog);
+    rightSplitter->addWidget(detailsWidget);
+
+    // === 2. 文件列表区域 (20%) ===
+    auto *changedFilesTree = new QTreeWidget;
+    changedFilesTree->setHeaderLabels({ tr("Status"), tr("File"), tr("Changes") });
+    changedFilesTree->setRootIsDecorated(false);
+    changedFilesTree->setAlternatingRowColors(true);
+    changedFilesTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    
+    // 设置列宽
+    changedFilesTree->setColumnWidth(0, 60);   // Status
+    changedFilesTree->setColumnWidth(1, 300);   // File
+    changedFilesTree->setColumnWidth(2, 100);   // Changes
+    
+    rightSplitter->addWidget(changedFilesTree);
+
+    // === 3. 差异显示区域 (50%) ===
+    auto *diffView = new LineNumberTextEdit;
+    diffView->setReadOnly(true);
+    diffView->setFont(QFont("Consolas", 9));
+    diffView->setLineWrapMode(QPlainTextEdit::NoWrap);
+    diffView->setPlainText(tr("Select a file to view changes..."));
+
+    // 设置语法高亮
+    auto *diffHighlighter = new GitDiffSyntaxHighlighter(diffView->document());
+    Q_UNUSED(diffHighlighter)
+
+    rightSplitter->addWidget(diffView);
+
+    // 设置比例：详情30%，文件列表20%，差异50%
+    rightSplitter->setSizes({ 300, 200, 500 });
+    rightSplitter->setStretchFactor(0, 1);
+    rightSplitter->setStretchFactor(1, 1);
+    rightSplitter->setStretchFactor(2, 2);
+
+    mainLayout->addWidget(rightSplitter);
+
+    // === 加载提交详情 ===
+    GitCommandExecutor executor;
+    QString output, error;
+
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "show";
+    cmd.arguments = QStringList() << "show"
+                                  << "--format=fuller"
+                                  << "--no-patch"
+                                  << commit.hash;
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 10000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    if (result == GitCommandExecutor::Result::Success && !output.trimmed().isEmpty()) {
+        detailsWidget->setCommitDetails(output);
+    } else {
+        detailsWidget->setCommitDetails(tr("Failed to load commit details: %1").arg(error));
+    }
+
+    // === 加载文件列表和统计信息 ===
+    GitCommandExecutor::GitCommand filesCmd;
+    filesCmd.command = "show";
+    filesCmd.arguments = QStringList() << "show"
+                                       << "--name-status"
+                                       << "--format="
+                                       << commit.hash;
+    filesCmd.workingDirectory = m_repositoryPath;
+    filesCmd.timeout = 5000;
+
+    QString filesOutput, filesError;
+    auto filesResult = executor.executeCommand(filesCmd, filesOutput, filesError);
+
+    QList<GitLogDataManager::FileChangeInfo> fileInfos;
+    int filesChanged = 0;
+
+    if (filesResult == GitCommandExecutor::Result::Success && !filesOutput.trimmed().isEmpty()) {
+        QStringList lines = filesOutput.split('\n', Qt::SkipEmptyParts);
+        filesChanged = lines.size();
+        
+        for (const QString &line : lines) {
+            QStringList parts = line.split('\t');
+            if (parts.size() >= 2) {
+                GitLogDataManager::FileChangeInfo fileInfo;
+                fileInfo.status = parts[0];
+                fileInfo.filePath = parts[1];
+                fileInfo.additions = 0;
+                fileInfo.deletions = 0;
+                fileInfo.statsLoaded = false;
+                
+                fileInfos.append(fileInfo);
+                
+                auto *item = new QTreeWidgetItem(changedFilesTree);
+                
+                // 状态列
+                if (fileInfo.status == "A") {
+                    item->setText(0, tr("Added"));
+                    item->setIcon(0, QIcon(":/icons/list-add"));
+                    item->setForeground(0, QBrush(QColor(0, 128, 0)));
+                } else if (fileInfo.status == "M") {
+                    item->setText(0, tr("Modified"));
+                    item->setIcon(0, QIcon(":/icons/document-edit"));
+                    item->setForeground(0, QBrush(QColor(255, 140, 0)));
+                } else if (fileInfo.status == "D") {
+                    item->setText(0, tr("Deleted"));
+                    item->setIcon(0, QIcon(":/icons/list-remove"));
+                    item->setForeground(0, QBrush(QColor(128, 0, 0)));
+                } else {
+                    item->setText(0, fileInfo.status);
+                    item->setIcon(0, QIcon(":/icons/document-properties"));
+                }
+                
+                // 文件路径列
+                item->setText(1, fileInfo.filePath);
+                item->setToolTip(1, fileInfo.filePath);
+                
+                // 变更统计列（先显示Loading...）
+                item->setText(2, tr("Loading..."));
+            }
+        }
+    }
+
+    // === 异步加载文件统计信息 ===
+    if (!fileInfos.isEmpty()) {
+        GitCommandExecutor::GitCommand statCmd;
+        statCmd.command = "show";
+        statCmd.arguments = QStringList() << "show"
+                                          << "--numstat"
+                                          << "--format="
+                                          << commit.hash;
+        statCmd.workingDirectory = m_repositoryPath;
+        statCmd.timeout = 5000;
+
+        QString statOutput, statError;
+        auto statResult = executor.executeCommand(statCmd, statOutput, statError);
+        
+        if (statResult == GitCommandExecutor::Result::Success && !statOutput.trimmed().isEmpty()) {
+            // 解析统计信息（复用GitLogDataManager的逻辑）
+            QStringList statLines = statOutput.split('\n', Qt::SkipEmptyParts);
+            QHash<QString, QPair<int, int>> fileStats;
+            
+            for (const QString &line : statLines) {
+                if (line.trimmed().isEmpty()) continue;
+
+                QStringList parts = line.split('\t');
+                if (parts.size() >= 3) {
+                    QString additionsStr = parts[0];
+                    QString deletionsStr = parts[1];
+                    QString filePath = parts[2];
+
+                    // 处理二进制文件（显示为"-"）
+                    int additions = (additionsStr == "-") ? 0 : additionsStr.toInt();
+                    int deletions = (deletionsStr == "-") ? 0 : deletionsStr.toInt();
+
+                    fileStats[filePath] = qMakePair(additions, deletions);
+                }
+            }
+            
+            // 更新文件信息和UI
+            int totalAdditions = 0;
+            int totalDeletions = 0;
+            
+            for (int i = 0; i < fileInfos.size() && i < changedFilesTree->topLevelItemCount(); ++i) {
+                auto &fileInfo = fileInfos[i];
+                auto *item = changedFilesTree->topLevelItem(i);
+                
+                if (fileStats.contains(fileInfo.filePath)) {
+                    QPair<int, int> stats = fileStats[fileInfo.filePath];
+                    fileInfo.additions = stats.first;
+                    fileInfo.deletions = stats.second;
+                    fileInfo.statsLoaded = true;
+                    
+                    totalAdditions += fileInfo.additions;
+                    totalDeletions += fileInfo.deletions;
+                    
+                    // 更新UI显示（复用GitLogDialog的格式化逻辑）
+                    QString changeText;
+                    if (fileInfo.additions > 0 && fileInfo.deletions > 0) {
+                        changeText = QString("+%1 -%2").arg(fileInfo.additions).arg(fileInfo.deletions);
+                        item->setForeground(2, QBrush(QColor(255, 140, 0))); // 橙色
+                    } else if (fileInfo.additions > 0) {
+                        changeText = QString("+%1").arg(fileInfo.additions);
+                        item->setForeground(2, QBrush(QColor(0, 128, 0))); // 绿色
+                    } else if (fileInfo.deletions > 0) {
+                        changeText = QString("-%1").arg(fileInfo.deletions);
+                        item->setForeground(2, QBrush(QColor(128, 0, 0))); // 红色
+                    } else {
+                        changeText = tr("No changes");
+                        item->setForeground(2, QBrush(QColor(128, 128, 128))); // 灰色
+                    }
+                    
+                    item->setText(2, changeText);
+                    item->setToolTip(2, tr("Lines added: %1, Lines deleted: %2").arg(fileInfo.additions).arg(fileInfo.deletions));
+                } else {
+                    item->setText(2, tr("No stats"));
+                    item->setForeground(2, QBrush(QColor(128, 128, 128)));
+                }
+            }
+            
+            // === 使用GitCommitDetailsWidget的setCommitSummaryStats方法 ===
+            detailsWidget->setCommitSummaryStats(filesChanged, totalAdditions, totalDeletions);
+        } else {
+            // 统计加载失败，清除Loading...状态
+            for (int i = 0; i < changedFilesTree->topLevelItemCount(); ++i) {
+                auto *item = changedFilesTree->topLevelItem(i);
+                item->setText(2, tr("Stats unavailable"));
+                item->setForeground(2, QBrush(QColor(128, 128, 128)));
+            }
+        }
+    }
+
+    // === 文件选择信号连接 ===
+    connect(changedFilesTree, &QTreeWidget::itemSelectionChanged, [=, &commit]() {
+        auto *currentItem = changedFilesTree->currentItem();
+        if (!currentItem) {
+            diffView->setPlainText(tr("Select a file to view changes..."));
+            return;
+        }
+
+        QString filePath = currentItem->text(1);
+        if (filePath.isEmpty()) {
+            return;
+        }
+
+        // 创建新的executor对象来避免const问题
+        GitCommandExecutor fileExecutor;
+
+        // 获取文件的diff
+        GitCommandExecutor::GitCommand fileDiffCmd;
+        fileDiffCmd.command = "show";
+        fileDiffCmd.arguments = QStringList() << "show"
+                                              << "--color=never"
+                                              << commit.hash
+                                              << "--"
+                                              << filePath;
+        fileDiffCmd.workingDirectory = m_repositoryPath;
+        fileDiffCmd.timeout = 10000;
+
+        QString diffOutput, diffError;
+        auto diffResult = fileExecutor.executeCommand(fileDiffCmd, diffOutput, diffError);
+
+        if (diffResult == GitCommandExecutor::Result::Success && !diffOutput.trimmed().isEmpty()) {
+            diffView->setPlainText(diffOutput);
+        } else {
+            diffView->setPlainText(tr("Failed to load file diff: %1").arg(diffError));
+        }
+    });
+
+    // === 按钮区域 ===
+    auto *buttonLayout = new QHBoxLayout;
+    buttonLayout->addStretch();
+
+    auto *closeButton = new QPushButton(tr("Close"));
+    closeButton->setIcon(QIcon(":/icons/dialog-close"));
+    connect(closeButton, &QPushButton::clicked, detailsDialog, &QDialog::accept);
+
+    buttonLayout->addWidget(closeButton);
+    mainLayout->addLayout(buttonLayout);
+
+    detailsDialog->show();
+}
+
+void GitPushDialog::copyCommitHash()
+{
+    int currentRow = m_commitsWidget->currentRow();
+    if (currentRow < 0 || currentRow >= m_unpushedCommits.size()) {
+        return;
+    }
+
+    const CommitInfo &commit = m_unpushedCommits[currentRow];
+    QApplication::clipboard()->setText(commit.hash);
+
+    qInfo() << "INFO: [GitPushDialog::copyCommitHash] Copied full hash to clipboard:" << commit.hash;
+}
+
+void GitPushDialog::copyShortHash()
+{
+    int currentRow = m_commitsWidget->currentRow();
+    if (currentRow < 0 || currentRow >= m_unpushedCommits.size()) {
+        return;
+    }
+
+    const CommitInfo &commit = m_unpushedCommits[currentRow];
+    QApplication::clipboard()->setText(commit.shortHash);
+
+    qInfo() << "INFO: [GitPushDialog::copyShortHash] Copied short hash to clipboard:" << commit.shortHash;
+}
+
+void GitPushDialog::copyCommitMessage()
+{
+    int currentRow = m_commitsWidget->currentRow();
+    if (currentRow < 0 || currentRow >= m_unpushedCommits.size()) {
+        return;
+    }
+
+    const CommitInfo &commit = m_unpushedCommits[currentRow];
+    QApplication::clipboard()->setText(commit.message);
+
+    qInfo() << "INFO: [GitPushDialog::copyCommitMessage] Copied commit message to clipboard:" << commit.message;
+}
+
+void GitPushDialog::createBranchFromCommit()
+{
+    int currentRow = m_commitsWidget->currentRow();
+    if (currentRow < 0 || currentRow >= m_unpushedCommits.size()) {
+        return;
+    }
+
+    const CommitInfo &commit = m_unpushedCommits[currentRow];
+
+    bool ok;
+    QString branchName = QInputDialog::getText(this, tr("Create Branch"),
+                                               tr("Enter new branch name:"), QLineEdit::Normal, "", &ok);
+
+    if (ok && !branchName.isEmpty()) {
+        qInfo() << "INFO: [GitPushDialog::createBranchFromCommit] Creating branch" << branchName << "from commit" << commit.shortHash;
+
+        GitCommandExecutor executor;
+        QString output, error;
+
+        GitCommandExecutor::GitCommand cmd;
+        cmd.command = "branch";
+        cmd.arguments = QStringList() << "branch" << branchName << commit.hash;
+        cmd.workingDirectory = m_repositoryPath;
+        cmd.timeout = 5000;
+
+        auto result = executor.executeCommand(cmd, output, error);
+
+        if (result == GitCommandExecutor::Result::Success) {
+            QMessageBox::information(this, tr("Branch Created"),
+                                     tr("Branch '%1' created successfully from commit %2.")
+                                             .arg(branchName, commit.shortHash));
+        } else {
+            QMessageBox::critical(this, tr("Branch Creation Failed"),
+                                  tr("Failed to create branch '%1':\n%2").arg(branchName, error));
+        }
+    }
+}
+
+void GitPushDialog::createTagFromCommit()
+{
+    int currentRow = m_commitsWidget->currentRow();
+    if (currentRow < 0 || currentRow >= m_unpushedCommits.size()) {
+        return;
+    }
+
+    const CommitInfo &commit = m_unpushedCommits[currentRow];
+
+    bool ok;
+    QString tagName = QInputDialog::getText(this, tr("Create Tag"),
+                                            tr("Enter tag name:"), QLineEdit::Normal, "", &ok);
+
+    if (ok && !tagName.isEmpty()) {
+        qInfo() << "INFO: [GitPushDialog::createTagFromCommit] Creating tag" << tagName << "for commit" << commit.shortHash;
+
+        GitCommandExecutor executor;
+        QString output, error;
+
+        GitCommandExecutor::GitCommand cmd;
+        cmd.command = "tag";
+        cmd.arguments = QStringList() << "tag" << tagName << commit.hash;
+        cmd.workingDirectory = m_repositoryPath;
+        cmd.timeout = 5000;
+
+        auto result = executor.executeCommand(cmd, output, error);
+
+        if (result == GitCommandExecutor::Result::Success) {
+            QMessageBox::information(this, tr("Tag Created"),
+                                     tr("Tag '%1' created successfully for commit %2.")
+                                             .arg(tagName, commit.shortHash));
+        } else {
+            QMessageBox::critical(this, tr("Tag Creation Failed"),
+                                  tr("Failed to create tag '%1':\n%2").arg(tagName, error));
+        }
+    }
 }

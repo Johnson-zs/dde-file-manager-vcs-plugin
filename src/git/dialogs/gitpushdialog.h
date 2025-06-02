@@ -15,6 +15,8 @@
 #include <QTimer>
 #include <QDateTime>
 #include <QMessageBox>
+#include <QMenu>
+#include <QAction>
 
 class GitOperationService;
 
@@ -78,6 +80,15 @@ private slots:
     void updateRepositoryStatus();
     void refreshRemoteStatus();
 
+    // === 右键菜单槽函数 ===
+    void showCommitsContextMenu(const QPoint &pos);
+    void showCommitDetails();
+    void copyCommitHash();
+    void copyShortHash();
+    void copyCommitMessage();
+    void createBranchFromCommit();
+    void createTagFromCommit();
+
 private:
     // === UI设置方法 ===
     void setupUI();
@@ -86,6 +97,7 @@ private:
     void setupCommitsGroup();
     void setupButtonGroup();
     void setupConnections();
+    void setupCommitsContextMenu();
 
     // === 数据加载方法 ===
     void loadRepositoryInfo();
@@ -149,6 +161,15 @@ private:
     // 进度显示
     QProgressBar *m_progressBar;
     QLabel *m_progressLabel;
+
+    // === 右键菜单 ===
+    QMenu *m_commitsContextMenu;
+    QAction *m_showDetailsAction;
+    QAction *m_copyHashAction;
+    QAction *m_copyShortHashAction;
+    QAction *m_copyMessageAction;
+    QAction *m_createBranchAction;
+    QAction *m_createTagAction;
 
     // === 数据成员 ===
     QVector<CommitInfo> m_unpushedCommits;
