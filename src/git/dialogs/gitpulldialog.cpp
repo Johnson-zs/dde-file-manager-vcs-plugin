@@ -1,7 +1,7 @@
 #include "gitpulldialog.h"
-#include "../gitoperationservice.h"
-#include "../gitcommandexecutor.h"
-#include "../utils.h"
+#include "gitoperationservice.h"
+#include "gitcommandexecutor.h"
+#include "widgets/characteranimationwidget.h"
 #include "gitdialogs.h"
 
 #include <QApplication>
@@ -20,7 +20,7 @@
 #include <QSplitter>
 
 GitPullDialog::GitPullDialog(const QString &repositoryPath, QWidget *parent)
-    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_hasLocalChanges(false), m_hasUncommittedChanges(false), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_statusUpdateTimer(new QTimer(this))
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_hasLocalChanges(false), m_hasUncommittedChanges(false), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_isDataLoaded(false), m_statusUpdateTimer(new QTimer(this))
 {
     setWindowTitle(tr("Git Pull"));
     setWindowIcon(QIcon(":/icons/vcs-pull"));
@@ -31,13 +31,15 @@ GitPullDialog::GitPullDialog(const QString &repositoryPath, QWidget *parent)
 
     setupUI();
     setupConnections();
-    loadRepositoryInfo();
+
+    // 延迟加载数据以提高启动速度
+    QTimer::singleShot(0, this, &GitPullDialog::delayedDataLoad);
 
     // 设置定时器更新状态
     m_statusUpdateTimer->setSingleShot(false);
     m_statusUpdateTimer->setInterval(30000);   // 30秒更新一次
     connect(m_statusUpdateTimer, &QTimer::timeout, this, &GitPullDialog::refreshRemoteUpdates);
-    m_statusUpdateTimer->start();
+    // 注意：延迟启动定时器，等数据加载完成后再启动
 }
 
 GitPullDialog::~GitPullDialog()
@@ -83,23 +85,35 @@ void GitPullDialog::setupUI()
 
     mainLayout->addWidget(splitter);
 
-    // 进度条
+    // 进度显示区域 - 重新设计布局以包含CharacterAnimationWidget
+    auto *progressWidget = new QWidget;
+    progressWidget->setFixedHeight(40);
+    auto *progressLayout = new QVBoxLayout(progressWidget);
+    progressLayout->setContentsMargins(16, 8, 16, 8);
+    progressLayout->setSpacing(4);
+
+    // 字符动画组件
+    m_animationWidget = new CharacterAnimationWidget(progressWidget);
+    m_animationWidget->setVisible(false);
+    m_animationWidget->setTextStyleSheet("QLabel { color: #2196F3; font-weight: bold; font-size: 14px; }");
+    progressLayout->addWidget(m_animationWidget);
+
+    // 保留原有的进度条和标签（隐藏状态）
     m_progressBar = new QProgressBar;
     m_progressBar->setVisible(false);
     m_progressLabel = new QLabel;
     m_progressLabel->setVisible(false);
 
-    mainLayout->addWidget(m_progressLabel);
-    mainLayout->addWidget(m_progressBar);
+    mainLayout->addWidget(progressWidget);
 
     setupButtonGroup();
 
     // 优化按钮区域布局，保持按钮默认高度
     auto *buttonWidget = new QWidget;
-    buttonWidget->setFixedHeight(50);  // 减少容器高度，让按钮有更多空间
+    buttonWidget->setFixedHeight(50);   // 减少容器高度，让按钮有更多空间
     auto *buttonLayout = new QHBoxLayout(buttonWidget);
     buttonLayout->setSpacing(6);
-    buttonLayout->setContentsMargins(0, 8, 0, 8);  // 统一上下边距，让按钮居中
+    buttonLayout->setContentsMargins(0, 8, 0, 8);   // 统一上下边距，让按钮居中
 
     // 远程管理按钮
     m_remoteManagerButton = new QPushButton(tr("Remote Manager"));
@@ -131,7 +145,7 @@ void GitPullDialog::setupUI()
     m_pullButton = new QPushButton(tr("Pull"));
     m_pullButton->setIcon(QIcon(":/icons/vcs-pull"));
     m_pullButton->setDefault(true);
-    m_pullButton->setStyleSheet("QPushButton { font-weight: bold; }");  // 移除自定义padding
+    m_pullButton->setStyleSheet("QPushButton { font-weight: bold; }");   // 移除自定义padding
 
     m_cancelButton = new QPushButton(tr("Cancel"));
     m_cancelButton->setIcon(QIcon(":/icons/dialog-cancel"));
@@ -468,16 +482,8 @@ void GitPullDialog::checkLocalChanges()
 
 void GitPullDialog::loadRemoteUpdates()
 {
-    // 简化实现：显示占位信息
-    m_remoteUpdates.clear();
-    m_updatesWidget->clear();
-
-    m_updatesCountLabel->setText(tr("Click 'Fetch Updates' to check for remote changes"));
-    m_downloadStatsLabel->setText(tr("Remote status: Unknown"));
-
-    auto *item = new QListWidgetItem(tr("Fetch updates to see available changes"));
-    item->setIcon(QIcon(":/icons/vcs-update-required"));
-    m_updatesWidget->addItem(item);
+    // 将简化实现替换为真实实现
+    loadActualRemoteUpdates();
 }
 
 // 槽函数实现
@@ -524,16 +530,88 @@ void GitPullDialog::showRemoteManager()
 
 void GitPullDialog::fetchUpdates()
 {
-    qInfo() << "INFO: [GitPullDialog::fetchUpdates] Fetching updates";
+    qInfo() << "INFO: [GitPullDialog::fetchUpdates] Starting fetch operation";
 
-    // TODO: 实现fetch功能
-    QMessageBox::information(this, tr("Fetch Updates"),
-                             tr("Fetch functionality will be implemented in the next phase."));
+    if (m_isOperationInProgress) {
+        QMessageBox::information(this, tr("Operation in Progress"),
+                                 tr("Another operation is currently in progress. Please wait."));
+        return;
+    }
+
+    // 显示字符动画进度
+    showProgress(tr("Fetching remote updates..."));
+
+    // 创建异步执行器
+    auto *executor = new GitCommandExecutor(this);
+    
+    // 连接异步完成信号
+    connect(executor, &GitCommandExecutor::commandFinished, 
+            this, &GitPullDialog::onFetchCommandFinished);
+
+    // 准备fetch命令
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "fetch";
+    cmd.arguments = QStringList() << "fetch" << "--all";
+    
+    if (m_pruneCheckBox->isChecked()) {
+        cmd.arguments << "--prune";
+    }
+    
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 30000;   // 30秒超时
+
+    // 异步执行
+    executor->executeCommandAsync(cmd);
+}
+
+void GitPullDialog::onFetchCommandFinished(const QString &command, GitCommandExecutor::Result result, const QString &output, const QString &error)
+{
+    Q_UNUSED(command)
+    
+    // 删除临时执行器
+    sender()->deleteLater();
+    
+    // 隐藏进度
+    hideProgress();
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        qInfo() << "INFO: [GitPullDialog::onFetchCommandFinished] Fetch completed successfully";
+        
+        // 显示成功状态
+        m_animationWidget->setVisible(true);
+        m_animationWidget->getLabel()->setText(tr("✓ Fetch completed successfully!"));
+        m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
+        
+        // 刷新远程分支和更新列表
+        loadRemoteBranches();
+        loadActualRemoteUpdates();
+        
+        // 1.5秒后隐藏成功消息
+        QTimer::singleShot(1500, this, [this]() {
+            m_animationWidget->setVisible(false);
+        });
+        
+    } else {
+        qWarning() << "WARNING: [GitPullDialog::onFetchCommandFinished] Fetch failed:" << error;
+        
+        // 显示错误状态
+        m_animationWidget->setVisible(true);
+        m_animationWidget->getLabel()->setText(tr("✗ Fetch failed!"));
+        m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #F44336; font-weight: bold; font-size: 14px; }");
+        
+        QMessageBox::critical(this, tr("Fetch Failed"),
+                              tr("Failed to fetch remote updates.\n\nError: %1").arg(error));
+        
+        // 3秒后隐藏错误消息
+        QTimer::singleShot(3000, this, [this]() {
+            m_animationWidget->setVisible(false);
+        });
+    }
 }
 
 void GitPullDialog::stashAndPull()
 {
-    qInfo() << "INFO: [GitPullDialog::stashAndPull] Stash and pull";
+    qInfo() << "INFO: [GitPullDialog::stashAndPull] Starting stash and pull operation";
 
     if (!m_hasLocalChanges) {
         QMessageBox::information(this, tr("No Changes"),
@@ -542,9 +620,153 @@ void GitPullDialog::stashAndPull()
         return;
     }
 
-    // TODO: 实现stash and pull功能
-    QMessageBox::information(this, tr("Stash & Pull"),
-                             tr("Stash & Pull functionality will be implemented in the next phase."));
+    if (m_isOperationInProgress) {
+        QMessageBox::information(this, tr("Operation in Progress"),
+                                 tr("Another operation is currently in progress. Please wait."));
+        return;
+    }
+
+    // 确认操作
+    int ret = QMessageBox::question(this, tr("Stash and Pull"),
+                                    tr("This will:\n"
+                                       "1. Stash your local changes\n"
+                                       "2. Pull from remote repository\n"
+                                       "3. Restore your stashed changes\n\n"
+                                       "Do you want to continue?"),
+                                    QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes) {
+        return;
+    }
+
+    showProgress(tr("Starting stash and pull operation..."));
+
+    GitCommandExecutor executor;
+    QString output, error;
+    QString stashMessage = tr("Auto-stash before pull at %1").arg(QDateTime::currentDateTime().toString());
+
+    // 步骤1: Stash本地更改
+    m_animationWidget->setBaseText(tr("Step 1/3: Stashing local changes..."));
+
+    GitCommandExecutor::GitCommand stashCmd;
+    stashCmd.command = "stash";
+    stashCmd.arguments = QStringList() << "stash"
+                                       << "push"
+                                       << "-m" << stashMessage;
+    stashCmd.workingDirectory = m_repositoryPath;
+    stashCmd.timeout = 10000;
+
+    auto stashResult = executor.executeCommand(stashCmd, output, error);
+
+    if (stashResult != GitCommandExecutor::Result::Success) {
+        hideProgress();
+
+        QMessageBox::critical(this, tr("Stash Failed"),
+                              tr("Failed to stash local changes.\n\nError: %1").arg(error));
+        return;
+    }
+
+    // 步骤2: 执行Pull
+    m_animationWidget->setBaseText(tr("Step 2/3: Pulling from remote..."));
+
+    PullOptions options;
+    options.remoteName = m_remoteCombo->currentText();
+    options.remoteBranch = m_remoteBranchCombo->currentText();
+    options.strategy = static_cast<MergeStrategy>(m_strategyCombo->currentData().toInt());
+    options.fastForwardOnly = m_ffOnlyCheckBox->isChecked();
+    options.prune = m_pruneCheckBox->isChecked();
+    options.autoStash = false;   // 我们手动处理stash
+    options.recurseSubmodules = m_submodulesCheckBox->isChecked();
+    options.dryRun = false;
+
+    // 构建pull命令
+    QStringList pullArgs = { "pull" };
+
+    if (options.prune) {
+        pullArgs << "--prune";
+    }
+
+    QString strategyStr;
+    switch (options.strategy) {
+    case MergeStrategy::Merge:
+        strategyStr = "merge";
+        break;
+    case MergeStrategy::Rebase:
+        pullArgs << "--rebase";
+        break;
+    case MergeStrategy::FastForwardOnly:
+        pullArgs << "--ff-only";
+        break;
+    }
+
+    if (options.recurseSubmodules) {
+        pullArgs << "--recurse-submodules";
+    }
+
+    pullArgs << options.remoteName;
+    if (!options.remoteBranch.isEmpty()) {
+        pullArgs << options.remoteBranch;
+    }
+
+    GitCommandExecutor::GitCommand pullCmd;
+    pullCmd.command = "pull";
+    pullCmd.arguments = pullArgs;
+    pullCmd.workingDirectory = m_repositoryPath;
+    pullCmd.timeout = 60000;   // 60秒超时
+
+    auto pullResult = executor.executeCommand(pullCmd, output, error);
+
+    // 步骤3: 恢复Stash (不管pull是否成功都要尝试)
+    m_animationWidget->setBaseText(tr("Step 3/3: Restoring stashed changes..."));
+
+    GitCommandExecutor::GitCommand popCmd;
+    popCmd.command = "stash";
+    popCmd.arguments = QStringList() << "stash"
+                                     << "pop";
+    popCmd.workingDirectory = m_repositoryPath;
+    popCmd.timeout = 10000;
+
+    auto popResult = executor.executeCommand(popCmd, output, error);
+
+    // 完成操作
+    hideProgress();
+
+    // 检查结果并给出适当反馈
+    if (pullResult == GitCommandExecutor::Result::Success) {
+        if (popResult == GitCommandExecutor::Result::Success) {
+            qInfo() << "INFO: [GitPullDialog::stashAndPull] Stash and pull completed successfully";
+
+            // 显示成功状态
+            m_animationWidget->setVisible(true);
+            m_animationWidget->getLabel()->setText(tr("✓ Stash and pull completed successfully!"));
+            m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
+
+            // 刷新状态
+            checkLocalChanges();
+            updateLocalStatus();
+
+            // 延迟1.5秒后关闭对话框
+            QTimer::singleShot(1500, this, [this]() {
+                accept();
+            });
+        } else {
+            // Pull成功但stash pop失败 - 可能有冲突
+            QMessageBox::warning(this, tr("Stash Restore Failed"),
+                                 tr("Pull completed successfully, but failed to restore stashed changes.\n"
+                                    "Your changes are safely stored in the stash.\n\n"
+                                    "You can manually restore them using:\n"
+                                    "git stash pop\n\n"
+                                    "Error: %1")
+                                         .arg(error));
+            handleConflicts();
+        }
+    } else {
+        // Pull失败 - 尝试恢复原状态
+        QMessageBox::critical(this, tr("Pull Failed"),
+                              tr("Pull operation failed, but your changes have been preserved in the stash.\n"
+                                 "You can restore them using: git stash pop\n\n"
+                                 "Pull error: %1")
+                                      .arg(error));
+    }
 }
 
 void GitPullDialog::executeDryRun()
@@ -603,19 +825,8 @@ void GitPullDialog::executePull()
 
 void GitPullDialog::executePullWithOptions(const PullOptions &options)
 {
-    m_isOperationInProgress = true;
     m_isDryRunInProgress = options.dryRun;
-    enableControls(false);
-
-    m_progressBar->setVisible(true);
-    m_progressLabel->setVisible(true);
-    m_progressBar->setRange(0, 0);   // 不确定进度
-
-    if (options.dryRun) {
-        m_progressLabel->setText(tr("Running pull dry run..."));
-    } else {
-        m_progressLabel->setText(tr("Pulling from remote repository..."));
-    }
+    showProgress(options.dryRun ? tr("Running pull dry run...") : tr("Pulling from remote repository..."));
 
     qInfo() << "INFO: [GitPullDialog::executePullWithOptions] Executing pull with options:"
             << "remote:" << options.remoteName << "branch:" << options.remoteBranch
@@ -647,12 +858,8 @@ void GitPullDialog::onPullCompleted(bool success, const QString &message)
 {
     bool isDryRun = m_isDryRunInProgress;
 
-    m_isOperationInProgress = false;
     m_isDryRunInProgress = false;
-    enableControls(true);
-
-    m_progressBar->setVisible(false);
-    m_progressLabel->setVisible(false);
+    hideProgress();
 
     if (success) {
         qInfo() << "INFO: [GitPullDialog::onPullCompleted] Pull completed successfully";
@@ -666,9 +873,9 @@ void GitPullDialog::onPullCompleted(bool success, const QString &message)
             qInfo() << "INFO: [GitPullDialog::onPullCompleted] Pull operation completed successfully, closing dialog";
 
             // 显示成功状态
-            m_progressLabel->setText(tr("Pull completed successfully!"));
-            m_progressLabel->setStyleSheet("color: #4CAF50; font-weight: bold;");
-            m_progressLabel->setVisible(true);
+            m_animationWidget->setVisible(true);
+            m_animationWidget->getLabel()->setText(tr("✓ Pull completed successfully!"));
+            m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
 
             // 刷新状态
             checkLocalChanges();
@@ -694,9 +901,88 @@ void GitPullDialog::onPullCompleted(bool success, const QString &message)
 
 void GitPullDialog::handleConflicts()
 {
-    // TODO: 实现冲突处理
-    QMessageBox::information(this, tr("Handle Conflicts"),
-                             tr("Conflict handling functionality will be implemented in the next phase."));
+    qInfo() << "INFO: [GitPullDialog::handleConflicts] Checking for conflicts";
+
+    // 检查是否有合并冲突
+    GitCommandExecutor executor;
+    QString output, error;
+
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "status";
+    cmd.arguments = QStringList() << "status"
+                                  << "--porcelain";
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    if (result != GitCommandExecutor::Result::Success) {
+        QMessageBox::critical(this, tr("Status Check Failed"),
+                              tr("Failed to check repository status.\n\nError: %1").arg(error));
+        return;
+    }
+
+    QStringList conflictFiles;
+    QStringList statusLines = output.split('\n', Qt::SkipEmptyParts);
+
+    for (const QString &line : statusLines) {
+        if (line.length() >= 2) {
+            // 检查冲突标记 (UU, AA, DD, AU, UA, DU, UD)
+            QString status = line.left(2);
+            if (status == "UU" || status == "AA" || status == "DD" || status == "AU" || status == "UA" || status == "DU" || status == "UD") {
+                QString filePath = line.mid(3);
+                conflictFiles.append(filePath);
+            }
+        }
+    }
+
+    if (conflictFiles.isEmpty()) {
+        // 没有冲突，可能是其他问题
+        QMessageBox::information(this, tr("No Conflicts Detected"),
+                                 tr("No merge conflicts were detected.\n"
+                                    "The issue might be resolved automatically or require manual intervention.\n\n"
+                                    "You can check the repository status using the Status dialog."));
+        return;
+    }
+
+    // 有冲突，显示冲突处理指导
+    QString conflictList = conflictFiles.join("\n• ");
+    QMessageBox::StandardButton choice = QMessageBox::question(this, tr("Merge Conflicts Detected"),
+                                                               tr("The following files have merge conflicts:\n\n• %1\n\n"
+                                                                  "You need to resolve these conflicts manually.\n\n"
+                                                                  "Would you like to:\n"
+                                                                  "• Yes: Open Status dialog to resolve conflicts\n"
+                                                                  "• No: Abort the merge and return to previous state\n"
+                                                                  "• Cancel: Handle conflicts manually later")
+                                                                       .arg(conflictList),
+                                                               QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+
+    switch (choice) {
+    case QMessageBox::Yes:
+        // 打开状态对话框帮助用户解决冲突
+        qInfo() << "INFO: [GitPullDialog::handleConflicts] Opening status dialog for conflict resolution";
+        if (QApplication::instance()) {
+            QWidget *parentWidget = QApplication::activeWindow();
+            GitDialogManager::instance()->showStatusDialog(m_repositoryPath, parentWidget);
+        }
+        break;
+
+    case QMessageBox::No:
+        // 中止合并
+        abortMerge();
+        break;
+
+    default:
+        // 用户选择手动处理，给出指导信息
+        QMessageBox::information(this, tr("Manual Conflict Resolution"),
+                                 tr("To resolve conflicts manually:\n\n"
+                                    "1. Edit the conflicted files to resolve conflicts\n"
+                                    "2. Remove conflict markers (<<<<<<< ======= >>>>>>>)\n"
+                                    "3. Add resolved files: git add <file>\n"
+                                    "4. Complete the merge: git commit\n\n"
+                                    "Or abort the merge: git merge --abort"));
+        break;
+    }
 }
 
 void GitPullDialog::updateLocalStatus()
@@ -706,7 +992,7 @@ void GitPullDialog::updateLocalStatus()
 
 void GitPullDialog::refreshRemoteUpdates()
 {
-    if (!m_isOperationInProgress) {
+    if (!m_isOperationInProgress && m_isDataLoaded) {
         qInfo() << "INFO: [GitPullDialog::refreshRemoteUpdates] Refreshing remote updates";
         loadRemoteUpdates();
     }
@@ -771,4 +1057,174 @@ QString GitPullDialog::getMergeStrategyDescription(MergeStrategy strategy) const
     default:
         return tr("Unknown strategy");
     }
+}
+
+void GitPullDialog::loadActualRemoteUpdates()
+{
+    if (m_remoteCombo->currentText().isEmpty() || m_remoteBranchCombo->currentText().isEmpty()) {
+        return;
+    }
+
+    GitCommandExecutor executor;
+    QString output, error;
+
+    QString remoteBranch = m_remoteCombo->currentText() + "/" + m_remoteBranchCombo->currentText();
+    QString localBranch = m_currentBranch;
+
+    // 获取远程更新 (远程有但本地没有的提交)
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "log";
+    cmd.arguments = QStringList() << "log"
+                                  << "--oneline"
+                                  << "--no-merges"
+                                  << QString("%1..%2").arg(localBranch, remoteBranch);
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 10000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    m_remoteUpdates.clear();
+    m_updatesWidget->clear();
+
+    if (result == GitCommandExecutor::Result::Success) {
+        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+
+        if (lines.isEmpty()) {
+            m_updatesCountLabel->setText(tr("No remote updates available"));
+            m_downloadStatsLabel->setText(tr("Your branch is up to date"));
+
+            auto *item = new QListWidgetItem(tr("No new commits on remote branch"));
+            item->setIcon(QIcon(":/icons/vcs-normal"));
+            m_updatesWidget->addItem(item);
+        } else {
+            m_updatesCountLabel->setText(tr("%1 remote updates available").arg(lines.size()));
+            m_downloadStatsLabel->setText(tr("📊 Ready to download: %1 commits").arg(lines.size()));
+
+            for (const QString &line : lines) {
+                if (line.trimmed().isEmpty()) continue;
+
+                QStringList parts = line.split(' ', Qt::SkipEmptyParts);
+                if (parts.size() >= 2) {
+                    QString hash = parts[0];
+                    QString message = parts.mid(1).join(' ');
+
+                    RemoteUpdateInfo updateInfo;
+                    updateInfo.hash = hash;
+                    updateInfo.shortHash = hash.left(7);
+                    updateInfo.message = message;
+                    updateInfo.remoteBranch = remoteBranch;
+                    m_remoteUpdates.append(updateInfo);
+
+                    auto *item = new QListWidgetItem(formatUpdateInfo(updateInfo));
+                    item->setIcon(QIcon(":/icons/vcs-update-required"));
+                    item->setToolTip(tr("Hash: %1\nBranch: %2").arg(hash, remoteBranch));
+                    m_updatesWidget->addItem(item);
+                }
+            }
+        }
+
+        qInfo() << "INFO: [GitPullDialog::loadActualRemoteUpdates] Loaded" << lines.size() << "remote updates";
+    } else {
+        qWarning() << "WARNING: [GitPullDialog::loadActualRemoteUpdates] Failed to load remote updates:" << error;
+
+        m_updatesCountLabel->setText(tr("Failed to check remote updates"));
+        m_downloadStatsLabel->setText(tr("Error: %1").arg(error));
+
+        auto *item = new QListWidgetItem(tr("Failed to fetch remote updates"));
+        item->setIcon(QIcon(":/icons/vcs-conflicted"));
+        m_updatesWidget->addItem(item);
+    }
+}
+
+void GitPullDialog::abortMerge()
+{
+    qInfo() << "INFO: [GitPullDialog::abortMerge] Aborting merge operation";
+
+    GitCommandExecutor executor;
+    QString output, error;
+
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "merge";
+    cmd.arguments = QStringList() << "merge"
+                                  << "--abort";
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 10000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    if (result == GitCommandExecutor::Result::Success) {
+        QMessageBox::information(this, tr("Merge Aborted"),
+                                 tr("The merge has been aborted successfully.\n"
+                                    "Your repository has been restored to the previous state."));
+
+        // 刷新状态
+        checkLocalChanges();
+        updateLocalStatus();
+
+        qInfo() << "INFO: [GitPullDialog::abortMerge] Merge aborted successfully";
+    } else {
+        QMessageBox::critical(this, tr("Abort Failed"),
+                              tr("Failed to abort the merge.\n\nError: %1\n\n"
+                                 "You may need to resolve this manually.")
+                                      .arg(error));
+
+        qWarning() << "WARNING: [GitPullDialog::abortMerge] Failed to abort merge:" << error;
+    }
+}
+
+void GitPullDialog::delayedDataLoad()
+{
+    qInfo() << "INFO: [GitPullDialog::delayedDataLoad] Starting delayed data loading";
+    
+    // 显示加载状态
+    showProgress(tr("Loading repository information..."));
+    
+    // 增加延迟时间，确保动画开始运行
+    QTimer::singleShot(200, this, &GitPullDialog::loadRepositoryInfoAsync);
+}
+
+void GitPullDialog::loadRepositoryInfoAsync()
+{
+    // 在单独的方法中进行异步数据加载
+    // 这样可以避免阻塞UI线程
+    QTimer::singleShot(100, this, [this]() {
+        loadRepositoryInfo();
+        
+        // 加载完成后隐藏进度动画
+        hideProgress();
+        m_isDataLoaded = true;
+        
+        // 现在启动定时器
+        m_statusUpdateTimer->start();
+        
+        qInfo() << "INFO: [GitPullDialog::loadRepositoryInfoAsync] Repository data loaded successfully";
+    });
+}
+
+void GitPullDialog::showProgress(const QString &message)
+{
+    m_isOperationInProgress = true;
+    enableControls(false);
+
+    // 使用字符动画替代进度条
+    m_progressBar->setVisible(false);
+    m_progressLabel->setVisible(false);
+
+    m_animationWidget->setVisible(true);
+    m_animationWidget->startAnimation(message);
+
+    qInfo() << "INFO: [GitPullDialog::showProgress] Started progress animation:" << message;
+}
+
+void GitPullDialog::hideProgress()
+{
+    m_isOperationInProgress = false;
+    enableControls(true);
+
+    m_progressBar->setVisible(false);
+    m_progressLabel->setVisible(false);
+    m_animationWidget->setVisible(false);
+    m_animationWidget->stopAnimation();
+
+    qInfo() << "INFO: [GitPullDialog::hideProgress] Stopped progress animation";
 }

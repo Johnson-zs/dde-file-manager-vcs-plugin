@@ -16,7 +16,10 @@
 #include <QDateTime>
 #include <QMessageBox>
 
+#include "gitcommandexecutor.h"
+
 class GitOperationService;
+class CharacterAnimationWidget;
 
 /**
  * @brief 智能Git拉取对话框
@@ -84,6 +87,12 @@ private slots:
     void handleConflicts();
     void updateLocalStatus();
     void refreshRemoteUpdates();
+    
+    // 延迟加载槽函数
+    void delayedDataLoad();
+    
+    // 异步命令完成槽函数
+    void onFetchCommandFinished(const QString &command, GitCommandExecutor::Result result, const QString &output, const QString &error);
 
 private:
     // === UI设置方法 ===
@@ -96,10 +105,12 @@ private:
 
     // === 数据加载方法 ===
     void loadRepositoryInfo();
+    void loadRepositoryInfoAsync();
     void loadRemotes();
     void loadBranches();
     void loadRemoteBranches();
     void loadRemoteUpdates();
+    void loadActualRemoteUpdates();
     void checkLocalChanges();
 
     // === 验证和安全方法 ===
@@ -108,6 +119,13 @@ private:
     bool hasUncommittedChanges();
     void previewPullResult();
     void executePullWithOptions(const PullOptions &options);
+
+    // === 冲突处理方法 ===
+    void abortMerge();
+
+    // === 进度显示方法 ===
+    void showProgress(const QString &message);
+    void hideProgress();
 
     // === 辅助方法 ===
     void updateUI();
@@ -157,6 +175,7 @@ private:
     // 进度显示
     QProgressBar *m_progressBar;
     QLabel *m_progressLabel;
+    CharacterAnimationWidget *m_animationWidget;
 
     // === 数据成员 ===
     QVector<RemoteUpdateInfo> m_remoteUpdates;
@@ -167,6 +186,7 @@ private:
     bool m_hasUncommittedChanges;
     bool m_isOperationInProgress;
     bool m_isDryRunInProgress;
+    bool m_isDataLoaded;
     QTimer *m_statusUpdateTimer;
 };
 
