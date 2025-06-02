@@ -293,6 +293,8 @@ void GitLogDialog::connectSignals()
             this, &GitLogDialog::onDataLoadError);
     connect(m_dataManager, &GitLogDataManager::remoteStatusUpdated,
             this, &GitLogDialog::onRemoteStatusUpdated);
+    connect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
+            this, &GitLogDialog::onRemoteReferencesUpdated);
 
     // 右键菜单管理器信号
     connect(m_contextMenuManager, &GitLogContextMenuManager::gitOperationRequested,
@@ -369,6 +371,18 @@ void GitLogDialog::onRefreshClicked()
     m_dataManager->loadBranches();
 
     QString currentBranch = m_branchSelector->getCurrentSelection();
+    
+    // === 新增：刷新时强制更新远程引用 ===
+    if (!currentBranch.isEmpty() && currentBranch != "HEAD") {
+        qInfo() << "INFO: [GitLogDialog] Force updating remote references during refresh for:" << currentBranch;
+        
+        // 清除远程引用缓存，强制更新
+        m_dataManager->clearRemoteRefTimestampCache();
+        
+        // 异步更新远程引用（不阻塞UI）
+        m_dataManager->updateRemoteReferencesAsync(currentBranch);
+    }
+    
     m_dataManager->loadCommitHistory(currentBranch);
 
     // 直接刷新远程状态（移除异步调用）
@@ -688,6 +702,32 @@ void GitLogDialog::onRemoteStatusUpdated(const QString &branch)
     qInfo() << QString("INFO: [GitLogDialog] Remote status updated for branch: %1, refreshed %2 commits display")
                        .arg(branch)
                        .arg(commits.size());
+}
+
+void GitLogDialog::onRemoteReferencesUpdated(const QString &branch, bool success)
+{
+    if (success) {
+        qInfo() << QString("INFO: [GitLogDialog] Remote references updated successfully for branch: %1").arg(branch);
+        
+        // 远程引用更新成功后，重新加载commit历史以获取最新的远程状态
+        QString currentBranch = m_branchSelector->getCurrentSelection();
+        if (currentBranch == branch) {
+            qInfo() << "INFO: [GitLogDialog] Refreshing commit history after remote update";
+            
+            // 清除缓存并重新加载
+            m_dataManager->clearCommitCache();
+            
+            // 重新加载commit历史（包括远程commits）
+            if (m_dataManager->shouldLoadRemoteCommits(branch)) {
+                m_dataManager->loadCommitHistoryWithRemote(branch);
+            } else {
+                m_dataManager->loadCommitHistory(branch);
+            }
+        }
+    } else {
+        qWarning() << QString("WARNING: [GitLogDialog] Failed to update remote references for branch: %1").arg(branch);
+        // 即使更新失败，也继续使用现有数据，不阻断用户操作
+    }
 }
 
 // === 搜索管理器信号响应 ===

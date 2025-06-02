@@ -99,6 +99,11 @@ public:
     void updateCommitRemoteStatus(const QString &branch);
     bool shouldLoadRemoteCommits(const QString &branch);  // 移到public：判断是否需要加载远程commits
 
+    // === 智能远程引用更新 ===
+    bool shouldUpdateRemoteReferences(const QString &branch);  // 检查是否需要更新远程引用
+    bool updateRemoteReferences(const QString &branch);        // 更新远程引用
+    bool updateRemoteReferencesAsync(const QString &branch);   // 异步更新远程引用
+
     // === 数据获取接口 ===
     QList<CommitInfo> getCommits() const { return m_commits; }
     BranchInfo getBranchInfo() const { return m_branchInfo; }
@@ -114,6 +119,7 @@ public:
     void clearCache();
     void clearCommitCache();
     void clearFileCache();
+    void clearRemoteRefTimestampCache();  // 新增：清除远程引用时间戳缓存
     int getCacheSize() const;
 
     // === 统计信息 ===
@@ -170,6 +176,13 @@ Q_SIGNALS:
     void remoteStatusUpdated(const QString &branch);
 
     /**
+     * @brief 远程引用更新完成信号
+     * @param branch 分支名称
+     * @param success 是否成功
+     */
+    void remoteReferencesUpdated(const QString &branch, bool success);
+
+    /**
      * @brief 数据加载错误信号
      * @param operation 操作名称
      * @param error 错误信息
@@ -205,6 +218,7 @@ private:
     QHash<QString, QList<FileChangeInfo>> m_commitFilesCache;
     QHash<QString, QString> m_fileDiffCache;  // "commitHash:filePath" -> diff
     QHash<QString, BranchTrackingInfo> m_trackingInfoCache;  // branch -> tracking info
+    QHash<QString, qint64> m_remoteRefTimestampCache;       // branch -> last update timestamp
     
     // 异步处理
     QProcess *m_currentProcess;
@@ -215,6 +229,8 @@ private:
     // 配置
     static const int DEFAULT_COMMIT_LIMIT = 100;
     static const int MAX_CACHE_SIZE = 1000;
+    static const int REMOTE_REF_UPDATE_INTERVAL_MINUTES = 30;  // 远程引用更新间隔（分钟）
+    static const int GIT_FETCH_TIMEOUT_SECONDS = 10;           // Git fetch超时时间（秒）
 };
 
 #endif // GITLOGDATAMANAGER_H 

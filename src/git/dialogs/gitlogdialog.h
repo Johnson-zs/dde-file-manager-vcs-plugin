@@ -103,6 +103,7 @@ private Q_SLOTS:
     void onFileDiffLoaded(const QString &commitHash, const QString &filePath, const QString &diff);
     void onDataLoadError(const QString &operation, const QString &error);
     void onRemoteStatusUpdated(const QString &branch);
+    void onRemoteReferencesUpdated(const QString &branch, bool success);
 
     // === 搜索管理器信号响应 ===
     void onSearchStarted(const QString &searchText);

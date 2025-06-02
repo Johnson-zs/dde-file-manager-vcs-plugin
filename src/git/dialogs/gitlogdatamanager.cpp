@@ -5,6 +5,8 @@
 #include <QRegularExpression>
 #include <QDebug>
 #include <QTimer>
+#include <QDateTime>
+#include <QProcess>
 
 GitLogDataManager::GitLogDataManager(const QString &repositoryPath, QObject *parent)
     : QObject(parent)
@@ -375,6 +377,7 @@ void GitLogDataManager::clearCache()
     m_commitFilesCache.clear();
     m_fileDiffCache.clear();
     m_trackingInfoCache.clear();
+    m_remoteRefTimestampCache.clear();
     qInfo() << "INFO: [GitLogDataManager] All caches cleared";
 }
 
@@ -384,6 +387,7 @@ void GitLogDataManager::clearCommitCache()
     m_commitDetailsCache.clear();
     // 清除跟踪信息，因为commit状态会改变
     m_trackingInfoCache.clear();
+    m_remoteRefTimestampCache.clear();  // 新增：清除远程引用时间戳缓存
     qInfo() << "INFO: [GitLogDataManager] Commit cache cleared";
 }
 
@@ -392,6 +396,12 @@ void GitLogDataManager::clearFileCache()
     m_commitFilesCache.clear();
     m_fileDiffCache.clear();
     qInfo() << "INFO: [GitLogDataManager] File cache cleared";
+}
+
+void GitLogDataManager::clearRemoteRefTimestampCache()
+{
+    m_remoteRefTimestampCache.clear();
+    qInfo() << "INFO: [GitLogDataManager] Remote reference timestamp cache cleared";
 }
 
 int GitLogDataManager::getCacheSize() const
@@ -747,6 +757,17 @@ bool GitLogDataManager::loadAllRemoteTrackingInfo(const QString &branch)
         return false;
     }
 
+    // === 新增：智能更新远程引用 ===
+    if (shouldUpdateRemoteReferences(branch)) {
+        qInfo() << "INFO: [GitLogDataManager] Attempting to update remote references for branch:" << branch;
+        bool updateSuccess = updateRemoteReferences(branch);
+        if (updateSuccess) {
+            qInfo() << "INFO: [GitLogDataManager] Remote references updated successfully";
+        } else {
+            qWarning() << "WARNING: [GitLogDataManager] Failed to update remote references, continuing with existing data";
+        }
+    }
+
     // 获取所有remotes
     QStringList remotesArgs = {"remote"};
     QString remotesOutput, error;
@@ -888,4 +909,176 @@ void GitLogDataManager::markCommitSources(QList<CommitInfo> &commits, const QStr
                        .arg(std::count_if(commits.begin(), commits.end(), [](const CommitInfo &c) { return c.source == CommitSource::Local; }))
                        .arg(std::count_if(commits.begin(), commits.end(), [](const CommitInfo &c) { return c.source == CommitSource::Remote; }))
                        .arg(std::count_if(commits.begin(), commits.end(), [](const CommitInfo &c) { return c.source == CommitSource::Both; }));
+}
+
+bool GitLogDataManager::shouldUpdateRemoteReferences(const QString &branch)
+{
+    if (branch.isEmpty() || branch == "HEAD") {
+        qDebug() << "[GitLogDataManager] Skipping remote update for empty or HEAD branch";
+        return false;
+    }
+
+    // 检查是否有远程分支
+    QStringList remotesArgs = {"remote"};
+    QString remotesOutput, error;
+    
+    if (!executeGitCommand(remotesArgs, remotesOutput, error)) {
+        qDebug() << "[GitLogDataManager] No remotes found, skipping remote update";
+        return false;
+    }
+
+    QStringList remotes = remotesOutput.split('\n', Qt::SkipEmptyParts);
+    if (remotes.isEmpty()) {
+        qDebug() << "[GitLogDataManager] No remote repositories configured";
+        return false;
+    }
+
+    // 检查缓存的时间戳
+    QString cacheKey = QString("%1").arg(branch);
+    if (m_remoteRefTimestampCache.contains(cacheKey)) {
+        qint64 lastUpdate = m_remoteRefTimestampCache[cacheKey];
+        qint64 currentTime = QDateTime::currentSecsSinceEpoch();
+        qint64 timeDiff = currentTime - lastUpdate;
+        
+        if (timeDiff < (REMOTE_REF_UPDATE_INTERVAL_MINUTES * 60)) {
+            qInfo() << QString("INFO: [GitLogDataManager] Remote references for branch '%1' updated %2 seconds ago, skipping update")
+                               .arg(branch).arg(timeDiff);
+            return false;
+        }
+    }
+
+    // 检查远程分支引用文件的时间戳
+    QString remoteRefPath = QString("%1/.git/refs/remotes/origin/%2").arg(m_repositoryPath, branch);
+    QFileInfo refFileInfo(remoteRefPath);
+    
+    if (refFileInfo.exists()) {
+        QDateTime lastModified = refFileInfo.lastModified();
+        qint64 timeDiff = lastModified.secsTo(QDateTime::currentDateTime());
+        
+        if (timeDiff < (REMOTE_REF_UPDATE_INTERVAL_MINUTES * 60)) {
+            qInfo() << QString("INFO: [GitLogDataManager] Remote ref file for branch '%1' is recent (%2 seconds old), skipping update")
+                               .arg(branch).arg(timeDiff);
+            // 更新内存缓存时间戳
+            m_remoteRefTimestampCache[cacheKey] = QDateTime::currentSecsSinceEpoch();
+            return false;
+        }
+    }
+
+    qInfo() << QString("INFO: [GitLogDataManager] Remote references for branch '%1' need updating").arg(branch);
+    return true;
+}
+
+bool GitLogDataManager::updateRemoteReferences(const QString &branch)
+{
+    if (branch.isEmpty() || branch == "HEAD") {
+        qWarning() << "WARNING: [GitLogDataManager] Cannot update remote references for empty or HEAD branch";
+        return false;
+    }
+
+    qInfo() << QString("INFO: [GitLogDataManager] Updating remote references for branch: %1").arg(branch);
+
+    // 先尝试快速连接测试
+    QStringList testArgs = {"ls-remote", "--exit-code", "origin", QString("refs/heads/%1").arg(branch)};
+    QString testOutput, testError;
+    
+    QProcess testProcess;
+    testProcess.setWorkingDirectory(m_repositoryPath);
+    testProcess.start("git", testArgs);
+    
+    if (!testProcess.waitForFinished(3000)) {  // 3秒超时测试
+        qWarning() << "WARNING: [GitLogDataManager] Remote connectivity test timeout for branch:" << branch;
+        testProcess.kill();
+        return false;
+    }
+
+    if (testProcess.exitCode() != 0) {
+        QString error = QString::fromUtf8(testProcess.readAllStandardError());
+        qWarning() << "WARNING: [GitLogDataManager] Remote connectivity test failed:" << error;
+        return false;
+    }
+
+    // 执行实际的fetch操作
+    QStringList fetchArgs = {"fetch", "origin", QString("%1:%2").arg(branch, QString("refs/remotes/origin/%1").arg(branch)), "--quiet"};
+    QString fetchOutput, fetchError;
+    
+    QProcess fetchProcess;
+    fetchProcess.setWorkingDirectory(m_repositoryPath);
+    fetchProcess.start("git", fetchArgs);
+    
+    if (!fetchProcess.waitForFinished(GIT_FETCH_TIMEOUT_SECONDS * 1000)) {
+        qWarning() << QString("WARNING: [GitLogDataManager] Git fetch timeout (%1s) for branch: %2")
+                              .arg(GIT_FETCH_TIMEOUT_SECONDS).arg(branch);
+        fetchProcess.kill();
+        return false;
+    }
+
+    if (fetchProcess.exitCode() != 0) {
+        QString error = QString::fromUtf8(fetchProcess.readAllStandardError());
+        qWarning() << QString("WARNING: [GitLogDataManager] Git fetch failed for branch %1: %2").arg(branch, error);
+        return false;
+    }
+
+    // 更新时间戳缓存
+    QString cacheKey = QString("%1").arg(branch);
+    m_remoteRefTimestampCache[cacheKey] = QDateTime::currentSecsSinceEpoch();
+
+    qInfo() << QString("INFO: [GitLogDataManager] Successfully updated remote references for branch: %1").arg(branch);
+    return true;
+}
+
+bool GitLogDataManager::updateRemoteReferencesAsync(const QString &branch)
+{
+    if (m_currentProcess && m_currentProcess->state() != QProcess::NotRunning) {
+        qWarning() << "WARNING: [GitLogDataManager] Previous process still running, cannot start async remote update";
+        return false;
+    }
+
+    // 先做快速检查
+    if (!shouldUpdateRemoteReferences(branch)) {
+        Q_EMIT remoteReferencesUpdated(branch, true);  // 认为成功，因为不需要更新
+        return true;
+    }
+
+    qInfo() << QString("INFO: [GitLogDataManager] Starting async remote references update for branch: %1").arg(branch);
+
+    // 创建新的进程用于异步fetch
+    m_currentProcess = new QProcess(this);
+    m_currentProcess->setWorkingDirectory(m_repositoryPath);
+    
+    // 连接信号
+    connect(m_currentProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, branch](int exitCode, QProcess::ExitStatus exitStatus) {
+                Q_UNUSED(exitStatus)
+                
+                bool success = (exitCode == 0);
+                if (success) {
+                    // 更新时间戳缓存
+                    QString cacheKey = QString("%1").arg(branch);
+                    m_remoteRefTimestampCache[cacheKey] = QDateTime::currentSecsSinceEpoch();
+                    qInfo() << QString("INFO: [GitLogDataManager] Async remote update succeeded for branch: %1").arg(branch);
+                } else {
+                    QString error = QString::fromUtf8(m_currentProcess->readAllStandardError());
+                    qWarning() << QString("WARNING: [GitLogDataManager] Async remote update failed for branch %1: %2").arg(branch, error);
+                }
+                
+                // 清理进程
+                m_currentProcess->deleteLater();
+                m_currentProcess = nullptr;
+                
+                Q_EMIT remoteReferencesUpdated(branch, success);
+            });
+
+    // 启动异步fetch
+    QStringList fetchArgs = {"fetch", "origin", QString("%1:%2").arg(branch, QString("refs/remotes/origin/%1").arg(branch)), "--quiet"};
+    m_currentProcess->start("git", fetchArgs);
+    
+    // 设置超时
+    QTimer::singleShot(GIT_FETCH_TIMEOUT_SECONDS * 1000, this, [this, branch]() {
+        if (m_currentProcess && m_currentProcess->state() != QProcess::NotRunning) {
+            qWarning() << QString("WARNING: [GitLogDataManager] Async fetch timeout for branch: %1").arg(branch);
+            m_currentProcess->kill();
+        }
+    });
+
+    return true;
 } 
