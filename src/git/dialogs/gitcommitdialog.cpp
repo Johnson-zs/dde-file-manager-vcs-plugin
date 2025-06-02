@@ -582,26 +582,19 @@ void GitCommitDialog::setupFileView()
     // Disable editing - files should not be editable in the list
     m_fileView->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
-    // Configure header with better column widths
-    auto *header = m_fileView->header();
-    header->setStretchLastSection(false);   // Don't stretch last section initially
-    header->setSectionResizeMode(0, QHeaderView::Interactive);   // File name - user can resize
-    header->setSectionResizeMode(1, QHeaderView::Interactive);   // Status - user can resize
-    header->setSectionResizeMode(2, QHeaderView::Stretch);   // Path - stretches to fill
-
     // Add to layout
     if (filesLayout) {
         filesLayout->insertWidget(2, m_fileView);
     }
 
-    // Set initial column widths after adding to layout - delay this to ensure proper sizing
-    QTimer::singleShot(0, this, [this]() {
-        auto *header = m_fileView->header();
-        header->resizeSection(0, 250);   // File name column - increased width
-        header->resizeSection(1, 180);   // Status column - increased width
-        header->setSectionResizeMode(2, QHeaderView::Stretch);   // Path - stretches to fill
-        // Path column will stretch automatically
-        qDebug() << "[GitCommitDialog] Set initial column widths: File=250, Status=180";
+    // Set initial column widths after adding to layout and after loadChangedFiles completes
+    // Use a longer delay to ensure loadChangedFiles() has completed
+    QTimer::singleShot(100, this, [this]() {
+        setDefaultColumnWidths();
+        // 在设置默认列宽后，保存这些宽度作为初始状态
+        QTimer::singleShot(10, this, [this]() {
+            saveColumnWidths();
+        });
     });
 
     // Connect signals
@@ -726,6 +719,11 @@ void GitCommitDialog::setupContextMenu()
 
 void GitCommitDialog::loadChangedFiles()
 {
+    // 只有在已经有保存的列宽时才保存当前列宽设置（避免初始化时保存错误的宽度）
+    if (!m_savedColumnWidths.isEmpty()) {
+        saveColumnWidths();
+    }
+    
     // 使用新的GitStatusParser来加载文件状态
     auto files = GitStatusParser::getRepositoryStatus(m_repositoryPath);
 
@@ -775,6 +773,9 @@ void GitCommitDialog::loadChangedFiles()
     m_fileModel->setFiles(gitFileItems);
     updateFileCountLabels();
     updateButtonStates();
+    
+    // 恢复列宽设置
+    restoreColumnWidths();
 
     qDebug() << "[GitCommitDialog] Loaded" << gitFileItems.size() << "changed files using GitStatusParser";
 }
@@ -1468,4 +1469,74 @@ void GitCommitDialog::previewSelectedFile()
     });
     
     qInfo() << "INFO: [GitCommitDialog] Opened file preview for:" << filePath;
+}
+
+void GitCommitDialog::saveColumnWidths()
+{
+    if (!m_fileView || !m_fileView->header()) {
+        return;
+    }
+    
+    auto *header = m_fileView->header();
+    m_savedColumnWidths.clear();
+    
+    // 保存每列的宽度
+    for (int i = 0; i < header->count(); ++i) {
+        m_savedColumnWidths.append(header->sectionSize(i));
+    }
+    
+    // 保存resize模式
+    m_savedResizeModes.clear();
+    for (int i = 0; i < header->count(); ++i) {
+        m_savedResizeModes.append(header->sectionResizeMode(i));
+    }
+    
+    qDebug() << "[GitCommitDialog] Saved column widths:" << m_savedColumnWidths;
+}
+
+void GitCommitDialog::restoreColumnWidths()
+{
+    if (!m_fileView || !m_fileView->header() || m_savedColumnWidths.isEmpty()) {
+        // 如果没有保存的宽度，使用默认设置
+        QTimer::singleShot(0, this, [this]() {
+            setDefaultColumnWidths();
+        });
+        return;
+    }
+    
+    // 延迟恢复列宽，确保模型已经完全更新
+    QTimer::singleShot(0, this, [this]() {
+        auto *header = m_fileView->header();
+        
+        // 恢复resize模式
+        for (int i = 0; i < qMin(m_savedResizeModes.size(), header->count()); ++i) {
+            header->setSectionResizeMode(i, m_savedResizeModes.at(i));
+        }
+        
+        // 恢复列宽
+        for (int i = 0; i < qMin(m_savedColumnWidths.size(), header->count()); ++i) {
+            header->resizeSection(i, m_savedColumnWidths.at(i));
+        }
+        
+        qDebug() << "[GitCommitDialog] Restored column widths:" << m_savedColumnWidths;
+    });
+}
+
+void GitCommitDialog::setDefaultColumnWidths()
+{
+    if (!m_fileView || !m_fileView->header()) {
+        return;
+    }
+    
+    auto *header = m_fileView->header();
+    header->setStretchLastSection(false);
+    header->setSectionResizeMode(0, QHeaderView::Interactive);   // File name - user can resize
+    header->setSectionResizeMode(1, QHeaderView::Interactive);   // Status - user can resize
+    header->setSectionResizeMode(2, QHeaderView::Stretch);       // Path - stretches to fill
+    
+    header->resizeSection(0, 250);   // File name column
+    header->resizeSection(1, 180);   // Status column
+    // Path column will stretch automatically
+    
+    qDebug() << "[GitCommitDialog] Set default column widths: File=250, Status=180";
 }

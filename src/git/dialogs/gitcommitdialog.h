@@ -16,6 +16,7 @@
 #include <QStandardItemModel>
 #include <QTreeView>
 #include <QSortFilterProxyModel>
+#include <QHeaderView>
 #include <QKeyEvent>
 #include <QEvent>
 #include <memory>
@@ -200,6 +201,11 @@ private:
     void discardSelectedFiles();
     void showSelectedFilesDiff();
 
+    // Column width management
+    void saveColumnWidths();
+    void restoreColumnWidths();
+    void setDefaultColumnWidths();
+
     QString m_repositoryPath;
     QString m_lastCommitMessage;
     bool m_isAmendMode;
@@ -208,6 +214,10 @@ private:
     // Models
     std::unique_ptr<GitFileModel> m_fileModel;
     std::unique_ptr<GitFileProxyModel> m_proxyModel;
+
+    // Column width preservation
+    QList<int> m_savedColumnWidths;
+    QList<QHeaderView::ResizeMode> m_savedResizeModes;
 
     // UI Components
     QSplitter *m_mainSplitter;
