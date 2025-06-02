@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QDateTime>
 #include <QMessageBox>
+#include <QMenu>
 
 #include "gitcommandexecutor.h"
 
@@ -93,6 +94,13 @@ private slots:
     
     // 异步命令完成槽函数
     void onFetchCommandFinished(const QString &command, GitCommandExecutor::Result result, const QString &output, const QString &error);
+    
+    // 右键菜单槽函数
+    void showUpdatesContextMenu(const QPoint &pos);
+    void openCommitInBrowser();
+    void copyCommitHash();
+    void copyCommitMessage();
+    void showCommitDetails();
 
 private:
     // === UI设置方法 ===
@@ -102,6 +110,7 @@ private:
     void setupUpdatesGroup();
     void setupButtonGroup();
     void setupConnections();
+    void setupUpdatesContextMenu();
 
     // === 数据加载方法 ===
     void loadRepositoryInfo();
@@ -135,6 +144,11 @@ private:
     QString formatUpdateInfo(const RemoteUpdateInfo &update) const;
     QString getLocalStatusDescription() const;
     QString getMergeStrategyDescription(MergeStrategy strategy) const;
+    
+    // === 右键菜单辅助方法 ===
+    QString getRemoteUrl(const QString &remoteName) const;
+    QString buildCommitUrl(const QString &remoteUrl, const QString &commitHash) const;
+    RemoteUpdateInfo getCurrentSelectedUpdate() const;
 
     // === 成员变量 ===
     QString m_repositoryPath;
@@ -176,6 +190,13 @@ private:
     QProgressBar *m_progressBar;
     QLabel *m_progressLabel;
     CharacterAnimationWidget *m_animationWidget;
+    
+    // 右键菜单
+    QMenu *m_updatesContextMenu;
+    QAction *m_openInBrowserAction;
+    QAction *m_copyHashAction;
+    QAction *m_copyMessageAction;
+    QAction *m_showDetailsAction;
 
     // === 数据成员 ===
     QVector<RemoteUpdateInfo> m_remoteUpdates;

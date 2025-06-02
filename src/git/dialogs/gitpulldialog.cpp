@@ -18,9 +18,17 @@
 #include <QMessageBox>
 #include <QTimer>
 #include <QSplitter>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QClipboard>
+#include <QMenu>
+#include <QAction>
+#include <QRegularExpression>
+#include <QPlainTextEdit>
+#include <QFont>
 
 GitPullDialog::GitPullDialog(const QString &repositoryPath, QWidget *parent)
-    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_hasLocalChanges(false), m_hasUncommittedChanges(false), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_isDataLoaded(false), m_statusUpdateTimer(new QTimer(this))
+    : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_hasLocalChanges(false), m_hasUncommittedChanges(false), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_isDataLoaded(false), m_statusUpdateTimer(new QTimer(this)), m_updatesContextMenu(nullptr), m_openInBrowserAction(nullptr), m_copyHashAction(nullptr), m_copyMessageAction(nullptr), m_showDetailsAction(nullptr)
 {
     setWindowTitle(tr("Git Pull"));
     setWindowIcon(QIcon(":/icons/vcs-pull"));
@@ -154,6 +162,9 @@ void GitPullDialog::setupUI()
     buttonLayout->addWidget(m_cancelButton);
 
     mainLayout->addWidget(buttonWidget);
+    
+    // 设置右键菜单
+    setupUpdatesContextMenu();
 }
 
 void GitPullDialog::setupStatusGroup()
@@ -250,6 +261,7 @@ void GitPullDialog::setupUpdatesGroup()
     m_updatesWidget = new QListWidget;
     m_updatesWidget->setAlternatingRowColors(true);
     m_updatesWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_updatesWidget->setContextMenuPolicy(Qt::CustomContextMenu);
     layout->addWidget(m_updatesWidget);
 }
 
@@ -283,6 +295,10 @@ void GitPullDialog::setupConnections()
                 Q_UNUSED(operation)
                 onPullCompleted(success, message);
             });
+    
+    // 右键菜单信号
+    connect(m_updatesWidget, &QListWidget::customContextMenuRequested,
+            this, &GitPullDialog::showUpdatesContextMenu);
 }
 
 void GitPullDialog::loadRepositoryInfo()
@@ -1227,4 +1243,305 @@ void GitPullDialog::hideProgress()
     m_animationWidget->stopAnimation();
 
     qInfo() << "INFO: [GitPullDialog::hideProgress] Stopped progress animation";
+}
+
+void GitPullDialog::setupUpdatesContextMenu()
+{
+    m_updatesContextMenu = new QMenu(this);
+
+    // === 浏览器操作 ===
+    m_openInBrowserAction = m_updatesContextMenu->addAction(
+            QIcon(":/icons/internet-web-browser"), tr("Open in Browser"));
+    m_openInBrowserAction->setToolTip(tr("Open commit in web browser"));
+
+    m_updatesContextMenu->addSeparator();
+
+    // === 复制操作 ===
+    m_copyHashAction = m_updatesContextMenu->addAction(
+            QIcon(":/icons/edit-copy"), tr("Copy Commit Hash"));
+    m_copyHashAction->setToolTip(tr("Copy full commit hash to clipboard"));
+
+    m_copyMessageAction = m_updatesContextMenu->addAction(
+            QIcon(":/icons/edit-copy"), tr("Copy Commit Message"));
+    m_copyMessageAction->setToolTip(tr("Copy commit message to clipboard"));
+
+    m_updatesContextMenu->addSeparator();
+
+    // === 查看操作 ===
+    m_showDetailsAction = m_updatesContextMenu->addAction(
+            QIcon(":/icons/document-properties"), tr("Show Commit Details"));
+    m_showDetailsAction->setToolTip(tr("Show detailed commit information"));
+
+    // === 连接信号 ===
+    connect(m_openInBrowserAction, &QAction::triggered, this, &GitPullDialog::openCommitInBrowser);
+    connect(m_copyHashAction, &QAction::triggered, this, &GitPullDialog::copyCommitHash);
+    connect(m_copyMessageAction, &QAction::triggered, this, &GitPullDialog::copyCommitMessage);
+    connect(m_showDetailsAction, &QAction::triggered, this, &GitPullDialog::showCommitDetails);
+}
+
+void GitPullDialog::showUpdatesContextMenu(const QPoint &pos)
+{
+    QListWidgetItem *item = m_updatesWidget->itemAt(pos);
+    if (!item) {
+        return;
+    }
+
+    // 确保选中了正确的项目
+    m_updatesWidget->setCurrentItem(item);
+
+    RemoteUpdateInfo updateInfo = getCurrentSelectedUpdate();
+    if (updateInfo.hash.isEmpty()) {
+        return;
+    }
+
+    // 更新菜单项文本显示commit信息
+    QString shortHash = updateInfo.shortHash;
+    m_openInBrowserAction->setText(tr("Open %1 in Browser").arg(shortHash));
+    m_copyHashAction->setText(tr("Copy Hash (%1)").arg(shortHash));
+    m_copyMessageAction->setText(tr("Copy Message"));
+    m_showDetailsAction->setText(tr("Show Details for %1").arg(shortHash));
+
+    // 检查是否能够构建浏览器URL
+    QString remoteName = m_remoteCombo->currentText();
+    QString remoteUrl = getRemoteUrl(remoteName);
+    m_openInBrowserAction->setEnabled(!remoteUrl.isEmpty());
+
+    m_updatesContextMenu->exec(m_updatesWidget->mapToGlobal(pos));
+}
+
+void GitPullDialog::openCommitInBrowser()
+{
+    RemoteUpdateInfo updateInfo = getCurrentSelectedUpdate();
+    if (updateInfo.hash.isEmpty()) {
+        return;
+    }
+
+    QString remoteName = m_remoteCombo->currentText();
+    QString remoteUrl = getRemoteUrl(remoteName);
+    
+    if (remoteUrl.isEmpty()) {
+        QMessageBox::warning(this, tr("No Remote URL"),
+                             tr("Cannot open commit in browser: no remote URL found for '%1'.")
+                                     .arg(remoteName));
+        return;
+    }
+
+    QString commitUrl = buildCommitUrl(remoteUrl, updateInfo.hash);
+    if (commitUrl.isEmpty()) {
+        QMessageBox::warning(this, tr("Unsupported Remote"),
+                             tr("Cannot open commit in browser: unsupported remote URL format.\n\n"
+                                "Remote URL: %1").arg(remoteUrl));
+        return;
+    }
+
+    qInfo() << "INFO: [GitPullDialog::openCommitInBrowser] Opening commit URL:" << commitUrl;
+
+    if (!QDesktopServices::openUrl(QUrl(commitUrl))) {
+        QMessageBox::critical(this, tr("Failed to Open Browser"),
+                              tr("Failed to open the commit URL in browser.\n\n"
+                                 "URL: %1\n\n"
+                                 "You can copy this URL manually.").arg(commitUrl));
+    }
+}
+
+void GitPullDialog::copyCommitHash()
+{
+    RemoteUpdateInfo updateInfo = getCurrentSelectedUpdate();
+    if (updateInfo.hash.isEmpty()) {
+        return;
+    }
+
+    QClipboard *clipboard = QApplication::clipboard();
+    clipboard->setText(updateInfo.hash);
+
+    qInfo() << "INFO: [GitPullDialog::copyCommitHash] Copied commit hash to clipboard:" << updateInfo.hash;
+
+    // 显示简短的成功提示
+    m_animationWidget->setVisible(true);
+    m_animationWidget->getLabel()->setText(tr("✓ Commit hash copied to clipboard"));
+    m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
+
+    // 1秒后隐藏提示
+    QTimer::singleShot(1000, this, [this]() {
+        m_animationWidget->setVisible(false);
+    });
+}
+
+void GitPullDialog::copyCommitMessage()
+{
+    RemoteUpdateInfo updateInfo = getCurrentSelectedUpdate();
+    if (updateInfo.message.isEmpty()) {
+        return;
+    }
+
+    QClipboard *clipboard = QApplication::clipboard();
+    clipboard->setText(updateInfo.message);
+
+    qInfo() << "INFO: [GitPullDialog::copyCommitMessage] Copied commit message to clipboard:" << updateInfo.message;
+
+    // 显示简短的成功提示
+    m_animationWidget->setVisible(true);
+    m_animationWidget->getLabel()->setText(tr("✓ Commit message copied to clipboard"));
+    m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
+
+    // 1秒后隐藏提示
+    QTimer::singleShot(1000, this, [this]() {
+        m_animationWidget->setVisible(false);
+    });
+}
+
+void GitPullDialog::showCommitDetails()
+{
+    RemoteUpdateInfo updateInfo = getCurrentSelectedUpdate();
+    if (updateInfo.hash.isEmpty()) {
+        return;
+    }
+
+    qInfo() << "INFO: [GitPullDialog::showCommitDetails] Showing commit details for:" << updateInfo.hash;
+
+    // 获取详细的提交信息
+    GitCommandExecutor executor;
+    QString output, error;
+
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "show";
+    cmd.arguments = QStringList() << "show"
+                                  << "--stat"
+                                  << "--format=fuller"
+                                  << updateInfo.hash;
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 10000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    QString detailsText;
+    if (result == GitCommandExecutor::Result::Success) {
+        detailsText = output;
+    } else {
+        detailsText = tr("Failed to load commit details: %1").arg(error);
+    }
+
+    // 创建详情对话框
+    QDialog *detailsDialog = new QDialog(this);
+    detailsDialog->setWindowTitle(tr("Commit Details - %1").arg(updateInfo.shortHash));
+    detailsDialog->resize(800, 600);
+    detailsDialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    auto *layout = new QVBoxLayout(detailsDialog);
+
+    // 提交信息标签
+    auto *infoLabel = new QLabel(tr("Commit: %1\nMessage: %2")
+                                         .arg(updateInfo.hash, updateInfo.message));
+    infoLabel->setStyleSheet("QLabel { background-color: #f0f0f0; padding: 8px; border: 1px solid #ccc; font-weight: bold; }");
+    layout->addWidget(infoLabel);
+
+    // 详细信息文本区域
+    auto *detailsTextEdit = new QPlainTextEdit;
+    detailsTextEdit->setReadOnly(true);
+    detailsTextEdit->setFont(QFont("Consolas", 9));
+    detailsTextEdit->setPlainText(detailsText);
+    layout->addWidget(detailsTextEdit);
+
+    // 按钮区域
+    auto *buttonLayout = new QHBoxLayout;
+    buttonLayout->addStretch();
+
+    auto *copyHashButton = new QPushButton(tr("Copy Hash"));
+    connect(copyHashButton, &QPushButton::clicked, [updateInfo]() {
+        QApplication::clipboard()->setText(updateInfo.hash);
+    });
+    buttonLayout->addWidget(copyHashButton);
+
+    auto *closeButton = new QPushButton(tr("Close"));
+    connect(closeButton, &QPushButton::clicked, detailsDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+
+    layout->addLayout(buttonLayout);
+
+    detailsDialog->show();
+}
+
+QString GitPullDialog::getRemoteUrl(const QString &remoteName) const
+{
+    if (remoteName.isEmpty()) {
+        return QString();
+    }
+
+    GitCommandExecutor executor;
+    QString output, error;
+
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "remote";
+    cmd.arguments = QStringList() << "remote"
+                                  << "get-url"
+                                  << remoteName;
+    cmd.workingDirectory = m_repositoryPath;
+    cmd.timeout = 5000;
+
+    auto result = executor.executeCommand(cmd, output, error);
+
+    if (result == GitCommandExecutor::Result::Success) {
+        QString url = output.trimmed();
+        qInfo() << "INFO: [GitPullDialog::getRemoteUrl] Got remote URL for" << remoteName << ":" << url;
+        return url;
+    } else {
+        qWarning() << "WARNING: [GitPullDialog::getRemoteUrl] Failed to get remote URL for" << remoteName << ":" << error;
+        return QString();
+    }
+}
+
+QString GitPullDialog::buildCommitUrl(const QString &remoteUrl, const QString &commitHash) const
+{
+    if (remoteUrl.isEmpty() || commitHash.isEmpty()) {
+        return QString();
+    }
+
+    QString url = remoteUrl;
+
+    // 处理SSH URL格式 (git@github.com:user/repo.git)
+    if (url.startsWith("git@")) {
+        QRegularExpression sshRegex(R"(git@([^:]+):(.+)\.git)");
+        QRegularExpressionMatch match = sshRegex.match(url);
+        if (match.hasMatch()) {
+            QString host = match.captured(1);
+            QString path = match.captured(2);
+            url = QString("https://%1/%2").arg(host, path);
+        }
+    }
+
+    // 移除.git后缀
+    if (url.endsWith(".git")) {
+        url.chop(4);
+    }
+
+    // 根据不同的Git托管平台构建commit URL
+    if (url.contains("github.com")) {
+        return QString("%1/commit/%2").arg(url, commitHash);
+    } else if (url.contains("gitlab.com") || url.contains("gitlab.")) {
+        return QString("%1/-/commit/%2").arg(url, commitHash);
+    } else if (url.contains("bitbucket.org")) {
+        return QString("%1/commits/%2").arg(url, commitHash);
+    } else if (url.contains("gitee.com")) {
+        return QString("%1/commit/%2").arg(url, commitHash);
+    } else if (url.contains("coding.net")) {
+        return QString("%1/commit/%2").arg(url, commitHash);
+    } else {
+        // 对于其他Git服务，尝试通用格式
+        return QString("%1/commit/%2").arg(url, commitHash);
+    }
+}
+
+GitPullDialog::RemoteUpdateInfo GitPullDialog::getCurrentSelectedUpdate() const
+{
+    QListWidgetItem *currentItem = m_updatesWidget->currentItem();
+    if (!currentItem) {
+        return RemoteUpdateInfo();
+    }
+
+    int currentRow = m_updatesWidget->row(currentItem);
+    if (currentRow < 0 || currentRow >= m_remoteUpdates.size()) {
+        return RemoteUpdateInfo();
+    }
+
+    return m_remoteUpdates[currentRow];
 }
