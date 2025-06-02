@@ -107,6 +107,10 @@ public:
     void setShowRemoteBranches(bool show);
     void setShowTags(bool show);
     void setPlaceholderText(const QString &text);
+    
+    // === 状态查询 ===
+    bool getShowRemoteBranches() const { return m_showRemoteBranches; }
+    bool getShowTags() const { return m_showTags; }
 
 Q_SIGNALS:
     void selectionChanged(const QString &branchName);

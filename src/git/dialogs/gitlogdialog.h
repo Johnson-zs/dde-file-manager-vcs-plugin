@@ -6,48 +6,69 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTreeWidget>
-#include <QTextEdit>
 #include <QSplitter>
 #include <QPushButton>
 #include <QLabel>
 #include <QLineEdit>
-#include <QComboBox>
-#include <QMenu>
-#include <QAction>
 #include <QScrollBar>
 #include <QTimer>
-#include <QStyledItemDelegate>
-#include <QSyntaxHighlighter>
-#include <QTextDocument>
-#include <QApplication>
-#include <QClipboard>
-#include <QMessageBox>
-#include <QInputDialog>
 #include <QKeyEvent>
 #include <QEvent>
+#include <QSyntaxHighlighter>
+#include <QTextCharFormat>
 
-// Forward declarations
-class GitOperationDialog;
-class GitDialogManager;
+// Include data manager for struct types
+#include "gitlogdatamanager.h"
+
+// Forward declarations for other components
+class GitCommitDetailsWidget;
+class GitLogSearchManager;
+class GitLogContextMenuManager;
 class LineNumberTextEdit;
-class GitFilePreviewDialog;
 class SearchableBranchSelector;
+class GitFilePreviewDialog;
 
 /**
- * @brief Git提交历史查看器对话框 - GitKraken风格重构版本
+ * @brief Git差异文本的语法高亮器
+ * 
+ * 为diff文本提供颜色高亮，包括：
+ * - 添加的行（绿色背景）
+ * - 删除的行（红色背景）
+ * - 行号信息（蓝色粗体）
+ * - 文件路径（紫色粗体）
+ * - 上下文行（灰色）
+ */
+class GitDiffSyntaxHighlighter : public QSyntaxHighlighter
+{
+    Q_OBJECT
+
+public:
+    explicit GitDiffSyntaxHighlighter(QTextDocument *parent = nullptr);
+
+protected:
+    void highlightBlock(const QString &text) override;
+
+private:
+    QTextCharFormat m_addedLineFormat;
+    QTextCharFormat m_removedLineFormat;
+    QTextCharFormat m_lineNumberFormat;
+    QTextCharFormat m_filePathFormat;
+    QTextCharFormat m_contextFormat;
+};
+
+/**
+ * @brief 重构后的Git提交历史查看器对话框
  *
- * 实现现代化的三栏布局Git历史查看界面：
- * - 左侧：提交列表（支持图形化分支显示和智能无限滚动）
- * - 右上：提交详情（作者、时间、消息等）
- * - 右下：文件差异显示（语法高亮）
- *
- * 核心特性：
- * - GitKraken风格的用户界面
- * - 完整的右键菜单系统（reset、revert、cherry-pick等）
- * - 智能无限滚动替代分页
- * - 实时搜索和分支切换
- * - 文件级操作和差异查看
- * - 可搜索的分支/标签选择器
+ * 采用组合模式，将原来的大类拆分为多个专门的组件：
+ * - GitCommitDetailsWidget: 提交详情展示
+ * - GitLogDataManager: 数据加载和缓存管理
+ * - GitLogSearchManager: 搜索和过滤功能
+ * - GitLogContextMenuManager: 右键菜单管理
+ * 
+ * 主要职责简化为：
+ * - UI布局管理
+ * - 组件间的协调
+ * - 用户交互的响应
  */
 class GitLogDialog : public QDialog
 {
@@ -63,111 +84,86 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private Q_SLOTS:
-    // === 核心界面交互 ===
+    // === 基础界面交互 ===
     void onCommitSelectionChanged();
+    void onFileSelectionChanged();
+    void onFileDoubleClicked(QTreeWidgetItem *item, int column);
     void onRefreshClicked();
-    void onBranchChanged();
+    void onSettingsClicked();
     void onBranchSelectorChanged(const QString &branchName);
     void onSearchTextChanged();
     void onScrollValueChanged(int value);
-    void onSettingsClicked();
 
-    // === 文件操作 ===
-    void onFileSelectionChanged();
-    void onFileDoubleClicked(QTreeWidgetItem *item, int column);
+    // === 数据管理器信号响应 ===
+    void onCommitHistoryLoaded(const QList<GitLogDataManager::CommitInfo> &commits, bool append);
+    void onBranchesLoaded(const GitLogDataManager::BranchInfo &branchInfo);
+    void onCommitDetailsLoaded(const QString &commitHash, const QString &details);
+    void onCommitFilesLoaded(const QString &commitHash, const QList<GitLogDataManager::FileChangeInfo> &files);
+    void onFileStatsLoaded(const QString &commitHash, const QList<GitLogDataManager::FileChangeInfo> &files);
+    void onFileDiffLoaded(const QString &commitHash, const QString &filePath, const QString &diff);
+    void onDataLoadError(const QString &operation, const QString &error);
+
+    // === 搜索管理器信号响应 ===
+    void onSearchStarted(const QString &searchText);
+    void onSearchCompleted(const QString &searchText, int totalResults);
+    void onSearchCleared();
+    void onMoreDataNeeded();
+
+    // === 右键菜单信号响应 ===
+    void onGitOperationRequested(const QString &operation, const QStringList &args, bool needsConfirmation);
+    void onShowCommitDetailsRequested(const QString &commitHash);
+    void onShowFileDiffRequested(const QString &commitHash, const QString &filePath);
+    void onViewFileAtCommitRequested(const QString &commitHash, const QString &filePath);
+    void onShowFileHistoryRequested(const QString &filePath);
+    void onShowFileBlameRequested(const QString &filePath);
+    void onOpenFileRequested(const QString &filePath);
+    void onShowFileInFolderRequested(const QString &filePath);
+
+    // === 辅助操作 ===
     void previewSelectedFile();
-
-    // === 右键菜单 - Commit操作 ===
-    void showCommitContextMenu(const QPoint &pos);
-    void checkoutCommit();
-    void createBranchFromCommit();
-    void createTagFromCommit();
-    void resetToCommit();
-    void softResetToCommit();
-    void mixedResetToCommit();
-    void hardResetToCommit();
-    void revertCommit();
-    void cherryPickCommit();
-    void showCommitDetails();
-    void compareWithWorkingTree();
-    void copyCommitHash();
-    void copyShortHash();
-    void copyCommitMessage();
-
-    // === 右键菜单 - 文件操作 ===
-    void showFileContextMenu(const QPoint &pos);
-    void viewFileAtCommit();
-    void showFileDiff();
-    void showFileHistory();
-    void showFileBlame();
-    void openFile();
-    void showInFolder();
-    void copyFilePath();
-    void copyFileName();
+    void loadMoreCommitsIfNeeded();
+    void refreshAfterOperation();
 
 private:
-    // === UI设置方法 ===
+    // === UI初始化 ===
+    void initializeDialog(const QString &repositoryPath, const QString &filePath, const QString &initialBranch);
     void setupUI();
     void setupMainLayout();
+    void setupToolbar();
     void setupCommitList();
-    void setupRightPanel();
-    void setupCommitDetails();
     void setupFilesList();
     void setupDiffView();
-    void setupContextMenus();
-    void setupCommitContextMenu();
-    void setupFileContextMenu();
     void setupInfiniteScroll();
-    void setupBranchSelector();
-
-    // === 数据加载方法 ===
-    void loadCommitHistory(bool append = false);
-    void loadBranches();
-    void loadCommitDetails(const QString &commitHash);
-    void loadCommitFiles(const QString &commitHash);
-    void loadFileDiff(const QString &commitHash, const QString &filePath);
-    void loadMoreCommitsIfNeeded();
-    void populateFilesList(const QStringList &fileLines);
-    void loadFileChangeStats(const QString &commitHash);
-    void updateFileChangeStats(const QStringList &statLines);
-    void updateCommitSummaryStats(const QStringList &statLines);
-    void clearLoadingStats();
-
-    // === 搜索和过滤 ===
-    void filterCommits(const QString &searchText);
-    void highlightSearchResults(const QString &searchText);
-    void startProgressiveSearch(const QString &searchText);
-    void continueProgressiveSearch();
-    void finishProgressiveSearch();
-    void updateSearchStatus();
-    void highlightItemMatches(QTreeWidgetItem *item, const QString &searchText);
-    void clearItemHighlight(QTreeWidgetItem *item);
+    void connectSignals();
 
     // === 辅助方法 ===
     QString getCurrentSelectedCommitHash() const;
     QString getCurrentSelectedFilePath() const;
-    void executeGitOperation(const QString &operation, const QStringList &args, bool needsConfirmation = false);
-    void refreshAfterOperation();
+    void populateCommitList(const QList<GitLogDataManager::CommitInfo> &commits, bool append);
+    void populateFilesList(const QList<GitLogDataManager::FileChangeInfo> &files);
     QIcon getFileStatusIcon(const QString &status) const;
-    QString getFileStatusText(const QString &status) const;
     QString formatChangeStats(int additions, int deletions) const;
-    QString formatCommitSummaryStats(int filesChanged, int additions, int deletions) const;
     void setChangeStatsColor(QTreeWidgetItem *item, int additions, int deletions) const;
-    void applyDiffSyntaxHighlighting();
-    void checkIfNeedMoreCommits();
 
-    // === 成员变量 ===
+    // === 基础成员变量 ===
     QString m_repositoryPath;
     QString m_filePath;
-    QString m_initialBranch;  // 初始要显示的分支
+    QString m_initialBranch;
+
+    // === 核心组件（组合模式） ===
+    GitCommitDetailsWidget *m_commitDetailsWidget;
+    GitLogDataManager *m_dataManager;
+    GitLogSearchManager *m_searchManager;
+    GitLogContextMenuManager *m_contextMenuManager;
 
     // === UI组件 ===
     // 工具栏
+    QHBoxLayout *m_toolbarLayout;
     SearchableBranchSelector *m_branchSelector;
-    QComboBox *m_branchCombo;  // 保留作为备用，将被逐步替换
     QLineEdit *m_searchEdit;
     QPushButton *m_refreshButton;
     QPushButton *m_settingsButton;
+    QLabel *m_searchStatusLabel;
 
     // 主布局
     QSplitter *m_mainSplitter;
@@ -177,9 +173,6 @@ private:
     QTreeWidget *m_commitTree;
     QScrollBar *m_commitScrollBar;
 
-    // 右上：提交详情
-    QTextEdit *m_commitDetails;
-
     // 右中：修改文件列表
     QTreeWidget *m_changedFilesTree;
 
@@ -187,94 +180,16 @@ private:
     LineNumberTextEdit *m_diffView;
     QSyntaxHighlighter *m_diffHighlighter;
 
-    // === 右键菜单 ===
-    // Commit右键菜单
-    QMenu *m_commitContextMenu;
-    QAction *m_checkoutCommitAction;
-    QAction *m_createBranchAction;
-    QAction *m_createTagAction;
-    QMenu *m_resetMenu;
-    QAction *m_softResetAction;
-    QAction *m_mixedResetAction;
-    QAction *m_hardResetAction;
-    QAction *m_revertCommitAction;
-    QAction *m_cherryPickAction;
-    QAction *m_showDetailsAction;
-    QAction *m_compareWorkingTreeAction;
-    QAction *m_copyHashAction;
-    QAction *m_copyShortHashAction;
-    QAction *m_copyMessageAction;
-
-    // 文件右键菜单
-    QMenu *m_fileContextMenu;
-    QAction *m_viewFileAction;
-    QAction *m_showFileDiffAction;
-    QAction *m_showFileHistoryAction;
-    QAction *m_showFileBlameAction;
-    QAction *m_openFileAction;
-    QAction *m_showFolderAction;
-    QAction *m_copyFilePathAction;
-    QAction *m_copyFileNameAction;
-
     // === 无限滚动相关 ===
-    bool m_isLoadingMore;
-    int m_currentOffset;
     QTimer *m_loadTimer;
-    static const int COMMITS_PER_LOAD = 100;
+    bool m_isLoadingMore;
     static const int PRELOAD_THRESHOLD = 10;
 
-    // === 搜索相关 ===
-    QString m_currentSearchText;
-    QTimer *m_searchTimer;
-    bool m_isSearching;
-    bool m_searchLoadingMore;
-    int m_searchTotalFound;
-    QLabel *m_searchStatusLabel;
-
-    // === 缓存和性能 ===
-    QHash<QString, QString> m_commitDetailsCache;
-    QHash<QString, QStringList> m_commitFilesCache;
-    QHash<QString, QString> m_fileDiffCache;
-    
     // === 文件预览 ===
-    GitFilePreviewDialog *m_currentPreviewDialog;  // 当前打开的预览对话框
-    
+    GitFilePreviewDialog *m_currentPreviewDialog;
+
     // === 功能控制选项 ===
-    bool m_enableChangeStats;  // 是否启用改动统计功能
+    bool m_enableChangeStats;
 };
 
-/**
- * @brief Git差异语法高亮器
- *
- * 为diff输出提供语法高亮，支持：
- * - 添加行（绿色）
- * - 删除行（红色）
- * - 行号信息（蓝色）
- * - 文件路径（粗体）
- */
-class GitDiffSyntaxHighlighter : public QSyntaxHighlighter
-{
-    Q_OBJECT
-
-public:
-    explicit GitDiffSyntaxHighlighter(QTextDocument *parent = nullptr);
-
-protected:
-    void highlightBlock(const QString &text) override;
-
-private:
-    struct HighlightingRule
-    {
-        QRegularExpression pattern;
-        QTextCharFormat format;
-    };
-    QVector<HighlightingRule> m_highlightingRules;
-
-    QTextCharFormat m_addedLineFormat;
-    QTextCharFormat m_removedLineFormat;
-    QTextCharFormat m_lineNumberFormat;
-    QTextCharFormat m_filePathFormat;
-    QTextCharFormat m_contextFormat;
-};
-
-#endif   // GITLOGDIALOG_H
+#endif // GITLOGDIALOG_H 
