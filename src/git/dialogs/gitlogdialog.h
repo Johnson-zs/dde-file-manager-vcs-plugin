@@ -122,6 +122,9 @@ private Q_SLOTS:
     void onOpenFileRequested(const QString &filePath);
     void onShowFileInFolderRequested(const QString &filePath);
 
+    // === 新增：浏览器打开commit功能 ===
+    void onOpenCommitInBrowserRequested(const QString &commitHash);
+
     // === 辅助操作 ===
     void previewSelectedFile();
     void loadMoreCommitsIfNeeded();
@@ -153,6 +156,12 @@ private:
     QIcon getFileStatusIcon(const QString &status) const;
     QString formatChangeStats(int additions, int deletions) const;
     void setChangeStatsColor(QTreeWidgetItem *item, int additions, int deletions) const;
+
+    // === 新增：浏览器打开commit相关方法 ===
+    QString getRepositoryName() const;                                          // 获取仓库名称
+    QString getRemoteUrl(const QString &remoteName = "origin") const;          // 获取远程URL
+    QString buildCommitUrl(const QString &remoteUrl, const QString &commitHash) const;  // 构建commit URL
+    void openCommitInBrowser(const QString &commitHash);                       // 在浏览器中打开commit
 
     // === 远程状态渲染方法 ===
     QIcon getRemoteStatusIcon(GitLogDataManager::RemoteStatus status) const;

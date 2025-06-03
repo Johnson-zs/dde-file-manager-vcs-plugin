@@ -20,6 +20,8 @@
 #include <QUrl>
 #include <QDebug>
 #include <QProcess>
+#include <QDir>
+#include <QRegularExpression>
 
 GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent)
     : QDialog(parent)
@@ -73,7 +75,15 @@ void GitLogDialog::initializeDialog(const QString &repositoryPath, const QString
 
 void GitLogDialog::setupUI()
 {
-    setWindowTitle(m_filePath.isEmpty() ? tr("Git Log - Repository") : tr("Git Log - %1").arg(QFileInfo(m_filePath).fileName()));
+    // === 修改：窗口标题显示项目名称 ===
+    QString repositoryName = getRepositoryName();
+    QString windowTitle;
+    if (m_filePath.isEmpty()) {
+        windowTitle = tr("Git Log - %1").arg(repositoryName);
+    } else {
+        windowTitle = tr("Git Log - %1 (%2)").arg(QFileInfo(m_filePath).fileName(), repositoryName);
+    }
+    setWindowTitle(windowTitle);
 
     setModal(false);
     setMinimumSize(1200, 800);
@@ -265,8 +275,30 @@ void GitLogDialog::connectSignals()
                     m_commitTree->setCurrentItem(item);
                     QString commitHash = getCurrentSelectedCommitHash();
                     QString commitMessage = item->text(1);
+                    
+                    // === 修复：获取commit来源信息以正确控制浏览器打开选项 ===
+                    bool isRemoteCommit = false;
+                    bool hasRemoteUrl = false;
+                    
+                    // 检查是否有远程URL
+                    QString remoteUrl = getRemoteUrl("origin");
+                    hasRemoteUrl = !remoteUrl.isEmpty();
+                    
+                    // 从数据管理器获取commit信息来判断是否为远程commit
+                    const auto &commits = m_dataManager->getCommits();
+                    for (const auto &commit : commits) {
+                        if (commit.fullHash == commitHash) {
+                            // 只有远程专有的commit或者已同步到远程的commit才显示浏览器打开选项
+                            isRemoteCommit = (commit.source == GitLogDataManager::CommitSource::Remote ||
+                                            commit.source == GitLogDataManager::CommitSource::Both);
+                            break;
+                        }
+                    }
+                    
+                    // 使用新的重载方法，传递commit来源信息
                     m_contextMenuManager->showCommitContextMenu(
-                            m_commitTree->mapToGlobal(pos), commitHash, commitMessage);
+                            m_commitTree->mapToGlobal(pos), commitHash, commitMessage, 
+                            isRemoteCommit, hasRemoteUrl);
                 }
             });
 
@@ -332,6 +364,10 @@ void GitLogDialog::connectSignals()
             this, &GitLogDialog::onOpenFileRequested);
     connect(m_contextMenuManager, &GitLogContextMenuManager::showFileInFolderRequested,
             this, &GitLogDialog::onShowFileInFolderRequested);
+
+    // === 新增：浏览器打开commit信号连接 ===
+    connect(m_contextMenuManager, &GitLogContextMenuManager::openCommitInBrowserRequested,
+            this, &GitLogDialog::onOpenCommitInBrowserRequested);
 
     // 提交详情组件信号
     connect(m_commitDetailsWidget, &GitCommitDetailsWidget::linkClicked,
@@ -1459,4 +1495,129 @@ void GitLogDialog::hideLoadingStatus()
     
     m_loadingAnimation->stopAnimation();
     m_loadingWidget->setVisible(false);
+}
+
+// === 新增：浏览器打开commit功能实现 ===
+
+void GitLogDialog::onOpenCommitInBrowserRequested(const QString &commitHash)
+{
+    if (commitHash.isEmpty()) {
+        qWarning() << "WARNING: [GitLogDialog] Empty commit hash for browser open request";
+        return;
+    }
+
+    qInfo() << "INFO: [GitLogDialog] Opening commit in browser:" << commitHash.left(8);
+    openCommitInBrowser(commitHash);
+}
+
+QString GitLogDialog::getRepositoryName() const
+{
+    QDir repoDir(m_repositoryPath);
+    QString repoName = repoDir.dirName();
+    
+    // 如果目录名为空或者是"."，尝试从路径中获取
+    if (repoName.isEmpty() || repoName == ".") {
+        QFileInfo repoInfo(m_repositoryPath);
+        repoName = repoInfo.baseName();
+    }
+    
+    // 如果仍然为空，使用默认名称
+    if (repoName.isEmpty()) {
+        repoName = tr("Repository");
+    }
+    
+    return repoName;
+}
+
+QString GitLogDialog::getRemoteUrl(const QString &remoteName) const
+{
+    if (remoteName.isEmpty()) {
+        return QString();
+    }
+
+    QStringList args = {"remote", "get-url", remoteName};
+    QString output, error;
+    
+    if (!m_dataManager->executeGitCommand(args, output, error)) {
+        qWarning() << "WARNING: [GitLogDialog::getRemoteUrl] Failed to get remote URL for" << remoteName << ":" << error;
+        return QString();
+    }
+
+    QString url = output.trimmed();
+    qInfo() << "INFO: [GitLogDialog::getRemoteUrl] Got remote URL for" << remoteName << ":" << url;
+    return url;
+}
+
+QString GitLogDialog::buildCommitUrl(const QString &remoteUrl, const QString &commitHash) const
+{
+    if (remoteUrl.isEmpty() || commitHash.isEmpty()) {
+        return QString();
+    }
+
+    QString url = remoteUrl;
+
+    // 处理SSH URL格式 (git@github.com:user/repo.git)
+    if (url.startsWith("git@")) {
+        QRegularExpression sshRegex(R"(git@([^:]+):(.+)\.git)");
+        QRegularExpressionMatch match = sshRegex.match(url);
+        if (match.hasMatch()) {
+            QString host = match.captured(1);
+            QString path = match.captured(2);
+            url = QString("https://%1/%2").arg(host, path);
+        }
+    }
+
+    // 移除.git后缀
+    if (url.endsWith(".git")) {
+        url.chop(4);
+    }
+
+    // 根据不同的Git托管平台构建commit URL
+    if (url.contains("github.com")) {
+        return QString("%1/commit/%2").arg(url, commitHash);
+    } else if (url.contains("gitlab.com") || url.contains("gitlab.")) {
+        return QString("%1/-/commit/%2").arg(url, commitHash);
+    } else if (url.contains("bitbucket.org")) {
+        return QString("%1/commits/%2").arg(url, commitHash);
+    } else if (url.contains("gitee.com")) {
+        return QString("%1/commit/%2").arg(url, commitHash);
+    } else if (url.contains("coding.net")) {
+        return QString("%1/commit/%2").arg(url, commitHash);
+    } else {
+        // 对于其他Git服务，尝试通用格式
+        return QString("%1/commit/%2").arg(url, commitHash);
+    }
+}
+
+void GitLogDialog::openCommitInBrowser(const QString &commitHash)
+{
+    if (commitHash.isEmpty()) {
+        return;
+    }
+
+    QString remoteUrl = getRemoteUrl("origin");
+    
+    if (remoteUrl.isEmpty()) {
+        QMessageBox::warning(this, tr("No Remote URL"),
+                             tr("Cannot open commit in browser: no remote URL found for 'origin'.\n\n"
+                                "Please ensure this repository has a remote named 'origin'."));
+        return;
+    }
+
+    QString commitUrl = buildCommitUrl(remoteUrl, commitHash);
+    if (commitUrl.isEmpty()) {
+        QMessageBox::warning(this, tr("Unsupported Remote"),
+                             tr("Cannot open commit in browser: unsupported remote URL format.\n\n"
+                                "Remote URL: %1").arg(remoteUrl));
+        return;
+    }
+
+    qInfo() << "INFO: [GitLogDialog::openCommitInBrowser] Opening commit URL:" << commitUrl;
+
+    if (!QDesktopServices::openUrl(QUrl(commitUrl))) {
+        QMessageBox::critical(this, tr("Failed to Open Browser"),
+                              tr("Failed to open the commit URL in browser.\n\n"
+                                 "URL: %1\n\n"
+                                 "You can copy this URL manually.").arg(commitUrl));
+    }
 }

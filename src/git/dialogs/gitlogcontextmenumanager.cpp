@@ -73,6 +73,12 @@ void GitLogContextMenuManager::setupCommitContextMenu()
     m_copyMessageAction = m_commitContextMenu->addAction(
             QIcon::fromTheme("edit-copy"), tr("Copy Commit Message"));
 
+    // === 新增：浏览器打开commit ===
+    m_commitContextMenu->addSeparator();
+    m_openInBrowserAction = m_commitContextMenu->addAction(
+            QIcon::fromTheme("internet-web-browser"), tr("Open in Browser"));
+    m_openInBrowserAction->setToolTip(tr("Open commit in web browser"));
+
     // === 连接信号 ===
     connect(m_checkoutCommitAction, &QAction::triggered, this, &GitLogContextMenuManager::onCheckoutCommit);
     connect(m_createBranchAction, &QAction::triggered, this, &GitLogContextMenuManager::onCreateBranchFromCommit);
@@ -86,6 +92,9 @@ void GitLogContextMenuManager::setupCommitContextMenu()
     connect(m_copyHashAction, &QAction::triggered, this, &GitLogContextMenuManager::onCopyCommitHash);
     connect(m_copyShortHashAction, &QAction::triggered, this, &GitLogContextMenuManager::onCopyShortHash);
     connect(m_copyMessageAction, &QAction::triggered, this, &GitLogContextMenuManager::onCopyCommitMessage);
+
+    // === 新增：浏览器打开commit信号连接 ===
+    connect(m_openInBrowserAction, &QAction::triggered, this, &GitLogContextMenuManager::onOpenCommitInBrowser);
 }
 
 void GitLogContextMenuManager::setupFileContextMenu()
@@ -138,6 +147,16 @@ void GitLogContextMenuManager::showCommitContextMenu(const QPoint &globalPos, co
     m_commitContextMenu->exec(globalPos);
 }
 
+void GitLogContextMenuManager::showCommitContextMenu(const QPoint &globalPos, const QString &commitHash, const QString &commitMessage, 
+                                                     bool isRemoteCommit, bool hasRemoteUrl)
+{
+    m_currentCommitHash = commitHash;
+    m_currentCommitMessage = commitMessage;
+
+    updateCommitMenuState(commitHash, commitMessage, isRemoteCommit, hasRemoteUrl);
+    m_commitContextMenu->exec(globalPos);
+}
+
 void GitLogContextMenuManager::showFileContextMenu(const QPoint &globalPos, const QString &commitHash, const QString &filePath)
 {
     m_currentCommitHash = commitHash;
@@ -157,6 +176,42 @@ void GitLogContextMenuManager::updateCommitMenuState(const QString &commitHash, 
     m_createTagAction->setText(tr("Create Tag at %1").arg(shortHash));
     m_revertCommitAction->setText(tr("Revert %1").arg(shortHash));
     m_cherryPickAction->setText(tr("Cherry-pick %1").arg(shortHash));
+
+    // === 新增：更新浏览器打开菜单项文本 ===
+    m_openInBrowserAction->setText(tr("Open %1 in Browser").arg(shortHash));
+}
+
+void GitLogContextMenuManager::updateCommitMenuState(const QString &commitHash, const QString &commitMessage, 
+                                                     bool isRemoteCommit, bool hasRemoteUrl)
+{
+    QString shortHash = commitHash.left(8);
+
+    // 更新菜单项文本
+    m_checkoutCommitAction->setText(tr("Checkout Commit (%1)").arg(shortHash));
+    m_createBranchAction->setText(tr("Create Branch from %1").arg(shortHash));
+    m_createTagAction->setText(tr("Create Tag at %1").arg(shortHash));
+    m_revertCommitAction->setText(tr("Revert %1").arg(shortHash));
+    m_cherryPickAction->setText(tr("Cherry-pick %1").arg(shortHash));
+
+    // === 关键修复：只对远程commit或已同步的commit显示浏览器打开选项 ===
+    // 只有当满足以下条件时才显示浏览器打开选项：
+    // 1. 有远程URL配置
+    // 2. 且commit存在于远程（isRemoteCommit为true表示Remote或Both类型）
+    bool shouldShowBrowserAction = hasRemoteUrl && isRemoteCommit;
+    
+    m_openInBrowserAction->setVisible(shouldShowBrowserAction);
+    m_openInBrowserAction->setEnabled(shouldShowBrowserAction);
+    
+    if (shouldShowBrowserAction) {
+        m_openInBrowserAction->setText(tr("Open %1 in Browser").arg(shortHash));
+        m_openInBrowserAction->setToolTip(tr("Open commit in web browser"));
+    }
+    
+    qDebug() << QString("[GitLogContextMenuManager] Commit %1: hasRemoteUrl=%2, isRemoteCommit=%3, showBrowser=%4")
+                        .arg(shortHash)
+                        .arg(hasRemoteUrl)
+                        .arg(isRemoteCommit)
+                        .arg(shouldShowBrowserAction);
 }
 
 void GitLogContextMenuManager::updateFileMenuState(const QString &commitHash, const QString &filePath)
@@ -341,4 +396,10 @@ void GitLogContextMenuManager::onCopyFileName()
         QApplication::clipboard()->setText(fileName);
         qDebug() << "[GitLogContextMenuManager] Copied file name to clipboard:" << fileName;
     }
+}
+
+void GitLogContextMenuManager::onOpenCommitInBrowser()
+{
+    if (m_currentCommitHash.isEmpty()) return;
+    Q_EMIT openCommitInBrowserRequested(m_currentCommitHash);
 }

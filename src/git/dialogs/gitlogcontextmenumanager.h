@@ -31,6 +31,10 @@ public:
     void showCommitContextMenu(const QPoint &globalPos, const QString &commitHash, const QString &commitMessage);
     void showFileContextMenu(const QPoint &globalPos, const QString &commitHash, const QString &filePath);
 
+    // === 新增：带commit来源信息的菜单显示方法 ===
+    void showCommitContextMenu(const QPoint &globalPos, const QString &commitHash, const QString &commitMessage, 
+                              bool isRemoteCommit, bool hasRemoteUrl = true);
+
     // === 配置 ===
     void setRepositoryPath(const QString &path) { m_repositoryPath = path; }
     QString repositoryPath() const { return m_repositoryPath; }
@@ -47,6 +51,9 @@ Q_SIGNALS:
     void showFileBlameRequested(const QString &filePath);
     void compareWithWorkingTreeRequested(const QString &commitHash);
     void viewFileAtCommitRequested(const QString &commitHash, const QString &filePath);
+
+    // === 新增：浏览器打开commit信号 ===
+    void openCommitInBrowserRequested(const QString &commitHash);
 
     // 文件操作信号
     void openFileRequested(const QString &filePath);
@@ -67,6 +74,9 @@ private Q_SLOTS:
     void onCopyShortHash();
     void onCopyCommitMessage();
 
+    // === 新增：浏览器打开commit槽函数 ===
+    void onOpenCommitInBrowser();
+
     // === 文件操作槽函数 ===
     void onViewFileAtCommit();
     void onShowFileDiff();
@@ -82,6 +92,10 @@ private:
     void setupFileContextMenu();
     void updateCommitMenuState(const QString &commitHash, const QString &commitMessage);
     void updateFileMenuState(const QString &commitHash, const QString &filePath);
+
+    // === 新增：更新commit菜单状态的重载方法 ===
+    void updateCommitMenuState(const QString &commitHash, const QString &commitMessage, 
+                              bool isRemoteCommit, bool hasRemoteUrl);
 
     QString m_repositoryPath;
 
@@ -105,6 +119,9 @@ private:
     QAction *m_copyHashAction;
     QAction *m_copyShortHashAction;
     QAction *m_copyMessageAction;
+
+    // === 新增：浏览器打开commit菜单项 ===
+    QAction *m_openInBrowserAction;
 
     // === 文件右键菜单 ===
     QMenu *m_fileContextMenu;
