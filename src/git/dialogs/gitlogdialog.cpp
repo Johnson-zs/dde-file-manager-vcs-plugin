@@ -372,20 +372,20 @@ void GitLogDialog::onRefreshClicked()
 
     QString currentBranch = m_branchSelector->getCurrentSelection();
     
-    // === 新增：刷新时强制更新远程引用 ===
+    // === 修改：刷新时强制更新远程引用（使用全局策略） ===
     if (!currentBranch.isEmpty() && currentBranch != "HEAD") {
-        qInfo() << "INFO: [GitLogDialog] Force updating remote references during refresh for:" << currentBranch;
+        qInfo() << "INFO: [GitLogDialog] Force updating all remote references during refresh";
         
-        // 清除远程引用缓存，强制更新
+        // 清除远程引用缓存，强制更新（现在是全局的）
         m_dataManager->clearRemoteRefTimestampCache();
         
-        // 异步更新远程引用（不阻塞UI）
+        // 异步更新所有远程引用（不阻塞UI）
         m_dataManager->updateRemoteReferencesAsync(currentBranch);
     }
     
     m_dataManager->loadCommitHistory(currentBranch);
 
-    // 直接刷新远程状态（移除异步调用）
+    // 直接刷新远程状态
     if (!currentBranch.isEmpty() && currentBranch != "HEAD") {
         qInfo() << "INFO: [GitLogDialog] Refreshing remote status for:" << currentBranch;
         m_dataManager->updateCommitRemoteStatus(currentBranch);
@@ -594,29 +594,40 @@ void GitLogDialog::onBranchesLoaded(const GitLogDataManager::BranchInfo &branchI
         m_branchSelector->setCurrentSelection(branchInfo.currentBranch);
     }
 
-    // 关键修复：分支加载完成后，立即加载commits（包括远程commits）
+    // === 新增：在初始化时主动检查并更新远程引用 ===
     if (!initialBranch.isEmpty() && initialBranch != "HEAD") {
-        qInfo() << "INFO: [GitLogDialog] Branches loaded, loading commits for initial branch:" << initialBranch;
+        qInfo() << "INFO: [GitLogDialog] Branches loaded, checking remote references for initial branch:" << initialBranch;
 
-        // 先加载远程跟踪信息
-        m_dataManager->loadAllRemoteTrackingInfo(initialBranch);
-
-        // 检查是否需要加载远程commits并直接加载
-        if (m_dataManager->shouldLoadRemoteCommits(initialBranch)) {
-            qInfo() << "INFO: [GitLogDialog] Initial branch needs remote commits, loading with remote";
-            m_dataManager->loadCommitHistoryWithRemote(initialBranch);
+        // 检查是否需要更新远程引用
+        if (m_dataManager->shouldUpdateRemoteReferences(initialBranch)) {
+            qInfo() << "INFO: [GitLogDialog] Remote references are outdated, updating before loading commits";
+            
+            // 连接远程引用更新完成信号，确保更新完成后再加载commits
+            connect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
+                    this, [this, initialBranch](const QString &branch, bool success) {
+                        Q_UNUSED(branch)
+                        
+                        // 断开这个临时连接，避免重复执行
+                        disconnect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
+                                   this, nullptr);
+                        
+                        if (success) {
+                            qInfo() << "INFO: [GitLogDialog] Remote references updated successfully, now loading commits";
+                        } else {
+                            qWarning() << "WARNING: [GitLogDialog] Remote references update failed, loading with existing data";
+                        }
+                        
+                        // 现在加载commits（无论更新成功还是失败）
+                        loadCommitsForInitialBranch(initialBranch);
+                    }, Qt::SingleShotConnection);
+            
+            // 异步更新远程引用
+            m_dataManager->updateRemoteReferencesAsync(initialBranch);
         } else {
-            qInfo() << "INFO: [GitLogDialog] Initial branch loading regular commits";
-            m_dataManager->loadCommitHistory(initialBranch);
+            qInfo() << "INFO: [GitLogDialog] Remote references are up to date, loading commits directly";
+            // 远程引用是最新的，直接加载commits
+            loadCommitsForInitialBranch(initialBranch);
         }
-
-        // 延迟更新远程状态（让commits先加载）
-        QTimer::singleShot(200, this, [this, initialBranch]() {
-            if (m_dataManager) {
-                qInfo() << "INFO: [GitLogDialog] Updating remote status for initial branch:" << initialBranch;
-                m_dataManager->updateCommitRemoteStatus(initialBranch);
-            }
-        });
     } else {
         // 如果没有有效的初始分支，加载默认的commits
         qInfo() << "INFO: [GitLogDialog] No valid initial branch, loading default commits";
@@ -1329,4 +1340,29 @@ QColor GitLogDialog::getCommitSourceColor(GitLogDataManager::CommitSource source
     default:
         return QColor(0, 0, 0);   // 默认黑色
     }
+}
+
+void GitLogDialog::loadCommitsForInitialBranch(const QString &branch)
+{
+    qInfo() << "INFO: [GitLogDialog] Loading commits for initial branch:" << branch;
+    
+    // 先加载远程跟踪信息
+    m_dataManager->loadAllRemoteTrackingInfo(branch);
+
+    // 检查是否需要加载远程commits并直接加载
+    if (m_dataManager->shouldLoadRemoteCommits(branch)) {
+        qInfo() << "INFO: [GitLogDialog] Initial branch needs remote commits, loading with remote";
+        m_dataManager->loadCommitHistoryWithRemote(branch);
+    } else {
+        qInfo() << "INFO: [GitLogDialog] Initial branch loading regular commits";
+        m_dataManager->loadCommitHistory(branch);
+    }
+
+    // 延迟更新远程状态（让commits先加载）
+    QTimer::singleShot(200, this, [this, branch]() {
+        if (m_dataManager) {
+            qInfo() << "INFO: [GitLogDialog] Updating remote status for initial branch:" << branch;
+            m_dataManager->updateCommitRemoteStatus(branch);
+        }
+    });
 }

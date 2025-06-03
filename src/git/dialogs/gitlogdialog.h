@@ -126,6 +126,7 @@ private Q_SLOTS:
     void loadMoreCommitsIfNeeded();
     void refreshAfterOperation();
     void selectFirstLocalCommit();
+    void loadCommitsForInitialBranch(const QString &branch);
 
 private:
     // === UI初始化 ===

@@ -933,52 +933,50 @@ bool GitLogDataManager::shouldUpdateRemoteReferences(const QString &branch)
         return false;
     }
 
-    // 检查缓存的时间戳
-    QString cacheKey = QString("%1").arg(branch);
-    if (m_remoteRefTimestampCache.contains(cacheKey)) {
-        qint64 lastUpdate = m_remoteRefTimestampCache[cacheKey];
+    // === 修改：检查全局FETCH_HEAD文件而不是特定分支 ===
+    QString globalCacheKey = "FETCH_HEAD";
+    if (m_remoteRefTimestampCache.contains(globalCacheKey)) {
+        qint64 lastUpdate = m_remoteRefTimestampCache[globalCacheKey];
         qint64 currentTime = QDateTime::currentSecsSinceEpoch();
         qint64 timeDiff = currentTime - lastUpdate;
         
         if (timeDiff < (REMOTE_REF_UPDATE_INTERVAL_MINUTES * 60)) {
-            qInfo() << QString("INFO: [GitLogDataManager] Remote references for branch '%1' updated %2 seconds ago, skipping update")
-                               .arg(branch).arg(timeDiff);
+            qInfo() << QString("INFO: [GitLogDataManager] Remote references updated %1 seconds ago, skipping update")
+                               .arg(timeDiff);
             return false;
         }
     }
 
-    // 检查远程分支引用文件的时间戳
-    QString remoteRefPath = QString("%1/.git/refs/remotes/origin/%2").arg(m_repositoryPath, branch);
-    QFileInfo refFileInfo(remoteRefPath);
+    // 检查FETCH_HEAD文件的时间戳（全局fetch指标）
+    QString fetchHeadPath = QString("%1/.git/FETCH_HEAD").arg(m_repositoryPath);
+    QFileInfo fetchHeadInfo(fetchHeadPath);
     
-    if (refFileInfo.exists()) {
-        QDateTime lastModified = refFileInfo.lastModified();
+    if (fetchHeadInfo.exists()) {
+        QDateTime lastModified = fetchHeadInfo.lastModified();
         qint64 timeDiff = lastModified.secsTo(QDateTime::currentDateTime());
         
         if (timeDiff < (REMOTE_REF_UPDATE_INTERVAL_MINUTES * 60)) {
-            qInfo() << QString("INFO: [GitLogDataManager] Remote ref file for branch '%1' is recent (%2 seconds old), skipping update")
-                               .arg(branch).arg(timeDiff);
+            qInfo() << QString("INFO: [GitLogDataManager] FETCH_HEAD is recent (%1 seconds old), skipping update")
+                               .arg(timeDiff);
             // 更新内存缓存时间戳
-            m_remoteRefTimestampCache[cacheKey] = QDateTime::currentSecsSinceEpoch();
+            m_remoteRefTimestampCache[globalCacheKey] = QDateTime::currentSecsSinceEpoch();
             return false;
         }
     }
 
-    qInfo() << QString("INFO: [GitLogDataManager] Remote references for branch '%1' need updating").arg(branch);
+    qInfo() << QString("INFO: [GitLogDataManager] Remote references need updating (last fetch > %1 minutes ago)")
+                       .arg(REMOTE_REF_UPDATE_INTERVAL_MINUTES);
     return true;
 }
 
 bool GitLogDataManager::updateRemoteReferences(const QString &branch)
 {
-    if (branch.isEmpty() || branch == "HEAD") {
-        qWarning() << "WARNING: [GitLogDataManager] Cannot update remote references for empty or HEAD branch";
-        return false;
-    }
-
-    qInfo() << QString("INFO: [GitLogDataManager] Updating remote references for branch: %1").arg(branch);
+    Q_UNUSED(branch)  // 现在不依赖特定分支
+    
+    qInfo() << "INFO: [GitLogDataManager] Updating all remote references with fetch --all";
 
     // 先尝试快速连接测试
-    QStringList testArgs = {"ls-remote", "--exit-code", "origin", QString("refs/heads/%1").arg(branch)};
+    QStringList testArgs = {"ls-remote", "--exit-code", "origin"};
     QString testOutput, testError;
     
     QProcess testProcess;
@@ -986,7 +984,7 @@ bool GitLogDataManager::updateRemoteReferences(const QString &branch)
     testProcess.start("git", testArgs);
     
     if (!testProcess.waitForFinished(3000)) {  // 3秒超时测试
-        qWarning() << "WARNING: [GitLogDataManager] Remote connectivity test timeout for branch:" << branch;
+        qWarning() << "WARNING: [GitLogDataManager] Remote connectivity test timeout";
         testProcess.kill();
         return false;
     }
@@ -997,8 +995,8 @@ bool GitLogDataManager::updateRemoteReferences(const QString &branch)
         return false;
     }
 
-    // 执行实际的fetch操作
-    QStringList fetchArgs = {"fetch", "origin", QString("%1:%2").arg(branch, QString("refs/remotes/origin/%1").arg(branch)), "--quiet"};
+    // === 修改：执行全面的fetch操作，类似GitPullDialog ===
+    QStringList fetchArgs = {"fetch", "--all", "--prune", "--quiet"};
     QString fetchOutput, fetchError;
     
     QProcess fetchProcess;
@@ -1006,23 +1004,23 @@ bool GitLogDataManager::updateRemoteReferences(const QString &branch)
     fetchProcess.start("git", fetchArgs);
     
     if (!fetchProcess.waitForFinished(GIT_FETCH_TIMEOUT_SECONDS * 1000)) {
-        qWarning() << QString("WARNING: [GitLogDataManager] Git fetch timeout (%1s) for branch: %2")
-                              .arg(GIT_FETCH_TIMEOUT_SECONDS).arg(branch);
+        qWarning() << QString("WARNING: [GitLogDataManager] Git fetch --all timeout (%1s)")
+                              .arg(GIT_FETCH_TIMEOUT_SECONDS);
         fetchProcess.kill();
         return false;
     }
 
     if (fetchProcess.exitCode() != 0) {
         QString error = QString::fromUtf8(fetchProcess.readAllStandardError());
-        qWarning() << QString("WARNING: [GitLogDataManager] Git fetch failed for branch %1: %2").arg(branch, error);
+        qWarning() << QString("WARNING: [GitLogDataManager] Git fetch --all failed: %1").arg(error);
         return false;
     }
 
-    // 更新时间戳缓存
-    QString cacheKey = QString("%1").arg(branch);
-    m_remoteRefTimestampCache[cacheKey] = QDateTime::currentSecsSinceEpoch();
+    // === 修改：更新全局时间戳缓存 ===
+    QString globalCacheKey = "FETCH_HEAD";
+    m_remoteRefTimestampCache[globalCacheKey] = QDateTime::currentSecsSinceEpoch();
 
-    qInfo() << QString("INFO: [GitLogDataManager] Successfully updated remote references for branch: %1").arg(branch);
+    qInfo() << "INFO: [GitLogDataManager] Successfully updated all remote references with fetch --all";
     return true;
 }
 
@@ -1033,13 +1031,13 @@ bool GitLogDataManager::updateRemoteReferencesAsync(const QString &branch)
         return false;
     }
 
-    // 先做快速检查
+    // 先做快速检查（不依赖特定分支）
     if (!shouldUpdateRemoteReferences(branch)) {
         Q_EMIT remoteReferencesUpdated(branch, true);  // 认为成功，因为不需要更新
         return true;
     }
 
-    qInfo() << QString("INFO: [GitLogDataManager] Starting async remote references update for branch: %1").arg(branch);
+    qInfo() << "INFO: [GitLogDataManager] Starting async fetch --all for all remote references";
 
     // 创建新的进程用于异步fetch
     m_currentProcess = new QProcess(this);
@@ -1052,13 +1050,13 @@ bool GitLogDataManager::updateRemoteReferencesAsync(const QString &branch)
                 
                 bool success = (exitCode == 0);
                 if (success) {
-                    // 更新时间戳缓存
-                    QString cacheKey = QString("%1").arg(branch);
-                    m_remoteRefTimestampCache[cacheKey] = QDateTime::currentSecsSinceEpoch();
-                    qInfo() << QString("INFO: [GitLogDataManager] Async remote update succeeded for branch: %1").arg(branch);
+                    // === 修改：更新全局时间戳缓存 ===
+                    QString globalCacheKey = "FETCH_HEAD";
+                    m_remoteRefTimestampCache[globalCacheKey] = QDateTime::currentSecsSinceEpoch();
+                    qInfo() << "INFO: [GitLogDataManager] Async fetch --all succeeded";
                 } else {
                     QString error = QString::fromUtf8(m_currentProcess->readAllStandardError());
-                    qWarning() << QString("WARNING: [GitLogDataManager] Async remote update failed for branch %1: %2").arg(branch, error);
+                    qWarning() << QString("WARNING: [GitLogDataManager] Async fetch --all failed: %1").arg(error);
                 }
                 
                 // 清理进程
@@ -1068,14 +1066,14 @@ bool GitLogDataManager::updateRemoteReferencesAsync(const QString &branch)
                 Q_EMIT remoteReferencesUpdated(branch, success);
             });
 
-    // 启动异步fetch
-    QStringList fetchArgs = {"fetch", "origin", QString("%1:%2").arg(branch, QString("refs/remotes/origin/%1").arg(branch)), "--quiet"};
+    // === 修改：启动异步fetch --all ===
+    QStringList fetchArgs = {"fetch", "--all", "--prune", "--quiet"};
     m_currentProcess->start("git", fetchArgs);
     
     // 设置超时
-    QTimer::singleShot(GIT_FETCH_TIMEOUT_SECONDS * 1000, this, [this, branch]() {
+    QTimer::singleShot(GIT_FETCH_TIMEOUT_SECONDS * 1000, this, [this]() {
         if (m_currentProcess && m_currentProcess->state() != QProcess::NotRunning) {
-            qWarning() << QString("WARNING: [GitLogDataManager] Async fetch timeout for branch: %1").arg(branch);
+            qWarning() << "WARNING: [GitLogDataManager] Async fetch --all timeout";
             m_currentProcess->kill();
         }
     });
