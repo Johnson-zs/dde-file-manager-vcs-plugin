@@ -50,6 +50,7 @@ public:
         QString remoteRef;                                  // 对应的远程引用
         CommitSource source = CommitSource::Local;          // commit来源
         QStringList branches;                               // 包含此commit的分支列表
+        bool isLocalHead = false;                           // 是否为本地HEAD commit
     };
 
     struct FileChangeInfo {
@@ -89,6 +90,7 @@ public:
     // === 数据加载接口 ===
     bool loadCommitHistory(const QString &branch = QString(), int offset = 0, int limit = 100);
     bool loadCommitHistoryWithRemote(const QString &branch = QString(), int offset = 0, int limit = 100);  // 新增：包含远程commits的历史
+    bool loadCommitHistoryEnsureHead(const QString &branch = QString(), int initialLimit = 100);  // 新增：确保包含本地HEAD的初始化加载
     bool loadBranches();
     bool loadCommitDetails(const QString &commitHash);
     bool loadCommitFiles(const QString &commitHash);

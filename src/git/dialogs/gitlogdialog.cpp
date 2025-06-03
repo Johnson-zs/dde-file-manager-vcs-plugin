@@ -1094,11 +1094,27 @@ void GitLogDialog::selectFirstLocalCommit()
 
     const auto &commits = m_dataManager->getCommits();
     
-    // 查找第一个本地commit（Local或Both类型）
+    // === 修复：优先选中标记为isLocalHead的commit ===
     for (int i = 0; i < m_commitTree->topLevelItemCount() && i < commits.size(); ++i) {
         const auto &commit = commits[i];
         
-        // 优先选择Local或Both类型的commit
+        if (commit.isLocalHead) {
+            // 找到本地HEAD commit，选中它
+            QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
+            m_commitTree->setCurrentItem(item);
+            m_commitTree->scrollToItem(item);
+            
+            qInfo() << QString("INFO: [GitLogDialog] Auto-selected local HEAD commit at index %1: %2")
+                               .arg(i)
+                               .arg(commit.shortHash);
+            return;
+        }
+    }
+    
+    // === 回退逻辑1：如果没有找到isLocalHead标记，寻找第一个本地commit ===
+    for (int i = 0; i < m_commitTree->topLevelItemCount() && i < commits.size(); ++i) {
+        const auto &commit = commits[i];
+        
         if (commit.source == GitLogDataManager::CommitSource::Local || 
             commit.source == GitLogDataManager::CommitSource::Both) {
             
@@ -1113,12 +1129,12 @@ void GitLogDialog::selectFirstLocalCommit()
         }
     }
     
-    // 如果没有找到本地commit，回退到选择第一个commit
+    // === 最终回退：选择第一个可用的commit ===
     QTreeWidgetItem *firstItem = m_commitTree->topLevelItem(0);
     m_commitTree->setCurrentItem(firstItem);
     m_commitTree->scrollToItem(firstItem);
     
-    qInfo() << "INFO: [GitLogDialog] No local commits found, selected first commit";
+    qInfo() << "INFO: [GitLogDialog] No local commits found, selected first available commit";
 }
 
 QIcon GitLogDialog::getFileStatusIcon(const QString &status) const
@@ -1385,16 +1401,23 @@ void GitLogDialog::loadCommitsForInitialBranch(const QString &branch)
 {
     qInfo() << "INFO: [GitLogDialog] Loading commits for initial branch:" << branch;
     
-    // 先加载远程跟踪信息
-    m_dataManager->loadAllRemoteTrackingInfo(branch);
-
-    // 检查是否需要加载远程commits并直接加载
-    if (m_dataManager->shouldLoadRemoteCommits(branch)) {
-        qInfo() << "INFO: [GitLogDialog] Initial branch needs remote commits, loading with remote";
-        m_dataManager->loadCommitHistoryWithRemote(branch);
-    } else {
-        qInfo() << "INFO: [GitLogDialog] Initial branch loading regular commits";
-        m_dataManager->loadCommitHistory(branch);
+    // === 关键修复：使用新的确保HEAD包含的加载方法 ===
+    // 这个方法会确保本地HEAD commit包含在初始加载的commits中
+    bool loadSuccess = m_dataManager->loadCommitHistoryEnsureHead(branch, 100);
+    
+    if (!loadSuccess) {
+        qWarning() << "WARNING: [GitLogDialog] Failed to load commits ensuring HEAD, falling back to normal loading";
+        
+        // 回退到原来的逻辑
+        m_dataManager->loadAllRemoteTrackingInfo(branch);
+        
+        if (m_dataManager->shouldLoadRemoteCommits(branch)) {
+            qInfo() << "INFO: [GitLogDialog] Fallback: Loading with remote commits";
+            m_dataManager->loadCommitHistoryWithRemote(branch);
+        } else {
+            qInfo() << "INFO: [GitLogDialog] Fallback: Loading regular commits";
+            m_dataManager->loadCommitHistory(branch);
+        }
     }
 
     // 延迟更新远程状态（让commits先加载）

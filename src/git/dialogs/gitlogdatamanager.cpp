@@ -104,6 +104,13 @@ bool GitLogDataManager::loadCommitHistoryWithRemote(const QString &branch, int o
         return loadCommitHistory(branch, offset, limit);
     }
 
+    // === 修复：使用原来的混合加载保持时间排序，但改进标记逻辑 ===
+    QString localBranch = branch.isEmpty() ? "HEAD" : branch;
+    QString remoteBranch = m_trackingInfo.remoteBranch;
+    
+    qInfo() << "INFO: [GitLogDataManager] Loading commits with local:" << localBranch << "and remote:" << remoteBranch;
+
+    // === 使用原来的git log命令保持正确的时间排序 ===
     QStringList args;
     args << "log"
          << "--oneline"
@@ -111,7 +118,8 @@ bool GitLogDataManager::loadCommitHistoryWithRemote(const QString &branch, int o
          << "--pretty=format:%h|%s|%an|%ad|%H"
          << "--date=short"
          << QString("--skip=%1").arg(offset)
-         << QString("--max-count=%1").arg(limit);
+         << QString("--max-count=%1").arg(limit)
+         << localBranch << remoteBranch;  // 恢复原来的混合方式
 
     // 如果指定了文件路径，只显示该文件的历史
     if (!m_filePath.isEmpty()) {
@@ -119,16 +127,6 @@ bool GitLogDataManager::loadCommitHistoryWithRemote(const QString &branch, int o
         QString relativePath = repoDir.relativeFilePath(m_filePath);
         args << "--" << relativePath;
     }
-
-    // 关键修复：直接指定要显示的本地和远程分支
-    QString localBranch = branch.isEmpty() ? "HEAD" : branch;
-    QString remoteBranch = m_trackingInfo.remoteBranch;
-    
-    // 不使用--all，直接指定我们想要的分支
-    // 这样可以确保只显示指定分支的commits
-    args << localBranch << remoteBranch;
-
-    qInfo() << "INFO: [GitLogDataManager] Loading commits with local:" << localBranch << "and remote:" << remoteBranch;
 
     QString output, error;
     if (!executeGitCommand(args, output, error)) {
@@ -138,8 +136,26 @@ bool GitLogDataManager::loadCommitHistoryWithRemote(const QString &branch, int o
 
     QList<CommitInfo> commits = parseCommitHistory(output);
     
-    // 增强：标记每个commit的来源（本地/远程/两者都有）
+    // === 关键修复：先获取本地HEAD的hash，用于后续选中 ===
+    QString localHeadHash;
+    QStringList headArgs = {"rev-parse", "HEAD"};
+    QString headOutput, headError;
+    if (executeGitCommand(headArgs, headOutput, headError)) {
+        localHeadHash = headOutput.trimmed();
+        qInfo() << "INFO: [GitLogDataManager] Local HEAD hash:" << localHeadHash.left(8);
+    }
+
+    // === 增强：标记每个commit的来源和是否为本地HEAD ===
     markCommitSources(commits, localBranch, remoteBranch);
+    
+    // 标记本地HEAD commit
+    for (auto &commit : commits) {
+        if (commit.fullHash == localHeadHash) {
+            commit.isLocalHead = true;  // 需要在CommitInfo中添加这个字段
+            qInfo() << "INFO: [GitLogDataManager] Marked local HEAD commit:" << commit.shortHash;
+            break;
+        }
+    }
     
     // 如果这是追加加载，添加到现有列表
     bool append = (offset > 0);
@@ -1077,6 +1093,102 @@ bool GitLogDataManager::updateRemoteReferencesAsync(const QString &branch)
             m_currentProcess->kill();
         }
     });
+
+    return true;
+}
+
+bool GitLogDataManager::loadCommitHistoryEnsureHead(const QString &branch, int initialLimit)
+{
+    qInfo() << QString("INFO: [GitLogDataManager] Loading commit history ensuring HEAD is included (branch: %1, initial limit: %2)")
+                       .arg(branch.isEmpty() ? "HEAD" : branch)
+                       .arg(initialLimit);
+
+    // 首先获取本地HEAD的hash用于后续检查
+    QString localHeadHash;
+    QStringList headArgs = {"rev-parse", "HEAD"};
+    QString headOutput, headError;
+    if (executeGitCommand(headArgs, headOutput, headError)) {
+        localHeadHash = headOutput.trimmed();
+        qInfo() << "INFO: [GitLogDataManager] Local HEAD to ensure:" << localHeadHash.left(8);
+    } else {
+        qWarning() << "WARNING: [GitLogDataManager] Failed to get HEAD hash, falling back to normal loading";
+        return loadCommitHistory(branch, 0, initialLimit);
+    }
+
+    // 先尝试标准加载
+    bool hasRemoteTracking = false;
+    if (!branch.isEmpty() && branch != "HEAD") {
+        if (loadAllRemoteTrackingInfo(branch) && m_trackingInfo.hasRemote) {
+            hasRemoteTracking = true;
+        }
+    }
+
+    // 执行初始加载
+    bool loadSuccess = false;
+    if (hasRemoteTracking && shouldLoadRemoteCommits(branch)) {
+        loadSuccess = loadCommitHistoryWithRemote(branch, 0, initialLimit);
+    } else {
+        loadSuccess = loadCommitHistory(branch, 0, initialLimit);
+    }
+
+    if (!loadSuccess) {
+        qWarning() << "WARNING: [GitLogDataManager] Initial commit loading failed";
+        return false;
+    }
+
+    // 检查本地HEAD是否在加载的commits中
+    bool headFound = false;
+    for (const auto &commit : m_commits) {
+        if (commit.fullHash == localHeadHash) {
+            headFound = true;
+            qInfo() << QString("INFO: [GitLogDataManager] Local HEAD %1 found in initial %2 commits")
+                               .arg(localHeadHash.left(8))
+                               .arg(m_commits.size());
+            break;
+        }
+    }
+
+    // 如果没有找到HEAD，扩展加载范围
+    if (!headFound) {
+        qInfo() << QString("INFO: [GitLogDataManager] Local HEAD %1 not found in initial %2 commits, expanding search...")
+                           .arg(localHeadHash.left(8))
+                           .arg(m_commits.size());
+
+        // 清除当前commits，使用更大的限制重新加载
+        m_commits.clear();
+        
+        // 使用更大的限制，通常本地HEAD应该在前500个commits中
+        int expandedLimit = qMax(initialLimit * 5, 500);
+        
+        if (hasRemoteTracking && shouldLoadRemoteCommits(branch)) {
+            loadSuccess = loadCommitHistoryWithRemote(branch, 0, expandedLimit);
+        } else {
+            loadSuccess = loadCommitHistory(branch, 0, expandedLimit);
+        }
+
+        if (!loadSuccess) {
+            qWarning() << "WARNING: [GitLogDataManager] Expanded commit loading failed";
+            return false;
+        }
+
+        // 再次检查HEAD是否找到
+        headFound = false;
+        for (const auto &commit : m_commits) {
+            if (commit.fullHash == localHeadHash) {
+                headFound = true;
+                qInfo() << QString("INFO: [GitLogDataManager] Local HEAD %1 found after expanding to %2 commits")
+                                   .arg(localHeadHash.left(8))
+                                   .arg(m_commits.size());
+                break;
+            }
+        }
+
+        if (!headFound) {
+            qWarning() << QString("WARNING: [GitLogDataManager] Local HEAD %1 still not found even after expanding to %2 commits")
+                                  .arg(localHeadHash.left(8))
+                                  .arg(m_commits.size());
+        }
+    }
 
     return true;
 } 
