@@ -22,6 +22,7 @@
 #include <QProcess>
 #include <QDir>
 #include <QRegularExpression>
+#include <QScreen>
 
 GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent)
     : QDialog(parent)
@@ -86,9 +87,11 @@ void GitLogDialog::setupUI()
     setWindowTitle(windowTitle);
 
     setModal(false);
-    setMinimumSize(1200, 800);
+    
+    // === 新增：基于屏幕分辨率的自适应窗口尺寸 ===
+    setupAdaptiveWindowSize();
+    
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
-    resize(1600, 1000);
     setAttribute(Qt::WA_DeleteOnClose);
 
     auto *mainLayout = new QVBoxLayout(this);
@@ -103,6 +106,38 @@ void GitLogDialog::setupUI()
     mainLayout->addWidget(m_mainSplitter);
 
     setupInfiniteScroll();
+}
+
+void GitLogDialog::setupAdaptiveWindowSize()
+{
+    // 获取主屏幕的可用几何区域（排除任务栏等）
+    QScreen *primaryScreen = QApplication::primaryScreen();
+    if (!primaryScreen) {
+        // 回退到固定尺寸
+        setMinimumSize(1000, 700);
+        resize(1200, 800);
+        return;
+    }
+
+    QRect availableGeometry = primaryScreen->availableGeometry();
+    int screenWidth = availableGeometry.width();
+    int screenHeight = availableGeometry.height();
+
+    // 简单的尺寸计算：占屏幕的75%，但不超过合理的最大值
+    int windowWidth = qMin(static_cast<int>(screenWidth * 0.75), 1400);
+    int windowHeight = qMin(static_cast<int>(screenHeight * 0.75), 900);
+    
+    // 确保最小尺寸
+    windowWidth = qMax(windowWidth, 1000);
+    windowHeight = qMax(windowHeight, 700);
+
+    setMinimumSize(1000, 700);
+    resize(windowWidth, windowHeight);
+
+    // 居中显示
+    QRect windowGeometry = geometry();
+    windowGeometry.moveCenter(availableGeometry.center());
+    setGeometry(windowGeometry);
 }
 
 void GitLogDialog::setupToolbar()
@@ -516,6 +551,7 @@ void GitLogDialog::onSettingsClicked()
                                     "• GitLogDataManager for data management and caching\n"
                                     "• GitLogSearchManager for search functionality\n"
                                     "• GitLogContextMenuManager for menu operations\n"
+                                    "• Adaptive window sizing for different screen resolutions\n"
                                     "• Improved maintainability and testability"));
     });
 

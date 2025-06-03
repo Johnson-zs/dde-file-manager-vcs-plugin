@@ -140,6 +140,7 @@ private:
     // === UI初始化 ===
     void initializeDialog(const QString &repositoryPath, const QString &filePath, const QString &initialBranch);
     void setupUI();
+    void setupAdaptiveWindowSize();  
     void setupMainLayout();
     void setupToolbar();
     void setupCommitList();
