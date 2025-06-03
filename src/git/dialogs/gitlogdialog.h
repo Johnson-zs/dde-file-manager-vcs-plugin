@@ -27,6 +27,7 @@ class GitLogContextMenuManager;
 class LineNumberTextEdit;
 class SearchableBranchSelector;
 class GitFilePreviewDialog;
+class CharacterAnimationWidget;
 
 /**
  * @brief Git差异文本的语法高亮器
@@ -128,6 +129,10 @@ private Q_SLOTS:
     void selectFirstLocalCommit();
     void loadCommitsForInitialBranch(const QString &branch);
 
+    // === 加载状态管理 ===
+    void showLoadingStatus(const QString &message);  // 显示加载状态
+    void hideLoadingStatus();                        // 隐藏加载状态
+
 private:
     // === UI初始化 ===
     void initializeDialog(const QString &repositoryPath, const QString &filePath, const QString &initialBranch);
@@ -179,6 +184,10 @@ private:
     // 主布局
     QSplitter *m_mainSplitter;
     QSplitter *m_rightSplitter;
+
+    // === 加载状态指示器 ===
+    QWidget *m_loadingWidget;               // 加载状态容器
+    CharacterAnimationWidget *m_loadingAnimation;  // 加载动画组件
 
     // 左侧：提交列表
     QTreeWidget *m_commitTree;

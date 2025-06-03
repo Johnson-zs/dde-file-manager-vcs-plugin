@@ -5,6 +5,7 @@
 #include "gitlogcontextmenumanager.h"
 #include "widgets/linenumbertextedit.h"
 #include "widgets/searchablebranchselector.h"
+#include "widgets/characteranimationwidget.h"
 #include "gitdialogs.h"
 #include "gitoperationdialog.h"
 #include "gitfilepreviewdialog.h"
@@ -87,6 +88,7 @@ void GitLogDialog::setupUI()
     setupMainLayout();
 
     mainLayout->addLayout(m_toolbarLayout);
+    mainLayout->addWidget(m_loadingWidget);
     mainLayout->addWidget(m_mainSplitter);
 
     setupInfiniteScroll();
@@ -143,6 +145,20 @@ void GitLogDialog::setupMainLayout()
     m_mainSplitter = new QSplitter(Qt::Horizontal);
 
     setupCommitList();
+
+    // === 新增：设置加载状态指示器 ===
+    m_loadingWidget = new QWidget;
+    m_loadingWidget->setFixedHeight(50);
+    m_loadingWidget->setVisible(false);  // 初始状态隐藏
+    
+    auto *loadingLayout = new QHBoxLayout(m_loadingWidget);
+    loadingLayout->setContentsMargins(16, 8, 16, 8);
+    
+    m_loadingAnimation = new CharacterAnimationWidget(m_loadingWidget);
+    m_loadingAnimation->setTextStyleSheet("QLabel { color: #2196F3; font-weight: bold; font-size: 14px; }");
+    
+    loadingLayout->addWidget(m_loadingAnimation);
+    loadingLayout->addStretch();
 
     // 右侧分割器（垂直）
     m_rightSplitter = new QSplitter(Qt::Vertical);
@@ -376,8 +392,25 @@ void GitLogDialog::onRefreshClicked()
     if (!currentBranch.isEmpty() && currentBranch != "HEAD") {
         qInfo() << "INFO: [GitLogDialog] Force updating all remote references during refresh";
         
+        // === 新增：显示刷新状态 ===
+        showLoadingStatus(tr("Refreshing remote data..."));
+        
         // 清除远程引用缓存，强制更新（现在是全局的）
         m_dataManager->clearRemoteRefTimestampCache();
+        
+        // 连接更新完成信号，在完成后隐藏加载状态
+        connect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
+                this, [this](const QString &branch, bool success) {
+                    Q_UNUSED(branch)
+                    Q_UNUSED(success)
+                    
+                    // 断开这个临时连接
+                    disconnect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
+                               this, nullptr);
+                    
+                    // === 新增：隐藏加载状态 ===
+                    hideLoadingStatus();
+                }, Qt::SingleShotConnection);
         
         // 异步更新所有远程引用（不阻塞UI）
         m_dataManager->updateRemoteReferencesAsync(currentBranch);
@@ -602,6 +635,9 @@ void GitLogDialog::onBranchesLoaded(const GitLogDataManager::BranchInfo &branchI
         if (m_dataManager->shouldUpdateRemoteReferences(initialBranch)) {
             qInfo() << "INFO: [GitLogDialog] Remote references are outdated, updating before loading commits";
             
+            // === 新增：显示加载状态 ===
+            showLoadingStatus(tr("Fetching remote updates..."));
+            
             // 连接远程引用更新完成信号，确保更新完成后再加载commits
             connect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
                     this, [this, initialBranch](const QString &branch, bool success) {
@@ -610,6 +646,9 @@ void GitLogDialog::onBranchesLoaded(const GitLogDataManager::BranchInfo &branchI
                         // 断开这个临时连接，避免重复执行
                         disconnect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
                                    this, nullptr);
+                        
+                        // === 新增：隐藏加载状态 ===
+                        hideLoadingStatus();
                         
                         if (success) {
                             qInfo() << "INFO: [GitLogDialog] Remote references updated successfully, now loading commits";
@@ -1365,4 +1404,32 @@ void GitLogDialog::loadCommitsForInitialBranch(const QString &branch)
             m_dataManager->updateCommitRemoteStatus(branch);
         }
     });
+}
+
+// === 加载状态管理方法 ===
+
+void GitLogDialog::showLoadingStatus(const QString &message)
+{
+    if (!m_loadingWidget || !m_loadingAnimation) {
+        qWarning() << "WARNING: [GitLogDialog] Loading widgets not initialized";
+        return;
+    }
+
+    qInfo() << "INFO: [GitLogDialog] Showing loading status:" << message;
+    
+    m_loadingAnimation->setBaseText(message);
+    m_loadingAnimation->startAnimation();
+    m_loadingWidget->setVisible(true);
+}
+
+void GitLogDialog::hideLoadingStatus()
+{
+    if (!m_loadingWidget || !m_loadingAnimation) {
+        return;
+    }
+
+    qInfo() << "INFO: [GitLogDialog] Hiding loading status";
+    
+    m_loadingAnimation->stopAnimation();
+    m_loadingWidget->setVisible(false);
 }
