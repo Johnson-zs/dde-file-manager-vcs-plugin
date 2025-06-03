@@ -1,3 +1,31 @@
+dde-file-manager-vcs-plugin (0.5.0-1) unstable; urgency=medium
+
+  * Major feature release with 74+ commits since v0.1.0
+  * feat: Complete UI overhaul with GitKraken-style interface design
+  * feat: Add comprehensive Git Remote Manager functionality
+  * feat: Implement advanced push and pull dialogs with impact assessment
+  * feat: Add commit file diff dialog with syntax highlighting support
+  * feat: Enhance GitLogDialog with remote commit tracking and branch management
+  * feat: Add "Open in Browser" functionality for commits
+  * feat: Implement asynchronous remote connection testing
+  * feat: Add file preview functionality with special renderer support
+  * feat: Enhance GitCommitDialog with improved file management and context menus
+  * feat: Add loading status indicators and progress feedback
+  * feat: Implement column width management and UI layout optimizations
+  * feat: Add syntax highlighting support for CMake and QML files
+  * feat: Enhance GitCheckoutDialog with branch comparison features
+  * feat: Add context menu functionality for commit actions
+  * feat: Implement progressive search functionality in Git dialogs
+  * refactor: Centralize dialog management in GitDialogManager
+  * refactor: Optimize command cancellation and process handling
+  * refactor: Improve success and failure handling across all dialogs
+  * refactor: Clean up UI layouts and improve button styling
+  * fix: Enhance Git dialog initialization and error handling
+  * fix: Prevent recursive updates and improve stability
+  * chore: Update Qt version compatibility in CMakeLists
+
+ -- Zhang Sheng <zhangsheng@uniontech.com>  Tue, 03 Jun 2025 10:29:42 +0800
+
 dde-file-manager-vcs-plugin (0.1.0-1) unstable; urgency=medium
 
   * Initial release.
