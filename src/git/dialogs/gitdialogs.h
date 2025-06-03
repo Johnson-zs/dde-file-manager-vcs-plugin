@@ -52,6 +52,10 @@ public:
     void showFileInFolder(const QString &filePath, QWidget *parent = nullptr);
     void deleteFile(const QString &filePath, QWidget *parent = nullptr);
 
+    // === 新增：支持commit文件差异的方法 ===
+    void showCommitFileDiffDialog(const QString &repositoryPath, const QString &filePath, 
+                                  const QString &commitHash, QWidget *parent = nullptr);
+
 private:
     GitDialogManager() = default;
     static GitDialogManager *s_instance;

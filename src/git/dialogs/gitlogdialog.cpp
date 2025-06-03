@@ -19,6 +19,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QDebug>
+#include <QProcess>
 
 GitLogDialog::GitLogDialog(const QString &repositoryPath, const QString &filePath, QWidget *parent)
     : QDialog(parent)
@@ -848,13 +849,16 @@ void GitLogDialog::onCompareWithWorkingTreeRequested(const QString &commitHash)
 
 void GitLogDialog::onShowFileDiffRequested(const QString &commitHash, const QString &filePath)
 {
-    // 复用GitDialogManager的diff对话框来显示文件差异
-    // 注意：GitDiffDialog可能需要扩展以支持特定commit的文件差异查看
-    // 目前先使用工作树差异作为替代方案
-    GitDialogManager::instance()->showDiffDialog(m_repositoryPath, filePath, this);
+    if (commitHash.isEmpty() || filePath.isEmpty()) {
+        qWarning() << "WARNING: [GitLogDialog] Empty commit hash or file path for diff request";
+        return;
+    }
 
     qInfo() << "INFO: [GitLogDialog] Showing file diff for:" << filePath
             << "at commit:" << commitHash.left(8);
+
+    // === 修复：使用GitDialogManager的commit文件差异接口，复用GitDiffDialog ===
+    GitDialogManager::instance()->showCommitFileDiffDialog(m_repositoryPath, filePath, commitHash, this);
 }
 
 void GitLogDialog::onViewFileAtCommitRequested(const QString &commitHash, const QString &filePath)

@@ -120,6 +120,15 @@ void GitDialogManager::showDiffDialog(const QString &repositoryPath, const QStri
     qDebug() << "[GitDialogManager] Opened diff dialog for file:" << filePath;
 }
 
+void GitDialogManager::showCommitFileDiffDialog(const QString &repositoryPath, const QString &filePath, 
+                                                 const QString &commitHash, QWidget *parent)
+{
+    auto *dialog = new GitDiffDialog(repositoryPath, filePath, commitHash, parent);
+    dialog->show();
+    qDebug() << "[GitDialogManager] Opened commit file diff dialog for file:" << filePath 
+             << "at commit:" << commitHash.left(8);
+}
+
 void GitDialogManager::showCheckoutDialog(const QString &repositoryPath, QWidget *parent)
 {
     auto *dialog = new GitCheckoutDialog(repositoryPath, parent);

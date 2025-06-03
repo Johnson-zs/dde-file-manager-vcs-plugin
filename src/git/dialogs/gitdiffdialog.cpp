@@ -21,6 +21,7 @@ GitDiffDialog::GitDiffDialog(const QString &repositoryPath, const QString &fileP
       m_repositoryPath(repositoryPath),
       m_filePath(filePath),
       m_isDirectory(QFileInfo(filePath).isDir()),
+      m_isCommitMode(false),
       m_splitter(nullptr),
       m_fileListWidget(nullptr),
       m_diffView(nullptr),
@@ -37,9 +38,38 @@ GitDiffDialog::GitDiffDialog(const QString &repositoryPath, const QString &fileP
     qDebug() << "[GitDiffDialog] Dialog initialization completed successfully";
 }
 
+// === 新增：支持commit模式的构造函数 ===
+GitDiffDialog::GitDiffDialog(const QString &repositoryPath, const QString &filePath, 
+                             const QString &commitHash, QWidget *parent)
+    : QDialog(parent),
+      m_repositoryPath(repositoryPath),
+      m_filePath(filePath),
+      m_commitHash(commitHash),
+      m_isDirectory(false),  // commit模式只支持单文件
+      m_isCommitMode(true),
+      m_splitter(nullptr),
+      m_fileListWidget(nullptr),
+      m_diffView(nullptr),
+      m_refreshButton(nullptr),
+      m_fileInfoLabel(nullptr)
+{
+    qDebug() << "[GitDiffDialog] Initializing commit diff dialog for file:" << filePath
+             << "at commit:" << commitHash.left(8)
+             << "in repository:" << repositoryPath;
+
+    setupUI();
+    loadCommitFileDiff(m_filePath, m_commitHash);
+
+    qDebug() << "[GitDiffDialog] Commit diff dialog initialization completed successfully";
+}
+
 void GitDiffDialog::setupUI()
 {
-    if (m_isDirectory) {
+    // === 新增：commit模式的窗口标题 ===
+    if (m_isCommitMode) {
+        setWindowTitle(tr("File Diff - %1 at %2").arg(QFileInfo(m_filePath).fileName(), m_commitHash.left(8)));
+        setupSingleFileUI();  // commit模式使用单文件UI
+    } else if (m_isDirectory) {
         setWindowTitle(tr("Git Diff - %1 (Directory)").arg(QFileInfo(m_filePath).fileName()));
         setupDirectoryUI();
     } else {
@@ -209,6 +239,55 @@ void GitDiffDialog::loadSingleFileDiff(const QString &filePath)
     } else {
         qCritical() << "[GitDiffDialog::loadSingleFileDiff] Git diff command timeout for file:" << relativePath;
         m_diffView->setPlainText(tr("Failed to execute git diff command."));
+    }
+}
+
+// === 新增：commit文件差异加载方法 ===
+void GitDiffDialog::loadCommitFileDiff(const QString &filePath, const QString &commitHash)
+{
+    qDebug() << "[GitDiffDialog::loadCommitFileDiff] Loading commit diff for file:" << filePath
+             << "at commit:" << commitHash.left(8);
+
+    QProcess process;
+    process.setWorkingDirectory(m_repositoryPath);
+
+    // 计算相对路径
+    QDir repoDir(m_repositoryPath);
+    QString relativePath = repoDir.relativeFilePath(filePath);
+
+    // === 关键：使用git show命令显示特定commit的文件差异 ===
+    QStringList args { "show", "--color=never", commitHash, "--", relativePath };
+    process.start("git", args);
+
+    if (process.waitForFinished(10000)) {  // commit diff可能需要更长时间
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        QString error = QString::fromUtf8(process.readAllStandardError());
+
+        if (process.exitCode() == 0) {
+            if (output.isEmpty()) {
+                qDebug() << "[GitDiffDialog::loadCommitFileDiff] No changes found for file:" << relativePath
+                         << "at commit:" << commitHash.left(8);
+                m_diffView->setPlainText(tr("No changes found for file: %1 in commit: %2")
+                                                 .arg(relativePath, commitHash.left(8)));
+            } else {
+                qDebug() << "[GitDiffDialog::loadCommitFileDiff] Successfully loaded commit diff for file:" << relativePath
+                         << "at commit:" << commitHash.left(8);
+                m_diffView->setPlainText(output);
+                applySyntaxHighlighting();
+            }
+
+            // 更新文件信息（commit模式）
+            m_fileInfoLabel->setText(tr("File: %1\nCommit: %2\nRepository: %3\nShowing changes introduced by this commit")
+                                             .arg(relativePath, commitHash, m_repositoryPath));
+        } else {
+            qWarning() << "[GitDiffDialog::loadCommitFileDiff] Git show command failed for file:"
+                       << relativePath << "at commit:" << commitHash.left(8) << "Error:" << error;
+            m_diffView->setPlainText(tr("Error loading commit diff:\n%1").arg(error));
+        }
+    } else {
+        qCritical() << "[GitDiffDialog::loadCommitFileDiff] Git show command timeout for file:" << relativePath
+                    << "at commit:" << commitHash.left(8);
+        m_diffView->setPlainText(tr("Failed to execute git show command."));
     }
 }
 
