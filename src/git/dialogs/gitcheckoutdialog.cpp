@@ -213,6 +213,8 @@ void GitCheckoutDialog::setupContextMenus()
     m_branchContextMenu->addAction(tr("Compare with Current"), this, &GitCheckoutDialog::compareWithCurrent);
     m_branchContextMenu->addSeparator();
     m_branchContextMenu->addAction(tr("Create Tag Here"), this, &GitCheckoutDialog::createTagFromSelected);
+    m_branchContextMenu->addSeparator();
+    m_branchContextMenu->addAction(tr("Delete Branch"), this, &GitCheckoutDialog::deleteSelectedBranch);
 
     // 远程分支右键菜单
     m_remoteBranchContextMenu = new QMenu(this);
