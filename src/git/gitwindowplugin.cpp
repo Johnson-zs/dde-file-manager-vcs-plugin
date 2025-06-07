@@ -21,7 +21,7 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
     process.start("git", { "--no-optional-locks", "status", "--porcelain", "-z", "-u", "--ignored" });
     const QString &dirBelowBaseDir { Utils::findPathBelowGitBaseDir(directory) };
     QHash<QString, ItemVersion> versionInfoHash;
-    
+
     qDebug() << "[GitVersionWorker] Retrieving status for directory:" << directory
              << "dirBelowBaseDir:" << dirBelowBaseDir;
     while (process.waitForReadyRead()) {
@@ -37,9 +37,7 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
                 Utils::readUntilZeroChar(&process, nullptr, 0);   // discard old file name
             }
             state = Utils::parseXYState(state, X, Y);
-            
-            qDebug() << "[GitVersionWorker] Parsed line - X:" << X << "Y:" << Y 
-                     << "fileName:" << fileName << "state:" << (int)state;
+
             // decide what to record about that file
             if (state == ItemVersion::NormalVersion || !fileName.startsWith(dirBelowBaseDir))
                 continue;
@@ -80,9 +78,6 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
     }
 
     qDebug() << "[GitVersionWorker] Final versionInfoHash contains" << versionInfoHash.size() << "entries";
-    for (auto it = versionInfoHash.begin(); it != versionInfoHash.end(); ++it) {
-        qDebug() << "[GitVersionWorker] Entry:" << it.key() << "status:" << (int)it.value();
-    }
 
     return versionInfoHash;
 }

@@ -149,6 +149,13 @@ private:
      */
     void addWatchPaths(const QStringList &paths, bool isFile = true);
 
+    /**
+     * @brief 检测并添加新建的子目录到监控
+     * @param changedDirPath 发生变化的目录路径
+     * @param repositoryPath 仓库路径
+     */
+    void checkAndAddNewDirectories(const QString &changedDirPath, const QString &repositoryPath);
+
 private:
     QFileSystemWatcher *m_fileWatcher;           ///< Qt文件系统监控器
     QTimer *m_updateTimer;                       ///< 防抖更新定时器

@@ -37,16 +37,16 @@ GitFileSystemWatcher::GitFileSystemWatcher(QObject *parent)
 GitFileSystemWatcher::~GitFileSystemWatcher()
 {
     qInfo() << "INFO: [GitFileSystemWatcher] Destroying file system monitor";
-    
+
     // 停止定时器
     m_updateTimer->stop();
     m_cleanupTimer->stop();
-    
+
     // 清理所有监控
     for (const QString &repo : m_repositories) {
         removeRepositoryWatching(repo);
     }
-    
+
     // 清理缓存
     m_repositories.clear();
     m_pendingUpdates.clear();
@@ -126,11 +126,16 @@ void GitFileSystemWatcher::onDirectoryChanged(const QString &path)
     }
 
     qInfo() << "INFO: [GitFileSystemWatcher] Directory changed:" << path << "in repository:" << repositoryPath;
-    
+
     // 目录变化可能意味着：
     // 1. 新建了文件（untracked状态）
-    // 2. 删除了文件（deleted状态）  
+    // 2. 删除了文件（deleted状态）
     // 3. 移动了文件
+    // 4. 新建了目录
+
+    // 关键修复：检测并添加新建的子目录到监控
+    checkAndAddNewDirectories(path, repositoryPath);
+
     // 需要立即更新整个仓库状态
     scheduleUpdate(repositoryPath);
 }
@@ -201,7 +206,7 @@ void GitFileSystemWatcher::setupRepositoryWatching(const QString &repositoryPath
     qInfo() << "INFO: [GitFileSystemWatcher] Setting up monitoring for repository:" << repositoryPath;
 
     QStringList allPaths;
-    
+
     // 1. 添加Git元数据文件监控
     QStringList gitFiles = getGitMetadataFiles(repositoryPath);
     allPaths.append(gitFiles);
@@ -215,7 +220,7 @@ void GitFileSystemWatcher::setupRepositoryWatching(const QString &repositoryPath
     // 3. 添加被跟踪文件监控（关键！）
     QStringList trackedFiles = getTrackedFiles(repositoryPath);
     allPaths.append(trackedFiles);
-    qInfo() << "INFO: [GitFileSystemWatcher] Found" << trackedFiles.size() 
+    qInfo() << "INFO: [GitFileSystemWatcher] Found" << trackedFiles.size()
             << "tracked files to monitor";
 
     // 立即同步添加所有监控路径（关键修复！）
@@ -233,7 +238,7 @@ void GitFileSystemWatcher::setupRepositoryWatching(const QString &repositoryPath
             m_fileWatcher->addPaths(validPaths);
             qInfo() << "INFO: [GitFileSystemWatcher] Immediately added" << validPaths.size() << "paths to file watcher";
         }
-        
+
         // 分别缓存文件和目录
         QStringList files, dirs;
         for (const QString &path : allPaths) {
@@ -243,13 +248,13 @@ void GitFileSystemWatcher::setupRepositoryWatching(const QString &repositoryPath
                 dirs.append(path);
             }
         }
-        
+
         m_repoFiles[repositoryPath] = files;
         m_repoDirs[repositoryPath] = dirs;
-        
+
         qInfo() << "INFO: [GitFileSystemWatcher] Successfully setup monitoring for repository:" << repositoryPath
                 << "Files:" << files.size() << "Directories:" << dirs.size();
-                
+
         // 输出当前监控的路径数量用于调试
         qInfo() << "INFO: [GitFileSystemWatcher] Total paths being watched:"
                 << "Files:" << m_fileWatcher->files().size()
@@ -285,14 +290,14 @@ QStringList GitFileSystemWatcher::getGitMetadataFiles(const QString &repositoryP
 
     // Git关键元数据文件
     QStringList gitFiles = {
-        gitDir + "/index",              // 暂存区索引
-        gitDir + "/HEAD",               // 当前分支指针
-        gitDir + "/config",             // 仓库配置
-        gitDir + "/FETCH_HEAD",         // fetch操作记录
-        gitDir + "/ORIG_HEAD",          // 操作前HEAD
-        gitDir + "/MERGE_HEAD",         // 合并状态
-        gitDir + "/COMMIT_EDITMSG",     // 提交消息
-        gitDir + "/MERGE_MSG"           // 合并消息
+        gitDir + "/index",   // 暂存区索引
+        gitDir + "/HEAD",   // 当前分支指针
+        gitDir + "/config",   // 仓库配置
+        gitDir + "/FETCH_HEAD",   // fetch操作记录
+        gitDir + "/ORIG_HEAD",   // 操作前HEAD
+        gitDir + "/MERGE_HEAD",   // 合并状态
+        gitDir + "/COMMIT_EDITMSG",   // 提交消息
+        gitDir + "/MERGE_MSG"   // 合并消息
     };
 
     for (const QString &file : gitFiles) {
@@ -309,12 +314,12 @@ QStringList GitFileSystemWatcher::getTrackedFiles(const QString &repositoryPath)
     qInfo() << "INFO: [GitFileSystemWatcher] Getting tracked files for repository:" << repositoryPath;
 
     QStringList trackedFiles;
-    
+
     // 使用git ls-files获取所有被跟踪的文件
     QProcess process;
     process.setWorkingDirectory(repositoryPath);
     process.start("git", { "ls-files", "-z" });
-    
+
     if (!process.waitForFinished(5000)) {
         qWarning() << "WARNING: [GitFileSystemWatcher] Failed to get tracked files for repository:" << repositoryPath;
         return trackedFiles;
@@ -329,14 +334,14 @@ QStringList GitFileSystemWatcher::getTrackedFiles(const QString &repositoryPath)
     int skippedCount = 0;
     for (const QString &relativePath : relativePaths) {
         if (fileCount >= MAX_FILES_PER_REPO) {
-            qWarning() << "WARNING: [GitFileSystemWatcher] Reached maximum file limit (" 
+            qWarning() << "WARNING: [GitFileSystemWatcher] Reached maximum file limit ("
                        << MAX_FILES_PER_REPO << ") for repository:" << repositoryPath;
             break;
         }
 
         QString absolutePath = repositoryPath + "/" + relativePath;
         QFileInfo fileInfo(absolutePath);
-        
+
         if (fileInfo.exists() && fileInfo.isFile()) {
             if (shouldWatchFile(absolutePath)) {
                 trackedFiles.append(absolutePath);
@@ -360,7 +365,7 @@ QStringList GitFileSystemWatcher::getTrackedFiles(const QString &repositoryPath)
         qDebug() << "[GitFileSystemWatcher] ... and" << (skippedCount - 5) << "more files were skipped";
     }
 
-    qInfo() << "INFO: [GitFileSystemWatcher] Selected" << trackedFiles.size() 
+    qInfo() << "INFO: [GitFileSystemWatcher] Selected" << trackedFiles.size()
             << "valid tracked files out of" << relativePaths.size() << "total files";
 
     return trackedFiles;
@@ -369,22 +374,22 @@ QStringList GitFileSystemWatcher::getTrackedFiles(const QString &repositoryPath)
 QStringList GitFileSystemWatcher::getImportantDirectories(const QString &repositoryPath) const
 {
     QStringList dirs;
-    
+
     // 仓库根目录
     dirs.append(repositoryPath);
-    
+
     // .git目录及其重要子目录
     QString gitDir = repositoryPath + "/.git";
     if (QDir(gitDir).exists()) {
         dirs.append(gitDir);
-        
+
         QStringList gitSubDirs = {
             gitDir + "/refs",
             gitDir + "/refs/heads",
             gitDir + "/refs/remotes",
             gitDir + "/logs"
         };
-        
+
         for (const QString &subDir : gitSubDirs) {
             if (QDir(subDir).exists()) {
                 dirs.append(subDir);
@@ -396,26 +401,26 @@ QStringList GitFileSystemWatcher::getImportantDirectories(const QString &reposit
     // 这样可以检测到新建文件和删除文件
     QDir repoDir(repositoryPath);
     QStringList subDirs = repoDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    
+
     int dirCount = 0;
-    const int maxDirs = 5000; // 限制监控的子目录数量
-    
+    const int maxDirs = 5000;   // 限制监控的子目录数量
+
     for (const QString &subDirName : subDirs) {
         if (dirCount >= maxDirs) break;
-        
+
         QString subDirPath = repositoryPath + "/" + subDirName;
-        
+
         if (shouldWatchDirectory(subDirPath, repositoryPath)) {
             dirs.append(subDirPath);
             dirCount++;
-            
+
             // 递归添加一层子目录
             QDir subDir(subDirPath);
             QStringList subSubDirs = subDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-            
+
             for (const QString &subSubDirName : subSubDirs) {
                 if (dirCount >= maxDirs) break;
-                
+
                 QString subSubDirPath = subDirPath + "/" + subSubDirName;
                 if (shouldWatchDirectory(subSubDirPath, repositoryPath)) {
                     dirs.append(subSubDirPath);
@@ -425,7 +430,7 @@ QStringList GitFileSystemWatcher::getImportantDirectories(const QString &reposit
         }
     }
 
-    qDebug() << "[GitFileSystemWatcher] Found" << dirs.size() << "directories to monitor (including" 
+    qDebug() << "[GitFileSystemWatcher] Found" << dirs.size() << "directories to monitor (including"
              << dirCount << "working directories)";
 
     return dirs;
@@ -434,7 +439,7 @@ QStringList GitFileSystemWatcher::getImportantDirectories(const QString &reposit
 bool GitFileSystemWatcher::shouldWatchFile(const QString &filePath) const
 {
     QFileInfo fileInfo(filePath);
-    
+
     // 检查文件是否存在
     if (!fileInfo.exists() || !fileInfo.isFile()) {
         return false;
@@ -449,11 +454,13 @@ bool GitFileSystemWatcher::shouldWatchFile(const QString &filePath) const
         return true;
     }
 
-    // 忽略的文件后缀（减少限制，只忽略明显的临时/编译文件）
+    // 忽略的文件后缀（扩展列表，忽略更多构建和临时文件）
     static const QStringList ignoredSuffixes = {
         "tmp", "temp", "bak", "swp", "swo", "~",
         "o", "obj", "exe", "dll", "so", "a", "lib",
-        "pyc", "pyo", "class"
+        "pyc", "pyo", "class", "d", "ts", "qm", "moc",
+        "cache", "log", "out", "debug", "cmake", "make",
+        "json", "txt", "internal", "depends"
     };
 
     if (ignoredSuffixes.contains(suffix)) {
@@ -461,11 +468,7 @@ bool GitFileSystemWatcher::shouldWatchFile(const QString &filePath) const
     }
 
     // 忽略隐藏文件（除了Git相关，但允许更多常见文件）
-    if (fileName.startsWith(".") && 
-        fileName != ".gitignore" && 
-        fileName != ".gitmodules" &&
-        fileName != ".gitattributes" &&
-        !fileName.endsWith(".md")) {
+    if (fileName.startsWith(".") && fileName != ".gitignore" && fileName != ".gitmodules" && fileName != ".gitattributes" && !fileName.endsWith(".md")) {
         return false;
     }
 
@@ -473,7 +476,7 @@ bool GitFileSystemWatcher::shouldWatchFile(const QString &filePath) const
     static const QStringList ignoredPaths = {
         "/node_modules/", "/build/", "/dist/", "/.vscode/", "/.idea/", "/__pycache__/"
     };
-    
+
     for (const QString &ignoredPath : ignoredPaths) {
         if (absolutePath.contains(ignoredPath)) {
             return false;
@@ -498,11 +501,12 @@ bool GitFileSystemWatcher::shouldWatchDirectory(const QString &dirPath, const QS
 
     QString dirName = dirInfo.fileName();
 
-    // 忽略的目录名
+    // 忽略的目录名（扩展列表，包含更多构建目录）
     static const QStringList ignoredDirs = {
         "node_modules", "build", "dist", "target", "bin", "obj",
         "__pycache__", ".vscode", ".idea", ".vs", "CMakeFiles",
-        "tmp", "temp", "cache", ".cache"
+        "tmp", "temp", "cache", ".cache", "debian", ".debhelper",
+        ".clangd", "autogen", "_autogen"
     };
 
     if (ignoredDirs.contains(dirName)) {
@@ -530,8 +534,7 @@ QString GitFileSystemWatcher::getRepositoryFromPath(const QString &filePath) con
     // 查找匹配的仓库（从最长路径开始匹配）
     QString bestMatch;
     for (const QString &repoPath : m_repositories) {
-        if ((absolutePath.startsWith(repoPath + "/") || absolutePath == repoPath) &&
-            repoPath.length() > bestMatch.length()) {
+        if ((absolutePath.startsWith(repoPath + "/") || absolutePath == repoPath) && repoPath.length() > bestMatch.length()) {
             bestMatch = repoPath;
         }
     }
@@ -546,15 +549,15 @@ void GitFileSystemWatcher::scheduleUpdate(const QString &repositoryPath)
     }
 
     m_pendingUpdates.insert(repositoryPath);
-    
+
     // 启动或重启防抖定时器
     m_updateTimer->start();
 }
 
 void GitFileSystemWatcher::addWatchPaths(const QStringList &paths, bool isFile)
 {
-    Q_UNUSED(isFile) // 当前版本不需要区分文件和目录类型
-    
+    Q_UNUSED(isFile)   // 当前版本不需要区分文件和目录类型
+
     if (paths.isEmpty()) {
         return;
     }
@@ -572,4 +575,58 @@ void GitFileSystemWatcher::addWatchPaths(const QStringList &paths, bool isFile)
         m_fileWatcher->addPaths(validPaths);
         qInfo() << "INFO: [GitFileSystemWatcher] Added" << validPaths.size() << "paths to file watcher";
     }
-} 
+}
+
+void GitFileSystemWatcher::checkAndAddNewDirectories(const QString &changedDirPath, const QString &repositoryPath)
+{
+    QDir changedDir(changedDirPath);
+    if (!changedDir.exists()) {
+        return;
+    }
+
+    // 获取当前正在监控的目录列表
+    QStringList currentlyWatched;
+    if (m_repoDirs.contains(repositoryPath)) {
+        currentlyWatched = m_repoDirs[repositoryPath];
+    }
+
+    // 获取变化目录下的所有子目录
+    QStringList subDirs = changedDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    QStringList newDirsToWatch;
+
+    for (const QString &subDirName : subDirs) {
+        QString subDirPath = changedDirPath + "/" + subDirName;
+
+        // 检查是否应该监控这个目录，且当前未被监控
+        if (shouldWatchDirectory(subDirPath, repositoryPath) && !currentlyWatched.contains(subDirPath)) {
+
+            newDirsToWatch.append(subDirPath);
+
+            // 递归检查子目录（只检查一层，避免性能问题）
+            QDir subDir(subDirPath);
+            QStringList subSubDirs = subDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+
+            for (const QString &subSubDirName : subSubDirs) {
+                QString subSubDirPath = subDirPath + "/" + subSubDirName;
+                if (shouldWatchDirectory(subSubDirPath, repositoryPath) && !currentlyWatched.contains(subSubDirPath)) {
+                    newDirsToWatch.append(subSubDirPath);
+                }
+            }
+        }
+    }
+
+    // 添加新发现的目录到监控
+    if (!newDirsToWatch.isEmpty()) {
+        m_fileWatcher->addPaths(newDirsToWatch);
+
+        // 更新缓存
+        if (m_repoDirs.contains(repositoryPath)) {
+            m_repoDirs[repositoryPath].append(newDirsToWatch);
+        } else {
+            m_repoDirs[repositoryPath] = newDirsToWatch;
+        }
+
+        qInfo() << "INFO: [GitFileSystemWatcher] Dynamically added" << newDirsToWatch.size()
+                << "new directories to monitoring:" << newDirsToWatch;
+    }
+}
