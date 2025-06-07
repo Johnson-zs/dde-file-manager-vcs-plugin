@@ -8,6 +8,52 @@
 
 namespace Utils {
 
+// 递归辅助函数的前向声明
+namespace {
+bool isDirectoryEmptyRecursive(const QString &path, int remainingDepth)
+{
+    if (remainingDepth <= 0) {
+        // 达到最大深度，为了性能考虑，假设不为空
+        return false;
+    }
+    
+    QDir directory(path);
+    if (!directory.exists()) {
+        return true; // 不存在的目录视为空
+    }
+    
+    // 快速路径：如果目录真的为空，直接返回true
+    if (directory.isEmpty()) {
+        return true;
+    }
+    
+    // 检查是否有文件
+    QStringList files = directory.entryList(QDir::Files | QDir::NoDotAndDotDot);
+    if (!files.isEmpty()) {
+        return false; // 有文件，不为空
+    }
+    
+    // 只检查目录
+    QStringList dirs = directory.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    const int maxDirsToCheck = 5; // 递归时减少检查数量
+    
+    if (dirs.size() > maxDirsToCheck) {
+        // 子目录太多，为了性能考虑，假设不为空
+        return false;
+    }
+    
+    // 递归检查每个子目录
+    for (const QString &subDir : dirs) {
+        QString subDirPath = directory.absoluteFilePath(subDir);
+        if (!isDirectoryEmptyRecursive(subDirPath, remainingDepth - 1)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+}
+
 QString repositoryBaseDir(const QString &directory)
 {
     QProcess process;
@@ -133,7 +179,45 @@ QStringList makeDirGroup(const QString &directory, const QString &relativeFileNa
 bool isDirectoryEmpty(const QString &path)
 {
     QDir directory(path);
-    return directory.exists() && directory.isEmpty();
+    if (!directory.exists()) {
+        return false;
+    }
+    
+    // 快速路径：如果目录真的为空，直接返回true
+    if (directory.isEmpty()) {
+        return true;
+    }
+    
+    // 检查是否只包含空目录（Git意义上的空）
+    // 设置过滤器：只显示目录，不显示文件，不显示隐藏文件
+    QStringList entries = directory.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    
+    // 如果有文件（通过检查总条目数与目录数的差异），则不为空
+    QStringList allEntries = directory.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
+    if (allEntries.size() > entries.size()) {
+        // 存在文件，目录不为空
+        return false;
+    }
+    
+    // 只有目录，需要检查这些目录是否都为空
+    // 为了性能考虑，限制递归深度和检查数量
+    const int maxDirsToCheck = 10; // 最多检查10个目录
+    const int maxDepth = 3; // 最大递归深度为3层
+    
+    if (entries.size() > maxDirsToCheck) {
+        // 如果子目录太多，为了性能考虑，假设不为空
+        return false;
+    }
+    
+    // 递归检查每个子目录是否为空
+    for (const QString &subDir : entries) {
+        QString subDirPath = directory.absoluteFilePath(subDir);
+        if (!isDirectoryEmptyRecursive(subDirPath, maxDepth - 1)) {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 bool isIgnoredDirectory(const QString &directory, const QString &path)

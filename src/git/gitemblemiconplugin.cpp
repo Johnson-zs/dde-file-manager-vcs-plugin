@@ -62,8 +62,12 @@ DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePat
         break;
     }
 
-    if (Utils::isDirectoryEmpty(path))
+    // 检查目录是否在Git意义上为空（只包含空子目录）
+    // 这样可以正确处理包含空子目录的情况，Git不会跟踪纯空目录
+    if (Utils::isDirectoryEmpty(path)) {
         iconName.clear();
+        // qDebug() << "[GitEmblemIconPlugin] Directory is Git-empty, clearing icon:" << path;
+    }
 
     DFMExtEmblemIconLayout iconLayout { DFMExtEmblemIconLayout::LocationType::BottomLeft, iconName.toStdString() };
     layouts.push_back(iconLayout);

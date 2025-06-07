@@ -51,26 +51,41 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
 
             // if file is part of a sub-directory, record the directory
             if (relativeFileName.contains('/')) {
-                if (state == ItemVersion::IgnoredVersion)
-                    continue;
-                if (state == ItemVersion::AddedVersion || state == ItemVersion::RemovedVersion)
-                    state = ItemVersion::LocallyModifiedVersion;
+                ItemVersion dirState = state;
+                
+                // 对于被忽略的文件，其父目录应该显示为忽略状态
+                // 但优先级较低，可以被其他状态覆盖
+                if (state == ItemVersion::IgnoredVersion) {
+                    dirState = ItemVersion::IgnoredVersion;
+                } else {
+                    // 对于其他状态，保持原有逻辑
+                    if (state == ItemVersion::AddedVersion || state == ItemVersion::RemovedVersion)
+                        dirState = ItemVersion::LocallyModifiedVersion;
+                }
+                
                 const QStringList &absoluteDirNames { Utils::makeDirGroup(directory, relativeFileName) };
                 for (const auto &absoluteDirName : absoluteDirNames) {
                     Q_ASSERT(QUrl::fromLocalFile(absoluteDirName).isValid());
                     if (versionInfoHash.contains(absoluteDirName)) {
                         ItemVersion oldState = versionInfoHash.value(absoluteDirName);
-                        // only keep the most important state for a directory
+                        
+                        // 目录状态优先级（从高到低）：
+                        // ConflictingVersion > LocallyModifiedUnstagedVersion > LocallyModifiedVersion > 其他状态 > IgnoredVersion
                         if (oldState == ItemVersion::ConflictingVersion)
                             continue;
-                        if (oldState == ItemVersion::LocallyModifiedUnstagedVersion && state != ItemVersion::ConflictingVersion)
+                        if (oldState == ItemVersion::LocallyModifiedUnstagedVersion && dirState != ItemVersion::ConflictingVersion)
                             continue;
                         if (oldState == ItemVersion::LocallyModifiedVersion
-                            && state != ItemVersion::LocallyModifiedUnstagedVersion && state != ItemVersion::ConflictingVersion)
+                            && dirState != ItemVersion::LocallyModifiedUnstagedVersion && dirState != ItemVersion::ConflictingVersion)
                             continue;
-                        versionInfoHash.insert(absoluteDirName, state);
+                        
+                        // 如果旧状态不是IgnoredVersion，但新状态是IgnoredVersion，不覆盖
+                        if (oldState != ItemVersion::IgnoredVersion && dirState == ItemVersion::IgnoredVersion)
+                            continue;
+                            
+                        versionInfoHash.insert(absoluteDirName, dirState);
                     } else {
-                        versionInfoHash.insert(absoluteDirName, state);
+                        versionInfoHash.insert(absoluteDirName, dirState);
                     }
                 }
             }
