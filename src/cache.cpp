@@ -1,5 +1,7 @@
 #include "cache.h"
 
+#include <QDebug>
+
 namespace Global {
 
 Cache &Cache::instance()
@@ -11,8 +13,13 @@ Cache &Cache::instance()
 void Cache::resetVersion(const QString &repositoryPath, QHash<QString, ItemVersion> versionInfo)
 {
     QMutexLocker locker { &m_mutex };
-    if (m_repositories.value(repositoryPath) != versionInfo)
+    // 总是插入/更新仓库信息，即使versionInfo为空
+    // 这确保干净仓库的路径也会被记录，便于后续查询
+    if (!m_repositories.contains(repositoryPath) || m_repositories.value(repositoryPath) != versionInfo) {
         m_repositories.insert(repositoryPath, versionInfo);
+        qDebug() << "[Cache::resetVersion] Updated repository:" << repositoryPath
+                 << "with" << versionInfo.size() << "version entries";
+    }
 }
 
 void Cache::removeVersion(const QString &repositoryPath)
