@@ -65,6 +65,13 @@ public:
     explicit GitCheckoutDialog(const QString &repositoryPath, QWidget *parent = nullptr);
     ~GitCheckoutDialog();
 
+Q_SIGNALS:
+    /**
+     * @brief 仓库状态发生变化的信号
+     * @param repositoryPath 仓库路径
+     */
+    void repositoryStateChanged(const QString &repositoryPath);
+
 private Q_SLOTS:
     // 用户交互相关槽函数
     void onSearchTextChanged(const QString &text);

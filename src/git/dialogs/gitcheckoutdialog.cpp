@@ -1354,8 +1354,22 @@ bool GitCheckoutDialog::executeGitCommandWithResult(const QStringList &args, con
         if (success) {
             qDebug() << "[GitCheckoutDialog] Git operation completed successfully";
 
-            // 刷新缓存状态 - 使用正确的API
-            Global::Cache::instance().removeVersion(m_repositoryPath);
+            // 优化：不删除整个仓库缓存，而是重置为空状态让系统重新扫描
+            // 这样可以保持仓库路径在缓存中，避免isInsideRepositoryFile失效
+            if (operation.contains("checkout") || operation.contains("branch")) {
+                // 对于分支切换操作，重置文件状态但保留仓库路径
+                QTimer::singleShot(50, this, [this]() {
+                    // 使用空的版本信息重置缓存，保留仓库路径但清空文件状态
+                    QHash<QString, Global::ItemVersion> emptyVersionInfo;
+                    emptyVersionInfo.insert(m_repositoryPath, Global::ItemVersion::NormalVersion);
+                    Global::Cache::instance().resetVersion(m_repositoryPath, emptyVersionInfo);
+                    
+                    qDebug() << "[GitCheckoutDialog] Reset repository cache to trigger refresh while preserving repository path";
+                    
+                    // 发送信号通知状态变化
+                    emit repositoryStateChanged(m_repositoryPath);
+                });
+            }
 
             showOperationResult(true, operation, tr("Operation completed successfully."));
         } else {

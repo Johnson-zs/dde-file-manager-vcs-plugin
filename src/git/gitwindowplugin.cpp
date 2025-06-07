@@ -1,4 +1,5 @@
 #include "gitwindowplugin.h"
+#include "gitfilesystemwatcher.h"
 
 #include <QUrl>
 #include <QProcess>
@@ -20,6 +21,9 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
     process.start("git", { "--no-optional-locks", "status", "--porcelain", "-z", "-u", "--ignored" });
     const QString &dirBelowBaseDir { Utils::findPathBelowGitBaseDir(directory) };
     QHash<QString, ItemVersion> versionInfoHash;
+    
+    qDebug() << "[GitVersionWorker] Retrieving status for directory:" << directory
+             << "dirBelowBaseDir:" << dirBelowBaseDir;
     while (process.waitForReadyRead()) {
         char buffer[1024];
         while (Utils::readUntilZeroChar(&process, buffer, sizeof(buffer)) > 0) {
@@ -33,6 +37,9 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
                 Utils::readUntilZeroChar(&process, nullptr, 0);   // discard old file name
             }
             state = Utils::parseXYState(state, X, Y);
+            
+            qDebug() << "[GitVersionWorker] Parsed line - X:" << X << "Y:" << Y 
+                     << "fileName:" << fileName << "state:" << (int)state;
             // decide what to record about that file
             if (state == ItemVersion::NormalVersion || !fileName.startsWith(dirBelowBaseDir))
                 continue;
@@ -72,6 +79,11 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
         }
     }
 
+    qDebug() << "[GitVersionWorker] Final versionInfoHash contains" << versionInfoHash.size() << "entries";
+    for (auto it = versionInfoHash.begin(); it != versionInfoHash.end(); ++it) {
+        qDebug() << "[GitVersionWorker] Entry:" << it.key() << "status:" << (int)it.value();
+    }
+
     return versionInfoHash;
 }
 
@@ -87,8 +99,9 @@ void GitVersionWorker::onRetrieval(const QUrl &url)
 
     // retrival
     auto versionInfoHash { ::retrieval(directory) };
-    if (versionInfoHash.isEmpty())
-        versionInfoHash.insert(repositoryPath, ItemVersion::NormalVersion);
+    // 关键修复：不要在versionInfoHash为空时插入NormalVersion
+    // 空的versionInfoHash意味着没有任何文件状态变化，这是正常的
+    // 让Global::Cache来处理缺失的条目，它会正确返回NormalVersion
 
     if (!Global::Cache::instance().allRepositoryPaths().contains(repositoryPath))
         emit newRepositoryAdded(repositoryPath);
@@ -102,6 +115,8 @@ GitVersionController::GitVersionController()
     Q_ASSERT(qApp->thread() == QThread::currentThread());
     Q_ASSERT(!m_timer);
 
+    qInfo() << "INFO: [GitVersionController] Initializing with real-time file system monitoring";
+
     GitVersionWorker *worker { new GitVersionWorker };
     worker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, worker, &QObject::deleteLater);
@@ -109,6 +124,15 @@ GitVersionController::GitVersionController()
             worker, &GitVersionWorker::onRetrieval, Qt::QueuedConnection);
     connect(worker, &GitVersionWorker::newRepositoryAdded,
             this, &GitVersionController::onNewRepositoryAdded, Qt::QueuedConnection);
+
+    // 初始化文件系统监控器
+    if (m_useFileSystemWatcher) {
+        m_fileSystemWatcher = new GitFileSystemWatcher(this);
+        connect(m_fileSystemWatcher, &GitFileSystemWatcher::repositoryChanged,
+                this, &GitVersionController::onRepositoryChanged, Qt::QueuedConnection);
+
+        qInfo() << "INFO: [GitVersionController] Real-time file system watcher enabled";
+    }
 
     m_thread.start();
 }
@@ -121,28 +145,53 @@ GitVersionController::~GitVersionController()
 
 void GitVersionController::onNewRepositoryAdded(const QString &path)
 {
-    Q_UNUSED(path);
+    qInfo() << "INFO: [GitVersionController] New repository added:" << path;
 
+    // 添加到文件系统监控器
+    if (m_fileSystemWatcher) {
+        m_fileSystemWatcher->addRepository(path);
+        qInfo() << "INFO: [GitVersionController] Added repository to file system watcher:" << path;
+    }
+
+    // 保留定时器作为备用机制（降低频率）
     if (m_timer)
         return;
 
-    // init timer
+    // init timer with longer interval as backup
     static std::once_flag flag;
     std::call_once(flag, [this]() {
         m_timer = new QTimer(this);
         connect(m_timer, &QTimer::timeout, this, &GitVersionController::onTimeout);
-        m_timer->start(2000);
+        // 使用更长的间隔作为备用机制（30秒）
+        int timerInterval = m_useFileSystemWatcher ? 30000 : 2000;
+        m_timer->start(timerInterval);
+
+        qInfo() << "INFO: [GitVersionController] Backup timer started with interval:" << timerInterval << "ms";
     });
 }
 
 void GitVersionController::onTimeout()
 {
+    qDebug() << "[GitVersionController] Backup timer triggered - performing periodic update";
+
     const auto &paths { Global::Cache::instance().allRepositoryPaths() };
     std::for_each(paths.begin(), paths.end(), [this](const auto &path) {
         const QUrl &url { QUrl::fromLocalFile(path) };
         if (url.isValid())
             emit requestRetrieval(url);
     });
+}
+
+void GitVersionController::onRepositoryChanged(const QString &repositoryPath)
+{
+    qInfo() << "INFO: [GitVersionController] Repository changed detected:" << repositoryPath;
+
+    // 立即触发状态更新
+    const QUrl &url { QUrl::fromLocalFile(repositoryPath) };
+    if (url.isValid()) {
+        emit requestRetrieval(url);
+        qDebug() << "[GitVersionController] Triggered immediate update for repository:" << repositoryPath;
+    }
 }
 
 GitWindowPlugin::GitWindowPlugin()

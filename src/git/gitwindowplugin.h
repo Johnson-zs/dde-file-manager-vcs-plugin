@@ -7,6 +7,8 @@
 #include <QThread>
 #include <QTimer>
 
+class GitFileSystemWatcher;
+
 class GitVersionWorker : public QObject
 {
     Q_OBJECT
@@ -32,10 +34,15 @@ Q_SIGNALS:
 private Q_SLOTS:
     void onNewRepositoryAdded(const QString &path);
     void onTimeout();
+    void onRepositoryChanged(const QString &repositoryPath);
+
+
 
 private:
     QThread m_thread;
     QTimer *m_timer { nullptr };
+    GitFileSystemWatcher *m_fileSystemWatcher { nullptr };
+    bool m_useFileSystemWatcher { true };
 };
 
 class GitWindowPlugin : public DFMEXT::DFMExtWindowPlugin
