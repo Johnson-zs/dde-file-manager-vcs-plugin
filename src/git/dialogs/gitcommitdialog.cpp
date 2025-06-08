@@ -382,6 +382,7 @@ GitCommitDialog::GitCommitDialog(const QString &repositoryPath, QWidget *parent)
     setupFileView();
     setupContextMenu();
     loadChangedFiles();
+    loadCommitTemplate();
 
     // 安装事件过滤器来捕获TreeView的键盘事件
     m_fileView->installEventFilter(this);
@@ -843,6 +844,67 @@ void GitCommitDialog::loadLastCommitMessage()
     }
 }
 
+void GitCommitDialog::loadCommitTemplate()
+{
+    // Don't load template if in amend mode (amend should show last commit message)
+    if (m_isAmendMode) {
+        return;
+    }
+
+    // First check if commit.template is configured
+    QProcess configProcess;
+    configProcess.setWorkingDirectory(m_repositoryPath);
+    configProcess.start("git", QStringList() << "config" << "--get" << "commit.template");
+
+    if (!configProcess.waitForFinished(3000)) {
+        qDebug() << "[GitCommitDialog] Git config command timed out";
+        return;
+    }
+
+    if (configProcess.exitCode() != 0) {
+        qDebug() << "[GitCommitDialog] No commit.template configured";
+        return;
+    }
+
+    QString templatePath = QString::fromUtf8(configProcess.readAllStandardOutput()).trimmed();
+    
+    if (templatePath.isEmpty()) {
+        qDebug() << "[GitCommitDialog] Empty commit.template path";
+        return;
+    }
+
+    // Handle relative paths - make them relative to the repository root
+    if (!QDir::isAbsolutePath(templatePath)) {
+        templatePath = QDir(m_repositoryPath).absoluteFilePath(templatePath);
+    }
+
+    // Read the template file
+    QFile templateFile(templatePath);
+    if (!templateFile.exists()) {
+        qWarning() << "[GitCommitDialog] Commit template file does not exist:" << templatePath;
+        return;
+    }
+
+    if (!templateFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "[GitCommitDialog] Failed to open commit template file:" << templatePath;
+        return;
+    }
+
+    m_commitTemplate = QString::fromUtf8(templateFile.readAll()).trimmed();
+    
+    if (!m_commitTemplate.isEmpty()) {
+        // Only set template if message edit is empty to avoid overwriting user input
+        if (m_messageEdit->toPlainText().isEmpty()) {
+            m_messageEdit->setPlainText(m_commitTemplate);
+            qDebug() << "[GitCommitDialog] Loaded commit template from:" << templatePath;
+        } else {
+            qDebug() << "[GitCommitDialog] Commit template loaded but not applied (message edit not empty)";
+        }
+    } else {
+        qDebug() << "[GitCommitDialog] Commit template file is empty:" << templatePath;
+    }
+}
+
 bool GitCommitDialog::validateCommitMessage()
 {
     const QString message = getCommitMessage();
@@ -1084,7 +1146,9 @@ void GitCommitDialog::onAmendToggled(bool enabled)
     if (enabled) {
         loadLastCommitMessage();
     } else {
+        // When disabling amend mode, clear the message and load template if available
         m_messageEdit->clear();
+        loadCommitTemplate();
     }
 
     updateButtonStates();

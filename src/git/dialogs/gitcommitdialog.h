@@ -182,6 +182,7 @@ private:
     QWidget *createFileViewPlaceholder();
     void loadChangedFiles();
     void loadLastCommitMessage();
+    void loadCommitTemplate();
     bool validateCommitMessage();
     void commitChanges();
     void updateFileCountLabels();
@@ -208,6 +209,7 @@ private:
 
     QString m_repositoryPath;
     QString m_lastCommitMessage;
+    QString m_commitTemplate;
     bool m_isAmendMode;
     bool m_isAllowEmpty;
 
