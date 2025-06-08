@@ -238,7 +238,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
         logAction->setToolTip(QString("View commit history for '%1'\nCurrent status: %2")
                                       .arg(fileName, statusText)
                                       .toStdString());
-        logAction->registerTriggered([this, filePath](DFMEXT::DFMExtAction *action, bool checked) {
+        logAction->registerTriggered([this, filePath, currentPath](DFMEXT::DFMExtAction *action, bool checked) {
             Q_UNUSED(action)
             Q_UNUSED(checked)
             QString repoPath;
@@ -247,7 +247,7 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
                 repoPath = filePath;
             } else {
                 // 否则通过filePath获取仓库根目录
-                repoPath = Utils::repositoryBaseDir(filePath);
+                repoPath = Utils::repositoryBaseDir(currentPath);
             }
             m_operationService->showFileLog(repoPath.toStdString(), filePath.toStdString());
         });
