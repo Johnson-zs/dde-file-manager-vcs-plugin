@@ -255,7 +255,7 @@ Global::ItemVersion getFileGitStatus(const QString &filePath)
 
 bool canAddFile(const QString &filePath)
 {
-    if (!isInsideRepositoryFile(filePath))
+    if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))
         return false;
 
     auto status = getFileGitStatus(filePath);
@@ -269,7 +269,7 @@ bool canAddFile(const QString &filePath)
 
 bool canRemoveFile(const QString &filePath)
 {
-    if (!isInsideRepositoryFile(filePath))
+    if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))
         return false;
 
     auto status = getFileGitStatus(filePath);
@@ -284,7 +284,7 @@ bool canRemoveFile(const QString &filePath)
 
 bool canRevertFile(const QString &filePath)
 {
-    if (!isInsideRepositoryFile(filePath))
+    if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))
         return false;
 
     auto status = getFileGitStatus(filePath);
@@ -299,7 +299,7 @@ bool canRevertFile(const QString &filePath)
 
 bool canShowFileLog(const QString &filePath)
 {
-    if (!isInsideRepositoryFile(filePath))
+    if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))
         return false;
 
     auto status = getFileGitStatus(filePath);
@@ -312,7 +312,7 @@ bool canShowFileLog(const QString &filePath)
 
 bool canShowFileDiff(const QString &filePath)
 {
-    if (!isInsideRepositoryFile(filePath))
+    if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))
         return false;
 
     auto status = getFileGitStatus(filePath);
@@ -329,7 +329,7 @@ bool canShowFileBlame(const QString &filePath)
     if (QFileInfo(filePath).isDir())
         return false;
 
-    if (!isInsideRepositoryFile(filePath))
+    if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))
         return false;
 
     auto status = getFileGitStatus(filePath);
@@ -345,7 +345,7 @@ bool canShowFileBlame(const QString &filePath)
 
 QString getFileStatusDescription(const QString &filePath)
 {
-    if (!isInsideRepositoryFile(filePath))
+    if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))
         return QObject::tr("Not in Git repository");
 
     auto status = getFileGitStatus(filePath);

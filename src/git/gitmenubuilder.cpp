@@ -50,10 +50,11 @@ bool GitMenuBuilder::buildMultiFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
         return false;
     }
 
-    // 检查所有文件是否都在Git仓库中
+    // 检查所有文件是否都在Git仓库中或者是仓库根目录本身
     bool allInRepo = true;
     for (const auto &path : pathList) {
-        if (!Utils::isInsideRepositoryFile(QString::fromStdString(path))) {
+        const QString filePath = QString::fromStdString(path);
+        if (!Utils::isInsideRepositoryFile(filePath) && !Utils::isGitRepositoryRoot(filePath)) {
             allInRepo = false;
             break;
         }
@@ -237,10 +238,17 @@ void GitMenuBuilder::addViewOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
         logAction->setToolTip(QString("View commit history for '%1'\nCurrent status: %2")
                                       .arg(fileName, statusText)
                                       .toStdString());
-        logAction->registerTriggered([this, currentPath, filePath](DFMEXT::DFMExtAction *action, bool checked) {
+        logAction->registerTriggered([this, filePath](DFMEXT::DFMExtAction *action, bool checked) {
             Q_UNUSED(action)
             Q_UNUSED(checked)
-            QString repoPath = Utils::repositoryBaseDir(currentPath);
+            QString repoPath;
+            // 如果filePath是仓库根目录，直接使用它
+            if (Utils::isGitRepositoryRoot(filePath)) {
+                repoPath = filePath;
+            } else {
+                // 否则通过filePath获取仓库根目录
+                repoPath = Utils::repositoryBaseDir(filePath);
+            }
             m_operationService->showFileLog(repoPath.toStdString(), filePath.toStdString());
         });
         menu->addAction(logAction);

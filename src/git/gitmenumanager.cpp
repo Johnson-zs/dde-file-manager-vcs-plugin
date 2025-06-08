@@ -38,8 +38,8 @@ bool GitMenuManager::buildNormalMenu(DFMEXT::DFMExtMenu *main,
 
     const QString filePath = QString::fromStdString(focusPath);
 
-    // 检查是否在Git仓库中
-    if (!Utils::isInsideRepositoryFile(filePath)) {
+    // 检查是否在Git仓库中或者是仓库根目录本身
+    if (!Utils::isInsideRepositoryFile(filePath) && !Utils::isGitRepositoryRoot(filePath)) {
         return false;
     }
 
