@@ -7,6 +7,7 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QDebug>
+#include <QFileInfo>
 
 #include <cache.h>
 #include "utils.h"
@@ -17,6 +18,7 @@ USING_DFMEXT_NAMESPACE
 // 静态成员变量定义
 QHash<QString, GitEmblemIconPlugin::CacheEntry> GitEmblemIconPlugin::s_pathCache;
 QStringList GitEmblemIconPlugin::s_cacheOrder;
+std::once_flag GitEmblemIconPlugin::s_initOnceFlag;
 
 GitEmblemIconPlugin::GitEmblemIconPlugin()
     : DFMEXT::DFMExtEmblemIconPlugin()
@@ -26,18 +28,38 @@ GitEmblemIconPlugin::GitEmblemIconPlugin()
     });
 }
 
+// 首次初始化函数
+void GitEmblemIconPlugin::performFirstTimeInitialization(const QString &filePath)
+{
+    // 获取文件所在目录
+    QFileInfo fileInfo(filePath);
+    const QString dirPath = fileInfo.absolutePath();
+
+    qDebug() << "[GitEmblemIconPlugin] First-time initialization with directory:" << dirPath;
+
+    // 注册目录到仓库服务进行发现
+    GitRepositoryService::instance().registerRepositoryDiscovered(dirPath);
+}
+
 // work in thread
 DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePath, int systemIconCount) const
 {
     Q_UNUSED(systemIconCount)
-    using Global::ItemVersion;
+
     const QString &path { QString::fromStdString(filePath) };
+
+    // 首次调用时执行初始化
+    std::call_once(s_initOnceFlag, [&path]() {
+        performFirstTimeInitialization(path);
+    });
+
+    using Global::ItemVersion;
     DFMExtEmblem emblem;
-    
+
     // 检查是否在已知仓库中（包括仓库根目录本身）
     bool isInRepository = Utils::isInsideRepositoryFile(path);
     bool isRepositoryRoot = false;
-    
+
     if (!isInRepository) {
         // 检查本地缓存
         bool isRepository = false;
@@ -54,10 +76,10 @@ DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePat
                 // 发现新仓库，添加到缓存
                 addToCache(path, true);
                 qDebug() << "[GitEmblemIconPlugin] Discovered new repository:" << path;
-                
+
                 // 通过服务注册新发现的仓库并触发异步更新
                 GitRepositoryService::instance().registerRepositoryDiscovered(path);
-                
+
                 // 当前返回空，等下次刷新时显示真实状态
                 return emblem;
             } else {
@@ -67,7 +89,7 @@ DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePat
             }
         }
     }
-    
+
     // 如果既不在仓库内也不是仓库根目录，返回空
     if (!isInRepository && !isRepositoryRoot) {
         return emblem;
@@ -126,15 +148,15 @@ DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePat
 bool GitEmblemIconPlugin::isPathCached(const QString &path, bool &isRepository) const
 {
     cleanExpiredCache();
-    
+
     auto it = s_pathCache.find(path);
     if (it != s_pathCache.end()) {
         isRepository = it.value().isRepository;
-        
+
         // 更新 LRU 顺序
         s_cacheOrder.removeOne(path);
         s_cacheOrder.append(path);
-        
+
         return true;
     }
     return false;
@@ -145,11 +167,11 @@ void GitEmblemIconPlugin::addToCache(const QString &path, bool isRepository) con
     CacheEntry entry;
     entry.isRepository = isRepository;
     entry.timestamp = QDateTime::currentMSecsSinceEpoch();
-    
+
     s_pathCache[path] = entry;
-    s_cacheOrder.removeOne(path); // 移除可能的重复项
+    s_cacheOrder.removeOne(path);   // 移除可能的重复项
     s_cacheOrder.append(path);
-    
+
     manageCacheSize();
 }
 
@@ -157,7 +179,7 @@ void GitEmblemIconPlugin::cleanExpiredCache() const
 {
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     auto it = s_pathCache.begin();
-    
+
     while (it != s_pathCache.end()) {
         if (now - it.value().timestamp > CACHE_EXPIRE_MS) {
             QString path = it.key();

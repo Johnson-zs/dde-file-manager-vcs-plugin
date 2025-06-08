@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QString>
+#include <mutex>
 
 class GitEmblemIconPlugin : public DFMEXT::DFMExtEmblemIconPlugin
 {
@@ -24,6 +25,10 @@ private:
     static QStringList s_cacheOrder; // LRU 顺序
     static const int MAX_CACHE_SIZE = 1000;
     static const qint64 CACHE_EXPIRE_MS = 60000; // 1分钟过期
+    
+    // 首次初始化相关
+    static std::once_flag s_initOnceFlag;
+    static void performFirstTimeInitialization(const QString &filePath);
     
     // 缓存管理方法
     bool isPathCached(const QString &path, bool &isRepository) const;

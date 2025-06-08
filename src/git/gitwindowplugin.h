@@ -37,8 +37,6 @@ private Q_SLOTS:
     void onRepositoryChanged(const QString &repositoryPath);
     void onRepositoryUpdateRequested(const QString &repositoryPath);
 
-
-
 private:
     QThread m_thread;
     QTimer *m_timer { nullptr };
@@ -53,6 +51,7 @@ public:
 
     void windowUrlChanged(std::uint64_t winId,
                           const std::string &urlString) DFM_FAKE_OVERRIDE;
+    void firstWindowOpened(std::uint64_t winId) DFM_FAKE_OVERRIDE;
     void windowClosed(std::uint64_t winId) DFM_FAKE_OVERRIDE;
 
 private:

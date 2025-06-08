@@ -20,34 +20,31 @@ static ItemVersion calculateRepositoryRootStatus(const QHash<QString, ItemVersio
     if (versionInfoHash.isEmpty()) {
         return ItemVersion::NormalVersion;
     }
-    
+
     ItemVersion rootState = ItemVersion::NormalVersion;
-    
+
     // 遍历所有状态，找出最高优先级的状态
     for (auto it = versionInfoHash.begin(); it != versionInfoHash.end(); ++it) {
         ItemVersion currentState = it.value();
-        
+
         // 忽略IgnoredVersion，它不应该影响根目录状态
         if (currentState == ItemVersion::IgnoredVersion) {
             continue;
         }
-        
+
         // 状态优先级：ConflictingVersion > LocallyModifiedUnstagedVersion > LocallyModifiedVersion > 其他状态
         if (currentState == ItemVersion::ConflictingVersion) {
-            return ItemVersion::ConflictingVersion; // 最高优先级，直接返回
-        } else if (currentState == ItemVersion::LocallyModifiedUnstagedVersion && 
-                   rootState != ItemVersion::ConflictingVersion) {
+            return ItemVersion::ConflictingVersion;   // 最高优先级，直接返回
+        } else if (currentState == ItemVersion::LocallyModifiedUnstagedVersion && rootState != ItemVersion::ConflictingVersion) {
             rootState = ItemVersion::LocallyModifiedUnstagedVersion;
-        } else if (currentState == ItemVersion::LocallyModifiedVersion && 
-                   rootState != ItemVersion::ConflictingVersion && 
-                   rootState != ItemVersion::LocallyModifiedUnstagedVersion) {
+        } else if (currentState == ItemVersion::LocallyModifiedVersion && rootState != ItemVersion::ConflictingVersion && rootState != ItemVersion::LocallyModifiedUnstagedVersion) {
             rootState = ItemVersion::LocallyModifiedVersion;
         } else if (rootState == ItemVersion::NormalVersion) {
             // 如果根目录状态还是Normal，则使用当前状态
             rootState = currentState;
         }
     }
-    
+
     return rootState;
 }
 
@@ -90,7 +87,7 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
             // if file is part of a sub-directory, record the directory
             if (relativeFileName.contains('/')) {
                 ItemVersion dirState = state;
-                
+
                 // 对于被忽略的文件，其父目录应该显示为忽略状态
                 // 但优先级较低，可以被其他状态覆盖
                 if (state == ItemVersion::IgnoredVersion) {
@@ -100,13 +97,13 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
                     if (state == ItemVersion::AddedVersion || state == ItemVersion::RemovedVersion)
                         dirState = ItemVersion::LocallyModifiedVersion;
                 }
-                
+
                 const QStringList &absoluteDirNames { Utils::makeDirGroup(directory, relativeFileName) };
                 for (const auto &absoluteDirName : absoluteDirNames) {
                     Q_ASSERT(QUrl::fromLocalFile(absoluteDirName).isValid());
                     if (versionInfoHash.contains(absoluteDirName)) {
                         ItemVersion oldState = versionInfoHash.value(absoluteDirName);
-                        
+
                         // 目录状态优先级（从高到低）：
                         // ConflictingVersion > LocallyModifiedUnstagedVersion > LocallyModifiedVersion > 其他状态 > IgnoredVersion
                         if (oldState == ItemVersion::ConflictingVersion)
@@ -116,11 +113,11 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
                         if (oldState == ItemVersion::LocallyModifiedVersion
                             && dirState != ItemVersion::LocallyModifiedUnstagedVersion && dirState != ItemVersion::ConflictingVersion)
                             continue;
-                        
+
                         // 如果旧状态不是IgnoredVersion，但新状态是IgnoredVersion，不覆盖
                         if (oldState != ItemVersion::IgnoredVersion && dirState == ItemVersion::IgnoredVersion)
                             continue;
-                            
+
                         versionInfoHash.insert(absoluteDirName, dirState);
                     } else {
                         versionInfoHash.insert(absoluteDirName, dirState);
@@ -177,7 +174,7 @@ GitVersionController::GitVersionController()
             worker, &GitVersionWorker::onRetrieval, Qt::QueuedConnection);
     connect(worker, &GitVersionWorker::newRepositoryAdded,
             this, &GitVersionController::onNewRepositoryAdded, Qt::QueuedConnection);
-            
+
     // 连接到公共仓库服务
     connect(&GitRepositoryService::instance(), &GitRepositoryService::repositoryUpdateRequested,
             this, &GitVersionController::onRepositoryUpdateRequested, Qt::QueuedConnection);
@@ -265,6 +262,9 @@ void GitVersionController::onRepositoryUpdateRequested(const QString &repository
 
 GitWindowPlugin::GitWindowPlugin()
 {
+    registerFirstWindowOpened([this](std::uint64_t winId) {
+        firstWindowOpened(winId);
+    });
     registerWindowUrlChanged([this](std::uint64_t winId, const std::string &urlString) {
         return windowUrlChanged(winId, urlString);
     });
@@ -285,6 +285,13 @@ void GitWindowPlugin::windowUrlChanged(std::uint64_t winId, const std::string &u
     emit m_controller->requestRetrieval(url);
 
     // TODO: remove ignroed dir
+}
+
+void GitWindowPlugin::firstWindowOpened(uint64_t winId)
+{
+    Q_UNUSED(winId)
+    if (!m_controller)
+        m_controller.reset(new GitVersionController);
 }
 
 void GitWindowPlugin::windowClosed(std::uint64_t winId)
