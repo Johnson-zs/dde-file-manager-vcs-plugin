@@ -35,6 +35,7 @@ private Q_SLOTS:
     void onNewRepositoryAdded(const QString &path);
     void onTimeout();
     void onRepositoryChanged(const QString &repositoryPath);
+    void onRepositoryUpdateRequested(const QString &repositoryPath);
 
 
 

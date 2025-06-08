@@ -10,8 +10,46 @@
 #include <cache.h>
 
 #include "utils.h"
+#include "common/gitrepositoryservice.h"
 
 using Global::ItemVersion;
+
+// 计算仓库根目录状态的辅助函数
+static ItemVersion calculateRepositoryRootStatus(const QHash<QString, ItemVersion> &versionInfoHash)
+{
+    if (versionInfoHash.isEmpty()) {
+        return ItemVersion::NormalVersion;
+    }
+    
+    ItemVersion rootState = ItemVersion::NormalVersion;
+    
+    // 遍历所有状态，找出最高优先级的状态
+    for (auto it = versionInfoHash.begin(); it != versionInfoHash.end(); ++it) {
+        ItemVersion currentState = it.value();
+        
+        // 忽略IgnoredVersion，它不应该影响根目录状态
+        if (currentState == ItemVersion::IgnoredVersion) {
+            continue;
+        }
+        
+        // 状态优先级：ConflictingVersion > LocallyModifiedUnstagedVersion > LocallyModifiedVersion > 其他状态
+        if (currentState == ItemVersion::ConflictingVersion) {
+            return ItemVersion::ConflictingVersion; // 最高优先级，直接返回
+        } else if (currentState == ItemVersion::LocallyModifiedUnstagedVersion && 
+                   rootState != ItemVersion::ConflictingVersion) {
+            rootState = ItemVersion::LocallyModifiedUnstagedVersion;
+        } else if (currentState == ItemVersion::LocallyModifiedVersion && 
+                   rootState != ItemVersion::ConflictingVersion && 
+                   rootState != ItemVersion::LocallyModifiedUnstagedVersion) {
+            rootState = ItemVersion::LocallyModifiedVersion;
+        } else if (rootState == ItemVersion::NormalVersion) {
+            // 如果根目录状态还是Normal，则使用当前状态
+            rootState = currentState;
+        }
+    }
+    
+    return rootState;
+}
 
 static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
 {
@@ -92,6 +130,11 @@ static QHash<QString, Global::ItemVersion> retrieval(const QString &directory)
         }
     }
 
+    // 计算并设置仓库根目录状态
+    ItemVersion rootStatus = calculateRepositoryRootStatus(versionInfoHash);
+    versionInfoHash.insert(directory, rootStatus);
+    qDebug() << "[GitVersionWorker] Repository root status set to:" << static_cast<int>(rootStatus) << "for:" << directory;
+
     qDebug() << "[GitVersionWorker] Final versionInfoHash contains" << versionInfoHash.size() << "entries";
 
     return versionInfoHash;
@@ -134,6 +177,10 @@ GitVersionController::GitVersionController()
             worker, &GitVersionWorker::onRetrieval, Qt::QueuedConnection);
     connect(worker, &GitVersionWorker::newRepositoryAdded,
             this, &GitVersionController::onNewRepositoryAdded, Qt::QueuedConnection);
+            
+    // 连接到公共仓库服务
+    connect(&GitRepositoryService::instance(), &GitRepositoryService::repositoryUpdateRequested,
+            this, &GitVersionController::onRepositoryUpdateRequested, Qt::QueuedConnection);
 
     // 初始化文件系统监控器
     if (m_useFileSystemWatcher) {
@@ -201,6 +248,18 @@ void GitVersionController::onRepositoryChanged(const QString &repositoryPath)
     if (url.isValid()) {
         emit requestRetrieval(url);
         qDebug() << "[GitVersionController] Triggered immediate update for repository:" << repositoryPath;
+    }
+}
+
+void GitVersionController::onRepositoryUpdateRequested(const QString &repositoryPath)
+{
+    qInfo() << "INFO: [GitVersionController] Repository update requested from service:" << repositoryPath;
+
+    // 通过服务请求触发状态更新
+    const QUrl &url { QUrl::fromLocalFile(repositoryPath) };
+    if (url.isValid()) {
+        emit requestRetrieval(url);
+        qDebug() << "[GitVersionController] Triggered service-requested update for repository:" << repositoryPath;
     }
 }
 

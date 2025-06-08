@@ -36,7 +36,7 @@ ItemVersion Cache::version(const QString &filePath)
     QMutexLocker locker { &m_mutex };
     const auto &allPaths { m_repositories.keys() };
     auto it = std::find_if(allPaths.begin(), allPaths.end(), [&filePath](const QString &repositoryPath) {
-        return filePath.startsWith(repositoryPath + "/");
+        return filePath.startsWith(repositoryPath + '/') || filePath == repositoryPath;
     });
     if (it == allPaths.end())
         return version;

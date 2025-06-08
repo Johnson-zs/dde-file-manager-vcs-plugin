@@ -3,11 +3,20 @@
 #include <filesystem>
 
 #include <QString>
+#include <QHash>
+#include <QStringList>
+#include <QDateTime>
+#include <QDebug>
 
 #include <cache.h>
 #include "utils.h"
+#include "common/gitrepositoryservice.h"
 
 USING_DFMEXT_NAMESPACE
+
+// 静态成员变量定义
+QHash<QString, GitEmblemIconPlugin::CacheEntry> GitEmblemIconPlugin::s_pathCache;
+QStringList GitEmblemIconPlugin::s_cacheOrder;
 
 GitEmblemIconPlugin::GitEmblemIconPlugin()
     : DFMEXT::DFMExtEmblemIconPlugin()
@@ -24,8 +33,45 @@ DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePat
     using Global::ItemVersion;
     const QString &path { QString::fromStdString(filePath) };
     DFMExtEmblem emblem;
-    if (!Utils::isInsideRepositoryFile(path))
+    
+    // 检查是否在已知仓库中（包括仓库根目录本身）
+    bool isInRepository = Utils::isInsideRepositoryFile(path);
+    bool isRepositoryRoot = false;
+    
+    if (!isInRepository) {
+        // 检查本地缓存
+        bool isRepository = false;
+        if (isPathCached(path, isRepository)) {
+            if (!isRepository) {
+                // 已确认不是仓库，直接返回空
+                return emblem;
+            }
+            // 如果是仓库根目录，标记为true并继续处理
+            isRepositoryRoot = true;
+        } else {
+            // 执行轻量级仓库检测
+            if (Utils::isGitRepositoryRoot(path)) {
+                // 发现新仓库，添加到缓存
+                addToCache(path, true);
+                qDebug() << "[GitEmblemIconPlugin] Discovered new repository:" << path;
+                
+                // 通过服务注册新发现的仓库并触发异步更新
+                GitRepositoryService::instance().registerRepositoryDiscovered(path);
+                
+                // 当前返回空，等下次刷新时显示真实状态
+                return emblem;
+            } else {
+                // 确认不是仓库，添加到缓存
+                addToCache(path, false);
+                return emblem;
+            }
+        }
+    }
+    
+    // 如果既不在仓库内也不是仓库根目录，返回空
+    if (!isInRepository && !isRepositoryRoot) {
         return emblem;
+    }
 
     auto state { Global::Cache::instance().version(path) };
     std::vector<DFMExtEmblemIconLayout> layouts;
@@ -74,4 +120,63 @@ DFMExtEmblem GitEmblemIconPlugin::locationEmblemIcons(const std::string &filePat
     emblem.setEmblem(layouts);
 
     return emblem;
+}
+
+// 缓存管理方法实现
+bool GitEmblemIconPlugin::isPathCached(const QString &path, bool &isRepository) const
+{
+    cleanExpiredCache();
+    
+    auto it = s_pathCache.find(path);
+    if (it != s_pathCache.end()) {
+        isRepository = it.value().isRepository;
+        
+        // 更新 LRU 顺序
+        s_cacheOrder.removeOne(path);
+        s_cacheOrder.append(path);
+        
+        return true;
+    }
+    return false;
+}
+
+void GitEmblemIconPlugin::addToCache(const QString &path, bool isRepository) const
+{
+    CacheEntry entry;
+    entry.isRepository = isRepository;
+    entry.timestamp = QDateTime::currentMSecsSinceEpoch();
+    
+    s_pathCache[path] = entry;
+    s_cacheOrder.removeOne(path); // 移除可能的重复项
+    s_cacheOrder.append(path);
+    
+    manageCacheSize();
+}
+
+void GitEmblemIconPlugin::cleanExpiredCache() const
+{
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    auto it = s_pathCache.begin();
+    
+    while (it != s_pathCache.end()) {
+        if (now - it.value().timestamp > CACHE_EXPIRE_MS) {
+            QString path = it.key();
+            it = s_pathCache.erase(it);
+            s_cacheOrder.removeOne(path);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void GitEmblemIconPlugin::manageCacheSize() const
+{
+    while (s_pathCache.size() > MAX_CACHE_SIZE) {
+        if (!s_cacheOrder.isEmpty()) {
+            QString oldestPath = s_cacheOrder.takeFirst();
+            s_pathCache.remove(oldestPath);
+        } else {
+            break;
+        }
+    }
 }
