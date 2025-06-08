@@ -79,6 +79,13 @@ private:
     void setupUI();
     void setupStyling();
     QString formatCommitSummaryStats(int filesChanged, int additions, int deletions) const;
+    
+    /**
+     * @brief 将纯文本转换为HTML格式，并自动识别URL转换为超链接
+     * @param text 输入的纯文本
+     * @return 包含链接的HTML格式文本
+     */
+    QString convertTextToHtmlWithLinks(const QString &text) const;
 
     QVBoxLayout *m_mainLayout;
     QTextBrowser *m_detailsTextEdit;
