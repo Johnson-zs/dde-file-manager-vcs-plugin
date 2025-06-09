@@ -65,6 +65,16 @@ public:
     bool testRemoteConnection(const QString &repositoryPath, const QString &remoteName);
     void testRemoteConnectionAsync(const QString &repositoryPath, const QString &remoteName);
 
+    // === Stash操作 ===
+    void createStash(const std::string &repositoryPath, const QString &message = QString());
+    void applyStash(const std::string &repositoryPath, int stashIndex, bool keepStash = false);
+    void deleteStash(const std::string &repositoryPath, int stashIndex);
+    void createBranchFromStash(const std::string &repositoryPath, int stashIndex, const QString &branchName);
+    void showStashDiff(const std::string &repositoryPath, int stashIndex);
+    void showStashManager(const std::string &repositoryPath);
+    QStringList listStashes(const QString &repositoryPath);
+    bool hasStashes(const QString &repositoryPath);
+
     // === 分支和状态查询 ===
     QStringList getRemotes(const QString &repositoryPath);
     QStringList getLocalBranches(const QString &repositoryPath);

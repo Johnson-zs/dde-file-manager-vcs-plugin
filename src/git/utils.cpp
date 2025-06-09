@@ -343,6 +343,61 @@ bool canShowFileBlame(const QString &filePath)
             || status == ItemVersion::UpdateRequiredVersion;
 }
 
+bool canStashFile(const QString &filePath)
+{
+    if (!isInsideRepositoryFile(filePath)) {
+        return false;
+    }
+
+    // 检查文件是否存在
+    QFileInfo fileInfo(filePath);
+    if (!fileInfo.exists()) {
+        return false;
+    }
+
+    // 检查文件的Git状态
+    Global::ItemVersion status = getFileGitStatus(filePath);
+    
+    // 只有已修改、已添加或已删除的文件可以被stash
+    return status == Global::ItemVersion::LocallyModifiedVersion ||
+           status == Global::ItemVersion::LocallyModifiedUnstagedVersion ||
+           status == Global::ItemVersion::AddedVersion ||
+           status == Global::ItemVersion::RemovedVersion;
+}
+
+bool hasUncommittedChanges(const QString &repositoryPath)
+{
+    QProcess process;
+    process.setWorkingDirectory(repositoryPath);
+    process.start("git", { "status", "--porcelain" });
+    
+    if (process.waitForFinished(5000) && process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        return !output.trimmed().isEmpty();
+    }
+    
+    return false;
+}
+
+bool hasStashes(const QString &repositoryPath)
+{
+    QProcess process;
+    process.setWorkingDirectory(repositoryPath);
+    process.start("git", { "stash", "list" });
+    
+    if (process.waitForFinished(5000) && process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput());
+        return !output.trimmed().isEmpty();
+    }
+    
+    return false;
+}
+
+bool isWorkingDirectoryClean(const QString &repositoryPath)
+{
+    return !hasUncommittedChanges(repositoryPath);
+}
+
 QString getFileStatusDescription(const QString &filePath)
 {
     if (!isInsideRepositoryFile(filePath) && !isGitRepositoryRoot(filePath))

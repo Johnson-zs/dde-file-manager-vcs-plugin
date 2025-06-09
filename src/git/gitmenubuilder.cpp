@@ -24,7 +24,7 @@ bool GitMenuBuilder::buildSingleFileMenu(DFMEXT::DFMExtMenu *gitSubmenu,
     addFileOperationMenuItems(gitSubmenu, focusPath);
 
     // 检查是否添加了文件操作菜单项
-    if (Utils::canAddFile(focusPath) || Utils::canRemoveFile(focusPath) || Utils::canRevertFile(focusPath)) {
+    if (Utils::canAddFile(focusPath) || Utils::canRemoveFile(focusPath) || Utils::canRevertFile(focusPath) || Utils::canStashFile(focusPath)) {
         hasValidAction = true;
 
         // 添加分隔符
@@ -95,6 +95,12 @@ bool GitMenuBuilder::buildRepositoryMenuItems(DFMEXT::DFMExtMenu *main,
 
     auto subSeparator0 = createSeparator();
     gitMoreSubmenu->addAction(subSeparator0);
+
+    // === Stash操作组（在二级菜单中） ===
+    addStashOperationMenuItems(gitMoreSubmenu, repositoryPath);
+
+    auto subSeparator1 = createSeparator();
+    gitMoreSubmenu->addAction(subSeparator1);
 
     // === 同步操作组（在二级菜单中） ===
     addSyncOperationMenuItems(gitMoreSubmenu, repositoryPath);
@@ -205,6 +211,24 @@ void GitMenuBuilder::addFileOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
             m_operationService->revertFile(filePath.toStdString());
         });
         menu->addAction(revertAction);
+    }
+
+    // Git Stash File
+    if (Utils::canStashFile(filePath)) {
+        auto stashFileAction = m_proxy->createAction();
+        stashFileAction->setText("Git Stash File");
+        stashFileAction->setIcon("vcs-stash");
+        stashFileAction->setToolTip(QString("Stash changes in '%1'\nCurrent status: %2")
+                                           .arg(fileName, statusText)
+                                           .toStdString());
+        stashFileAction->registerTriggered([this, filePath](DFMEXT::DFMExtAction *action, bool checked) {
+            Q_UNUSED(action)
+            Q_UNUSED(checked)
+            // 创建一个只包含该文件的stash
+            m_operationService->createStash(Utils::repositoryBaseDir(filePath).toStdString(), 
+                                          QString("Stash file: %1").arg(QFileInfo(filePath).fileName()));
+        });
+        menu->addAction(stashFileAction);
     }
 }
 
@@ -407,6 +431,37 @@ void GitMenuBuilder::addSyncOperationMenuItems(DFMEXT::DFMExtMenu *menu, const Q
     });
 
     menu->addAction(remoteManagerAction);
+}
+
+void GitMenuBuilder::addStashOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath)
+{
+    const QString branchName = Utils::getBranchName(repositoryPath);
+
+    // Git Stash (创建新stash)
+    auto createStashAction = m_proxy->createAction();
+    createStashAction->setText("Git Stash");
+    createStashAction->setIcon("vcs-stash");
+    createStashAction->setToolTip(QString("Create a new stash to save current changes\nCurrent branch: %1").arg(branchName).toStdString());
+    createStashAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
+        Q_UNUSED(action)
+        Q_UNUSED(checked)
+        m_operationService->createStash(repositoryPath.toStdString());
+    });
+
+    menu->addAction(createStashAction);
+
+    // Git Stash Manager (管理stash列表)
+    auto stashManagerAction = m_proxy->createAction();
+    stashManagerAction->setText("Git Stash Manager...");
+    stashManagerAction->setIcon("vcs-stash");
+    stashManagerAction->setToolTip(QString("Manage stash list - view, apply, delete stashes\nCurrent branch: %1").arg(branchName).toStdString());
+    stashManagerAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
+        Q_UNUSED(action)
+        Q_UNUSED(checked)
+        m_operationService->showStashManager(repositoryPath.toStdString());
+    });
+
+    menu->addAction(stashManagerAction);
 }
 
 QStringList GitMenuBuilder::getCompatibleOperationsForMultiSelection(const std::list<std::string> &pathList)

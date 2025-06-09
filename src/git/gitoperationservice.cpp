@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QDialog>
+#include <QDateTime>
 
 GitOperationService::GitOperationService(QObject *parent)
     : QObject(parent)
@@ -332,6 +333,153 @@ void GitOperationService::commitChanges(const std::string &repositoryPath)
     
     // Note: The refresh signal should be emitted when the commit operation actually completes
     // This will need to be connected through the dialog's success signal in the future
+}
+
+// ============================================================================
+// Stash操作实现
+// ============================================================================
+
+void GitOperationService::createStash(const std::string &repositoryPath, const QString &message)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+    
+    qInfo() << "INFO: [GitOperationService::createStash] Creating stash for repository:" << repoPath;
+
+    QStringList args { "stash", "push" };
+    
+    if (!message.isEmpty()) {
+        args << "-m" << message;
+    } else {
+        args << "-m" << QString("Stash created at %1").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"));
+    }
+    
+    executeSilentOperation("Create Stash", repoPath, args);
+}
+
+void GitOperationService::applyStash(const std::string &repositoryPath, int stashIndex, bool keepStash)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+    
+    qInfo() << "INFO: [GitOperationService::applyStash] Applying stash" << stashIndex 
+            << "for repository:" << repoPath << "keep:" << keepStash;
+
+    QStringList args { "stash" };
+    
+    if (keepStash) {
+        args << "apply";
+    } else {
+        args << "pop";
+    }
+    
+    args << QString("stash@{%1}").arg(stashIndex);
+    
+    executeInteractiveOperation("Apply Stash", repoPath, args);
+}
+
+void GitOperationService::deleteStash(const std::string &repositoryPath, int stashIndex)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+    
+    qInfo() << "INFO: [GitOperationService::deleteStash] Deleting stash" << stashIndex 
+            << "for repository:" << repoPath;
+
+    QStringList args { "stash", "drop", QString("stash@{%1}").arg(stashIndex) };
+    
+    executeSilentOperation("Delete Stash", repoPath, args);
+}
+
+void GitOperationService::createBranchFromStash(const std::string &repositoryPath, int stashIndex, const QString &branchName)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+    
+    qInfo() << "INFO: [GitOperationService::createBranchFromStash] Creating branch" << branchName 
+            << "from stash" << stashIndex << "for repository:" << repoPath;
+
+    QStringList args { "stash", "branch", branchName, QString("stash@{%1}").arg(stashIndex) };
+    
+    executeInteractiveOperation("Create Branch from Stash", repoPath, args);
+}
+
+void GitOperationService::showStashDiff(const std::string &repositoryPath, int stashIndex)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+    
+    qInfo() << "INFO: [GitOperationService::showStashDiff] Opening diff for stash" << stashIndex 
+            << "in repository:" << repoPath;
+
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitOperationService::showStashDiff] No QApplication instance found";
+        return;
+    }
+
+    QWidget *parentWidget = QApplication::activeWindow();
+    
+    // 使用GitDialogManager显示stash差异对话框
+    // 注意：这里需要在后续实现GitDialogManager::showStashDiffDialog方法
+    GitDialogManager::instance()->showDiffDialog(repoPath, QString("stash@{%1}").arg(stashIndex), parentWidget);
+}
+
+void GitOperationService::showStashManager(const std::string &repositoryPath)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+    
+    qInfo() << "INFO: [GitOperationService::showStashManager] Opening stash manager for repository:" << repoPath;
+
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitOperationService::showStashManager] No QApplication instance found";
+        return;
+    }
+
+    QWidget *parentWidget = QApplication::activeWindow();
+    
+    // 使用GitDialogManager显示stash管理对话框
+    GitDialogManager::instance()->showStashDialog(repoPath, parentWidget);
+}
+
+QStringList GitOperationService::listStashes(const QString &repositoryPath)
+{
+    qInfo() << "INFO: [GitOperationService::listStashes] Listing stashes for repository:" << repositoryPath;
+
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "stash";
+    cmd.arguments = QStringList() << "stash" << "list" << "--pretty=format:%gd|%s|%cr|%an";
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 5000;
+    
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    if (result == GitCommandExecutor::Result::Success) {
+        QStringList stashes = output.split('\n', Qt::SkipEmptyParts);
+        qInfo() << "INFO: [GitOperationService::listStashes] Found" << stashes.size() << "stashes";
+        return stashes;
+    } else {
+        qWarning() << "WARNING: [GitOperationService::listStashes] Failed to list stashes:" << error;
+        return QStringList();
+    }
+}
+
+bool GitOperationService::hasStashes(const QString &repositoryPath)
+{
+    qInfo() << "INFO: [GitOperationService::hasStashes] Checking for stashes in repository:" << repositoryPath;
+
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "stash";
+    cmd.arguments = QStringList() << "stash" << "list";
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 3000;
+    
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    bool hasStashes = (result == GitCommandExecutor::Result::Success) && !output.trimmed().isEmpty();
+    
+    qInfo() << "INFO: [GitOperationService::hasStashes] Repository has stashes:" << hasStashes;
+    return hasStashes;
 }
 
 // ============================================================================

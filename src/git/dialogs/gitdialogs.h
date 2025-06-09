@@ -42,6 +42,9 @@ public:
     void showPullDialog(const QString &repositoryPath, QWidget *parent = nullptr);
     void showRemoteManager(const QString &repositoryPath, QWidget *parent = nullptr);
 
+    // === Stash管理对话框 ===
+    void showStashDialog(const QString &repositoryPath, QWidget *parent = nullptr);
+
     // 文件预览接口
     GitFilePreviewDialog* showFilePreview(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
     GitFilePreviewDialog* showFilePreviewAtCommit(const QString &repositoryPath, const QString &filePath, 
