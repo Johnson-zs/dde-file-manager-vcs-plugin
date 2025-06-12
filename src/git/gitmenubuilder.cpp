@@ -333,6 +333,23 @@ void GitMenuBuilder::addRepositoryOperationMenuItems(DFMEXT::DFMExtMenu *menu, c
     } else {
         menu->addAction(statusAction);
     }
+
+    // Git Clean
+    auto cleanAction = m_proxy->createAction();
+    cleanAction->setText("Git Clean...");
+    cleanAction->setIcon("edit-delete");
+    cleanAction->setToolTip(QString("Remove untracked files from working directory\nCurrent branch: %1\n\nWarning: This operation can permanently delete files!").arg(branchName).toStdString());
+    cleanAction->registerTriggered([this, repositoryPath](DFMEXT::DFMExtAction *action, bool checked) {
+        Q_UNUSED(action)
+        Q_UNUSED(checked)
+        m_operationService->showCleanDialog(repositoryPath.toStdString());
+    });
+
+    if (beforeAction) {
+        menu->insertAction(beforeAction, cleanAction);
+    } else {
+        menu->addAction(cleanAction);
+    }
 }
 
 void GitMenuBuilder::addBranchOperationMenuItems(DFMEXT::DFMExtMenu *menu, const QString &repositoryPath)

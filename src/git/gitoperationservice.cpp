@@ -336,6 +336,118 @@ void GitOperationService::commitChanges(const std::string &repositoryPath)
 }
 
 // ============================================================================
+// Git Clean操作实现
+// ============================================================================
+
+void GitOperationService::showCleanDialog(const std::string &repositoryPath)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+
+    qInfo() << "INFO: [GitOperationService::showCleanDialog] Opening clean dialog for repository:" << repoPath;
+
+    if (!QApplication::instance()) {
+        qCritical() << "ERROR: [GitOperationService::showCleanDialog] No QApplication instance found";
+        return;
+    }
+
+    QWidget *parentWidget = QApplication::activeWindow();
+    GitDialogManager::instance()->showCleanDialog(repoPath, parentWidget);
+}
+
+void GitOperationService::cleanRepository(const std::string &repositoryPath, bool force, 
+                                         bool includeDirectories, bool includeIgnored, 
+                                         bool onlyIgnored, bool dryRun)
+{
+    const QString repoPath = QString::fromStdString(repositoryPath);
+    
+    qInfo() << "INFO: [GitOperationService::cleanRepository] Cleaning repository:" << repoPath
+            << "force:" << force << "directories:" << includeDirectories 
+            << "ignored:" << includeIgnored << "onlyIgnored:" << onlyIgnored 
+            << "dryRun:" << dryRun;
+
+    QStringList args { "clean" };
+    
+    // 添加选项参数
+    if (dryRun) {
+        args << "-n";  // --dry-run
+    } else if (force) {
+        args << "-f";  // --force
+    }
+    
+    if (includeDirectories) {
+        args << "-d";  // 递归删除目录
+    }
+    
+    if (onlyIgnored) {
+        args << "-X";  // 只删除被忽略的文件
+    } else if (includeIgnored) {
+        args << "-x";  // 删除被忽略的文件
+    }
+    
+    // 添加安全检查：如果不是dry-run且没有force，则拒绝执行
+    if (!dryRun && !force) {
+        qWarning() << "WARNING: [GitOperationService::cleanRepository] Clean operation requires force flag for safety";
+        emit operationCompleted("Clean", false, tr("Clean operation requires force flag for safety"));
+        return;
+    }
+    
+    if (dryRun) {
+        // 对于dry-run，使用静默操作并显示结果
+        executeSilentOperation("Clean Preview", repoPath, args);
+    } else {
+        // 对于实际清理，使用交互式操作以便用户看到进度
+        executeInteractiveOperation("Clean", repoPath, args);
+    }
+}
+
+QStringList GitOperationService::getCleanPreview(const QString &repositoryPath, bool includeDirectories, 
+                                                bool includeIgnored, bool onlyIgnored)
+{
+    qInfo() << "INFO: [GitOperationService::getCleanPreview] Getting clean preview for repository:" << repositoryPath;
+
+    GitCommandExecutor executor;
+    QString output, error;
+    
+    GitCommandExecutor::GitCommand cmd;
+    cmd.command = "clean";
+    cmd.arguments = QStringList() << "clean" << "-n";  // dry-run
+    cmd.workingDirectory = repositoryPath;
+    cmd.timeout = 10000;
+    
+    // 添加选项参数
+    if (includeDirectories) {
+        cmd.arguments << "-d";
+    }
+    
+    if (onlyIgnored) {
+        cmd.arguments << "-X";
+    } else if (includeIgnored) {
+        cmd.arguments << "-x";
+    }
+
+    auto result = executor.executeCommand(cmd, output, error);
+    
+    QStringList fileList;
+    if (result == GitCommandExecutor::Result::Success) {
+        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        
+        for (const QString &line : lines) {
+            // git clean -n 的输出格式通常是 "Would remove filename"
+            if (line.startsWith("Would remove ")) {
+                QString fileName = line.mid(13);  // 去掉 "Would remove " 前缀
+                fileList << fileName;
+            }
+        }
+        
+        qInfo() << "INFO: [GitOperationService::getCleanPreview] Found" << fileList.size() << "files to clean";
+    } else {
+        qWarning() << "WARNING: [GitOperationService::getCleanPreview] Failed to get clean preview:" << error;
+    }
+    
+    return fileList;
+}
+
+// ============================================================================
 // Stash操作实现
 // ============================================================================
 

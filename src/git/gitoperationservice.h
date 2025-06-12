@@ -43,6 +43,14 @@ public:
     void pullRepository(const std::string &repositoryPath);
     void commitChanges(const std::string &repositoryPath);
 
+    // === Git Clean操作 ===
+    void showCleanDialog(const std::string &repositoryPath);
+    void cleanRepository(const std::string &repositoryPath, bool force = false, 
+                        bool includeDirectories = false, bool includeIgnored = false, 
+                        bool onlyIgnored = false, bool dryRun = false);
+    QStringList getCleanPreview(const QString &repositoryPath, bool includeDirectories = false, 
+                               bool includeIgnored = false, bool onlyIgnored = false);
+
     // === 高级Push/Pull对话框 ===
     void showAdvancedPushDialog(const QString &repositoryPath);
     void showAdvancedPullDialog(const QString &repositoryPath);

@@ -12,6 +12,7 @@
 #include "gitpulldialog.h"
 #include "gitremotemanager.h"
 #include "gitstashdialog.h"
+#include "gitcleandialog.h"
 
 #include <QDesktopServices>
 #include <QUrl>
@@ -315,6 +316,17 @@ void GitDialogManager::showStashDialog(const QString &repositoryPath, QWidget *p
     qInfo() << "INFO: [GitDialogManager::showStashDialog] Opening stash manager for repository:" << repositoryPath;
     
     auto *dialog = new GitStashDialog(repositoryPath, parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+
+void GitDialogManager::showCleanDialog(const QString &repositoryPath, QWidget *parent)
+{
+    qInfo() << "INFO: [GitDialogManager::showCleanDialog] Opening clean dialog for repository:" << repositoryPath;
+    
+    auto *dialog = new GitCleanDialog(repositoryPath, parent);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
     dialog->raise();

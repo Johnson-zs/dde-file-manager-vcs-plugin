@@ -45,6 +45,9 @@ public:
     // === Stash管理对话框 ===
     void showStashDialog(const QString &repositoryPath, QWidget *parent = nullptr);
 
+    // === Git Clean对话框 ===
+    void showCleanDialog(const QString &repositoryPath, QWidget *parent = nullptr);
+
     // 文件预览接口
     GitFilePreviewDialog* showFilePreview(const QString &repositoryPath, const QString &filePath, QWidget *parent = nullptr);
     GitFilePreviewDialog* showFilePreviewAtCommit(const QString &repositoryPath, const QString &filePath, 
