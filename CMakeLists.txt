@@ -23,3 +23,4 @@ if(NOT DEFINED DFM_EXT_PLUGIN_DIR)
 endif()
 
 add_subdirectory(src/git)
+add_subdirectory(src/git2)

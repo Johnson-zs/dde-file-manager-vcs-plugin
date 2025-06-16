@@ -1,0 +1,13 @@
+[Unit]
+Description=DDE File Manager Git Status Service
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.deepin.FileManager.Git
+ExecStart=/usr/bin/dde-file-manager-git-daemon
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target 
