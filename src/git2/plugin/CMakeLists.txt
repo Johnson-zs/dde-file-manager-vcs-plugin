@@ -11,6 +11,7 @@ set(PLUGIN_HEADERS
     include/git-menu-plugin.h
     include/git-window-plugin.h
     include/git-local-cache.h
+    include/git-dbus-client.h
 )
 
 # 设置源文件
@@ -20,7 +21,7 @@ set(PLUGIN_SOURCES
     src/git-menu-plugin.cpp
     src/git-window-plugin.cpp
     src/git-local-cache.cpp
-    dbus/git-dbus-client.cpp
+    src/git-dbus-client.cpp
 )
 
 # DBus接口生成 - 依赖daemon生成的XML
@@ -69,9 +70,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     GIT_PLUGIN_PROCESS=1
 )
-
-# 设置编译选项
-target_compile_options(${PROJECT_NAME} PRIVATE ${DFM_EXT_CFLAGS_OTHER})
 
 # 安装插件库文件
 install(TARGETS ${PROJECT_NAME}

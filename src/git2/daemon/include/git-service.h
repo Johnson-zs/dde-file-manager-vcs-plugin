@@ -1,10 +1,17 @@
 #pragma once
 
 #include <QObject>
-#include <QString>
+#include <QHash>
 #include <QStringList>
 #include <QVariantMap>
+#include "git-types.h"
 
+/**
+ * @brief Git DBus服务接口类
+ * 
+ * 此类用于Qt6的qt_generate_dbus_interface和qt_add_dbus_adaptor自动生成DBus适配器
+ * 提供Git状态查询和仓库管理的DBus接口
+ */
 class GitService : public QObject
 {
     Q_OBJECT
@@ -12,25 +19,111 @@ class GitService : public QObject
 
 public:
     explicit GitService(QObject *parent = nullptr);
+    ~GitService();
 
 public Q_SLOTS:
-    // 仓库管理接口
+    /**
+     * @brief 注册Git仓库到监控列表
+     * @param repositoryPath Git仓库根目录路径
+     * @return 注册是否成功
+     */
     bool RegisterRepository(const QString &repositoryPath);
+
+    /**
+     * @brief 从监控列表中注销Git仓库
+     * @param repositoryPath Git仓库根目录路径
+     * @return 注销是否成功
+     */
     bool UnregisterRepository(const QString &repositoryPath);
-    
-    // 状态查询接口 (批量优化)
+
+    /**
+     * @brief 批量获取文件的Git状态
+     * @param filePaths 文件路径列表
+     * @return 文件路径到状态码的映射 (QVariantMap for DBus compatibility)
+     */
     QVariantMap GetFileStatuses(const QStringList &filePaths);
+
+    /**
+     * @brief 获取整个仓库的文件状态
+     * @param repositoryPath 仓库路径
+     * @return 文件路径到状态码的映射
+     */
     QVariantMap GetRepositoryStatus(const QString &repositoryPath);
-    
-    // 操作触发接口
+
+    /**
+     * @brief 刷新指定仓库的状态缓存
+     * @param repositoryPath 仓库路径
+     * @return 刷新是否成功
+     */
     bool RefreshRepository(const QString &repositoryPath);
+
+    /**
+     * @brief 清理指定仓库的状态缓存
+     * @param repositoryPath 仓库路径
+     * @return 清理是否成功
+     */
     bool ClearRepositoryCache(const QString &repositoryPath);
 
+    /**
+     * @brief 获取所有已注册的仓库列表
+     * @return 仓库路径列表
+     */
+    QStringList GetRegisteredRepositories();
+
+    /**
+     * @brief 获取服务状态信息
+     * @return 状态信息映射
+     */
+    QVariantMap GetServiceStatus();
+
 Q_SIGNALS:
-    // 状态变更信号
+    /**
+     * @brief 仓库状态发生变化时发出的信号
+     * @param repositoryPath 仓库路径
+     * @param changedFiles 变化的文件和其状态的映射
+     */
     void RepositoryStatusChanged(const QString &repositoryPath, const QVariantMap &changedFiles);
+
+    /**
+     * @brief 发现新仓库时发出的信号
+     * @param repositoryPath 新发现的仓库路径
+     */
     void RepositoryDiscovered(const QString &repositoryPath);
 
+private Q_SLOTS:
+    /**
+     * @brief 处理仓库变化事件
+     * @param repositoryPath 仓库路径
+     */
+    void onRepositoryChanged(const QString &repositoryPath);
+
+    /**
+     * @brief 处理缓存状态变化事件
+     * @param repositoryPath 仓库路径
+     * @param changedFiles 变化的文件映射
+     */
+    void onRepositoryStatusChanged(const QString &repositoryPath, const QHash<QString, ItemVersion> &changedFiles);
+
+    /**
+     * @brief 处理仓库发现事件
+     * @param repositoryPath 仓库路径
+     */
+    void onRepositoryDiscovered(const QString &repositoryPath);
+
 private:
-    // 内部实现将在cpp文件中提供
+    /**
+     * @brief 转换ItemVersion映射为QVariantMap（用于DBus传输）
+     * @param versionMap ItemVersion映射
+     * @return QVariantMap
+     */
+    QVariantMap convertToVariantMap(const QHash<QString, ItemVersion> &versionMap) const;
+
+    /**
+     * @brief 刷新仓库状态（内部实现）
+     * @param repositoryPath 仓库路径
+     */
+    void refreshRepositoryInternal(const QString &repositoryPath);
+
+private:
+    bool m_serviceReady;    ///< 服务是否就绪
 }; 

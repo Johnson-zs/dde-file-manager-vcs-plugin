@@ -1,14 +1,30 @@
 #include <dfm-extension/dfm-extension.h>
+#include "git-emblem-plugin.h"
+#include <QCoreApplication>
+#include <QDebug>
 
-// TODO: 实现插件入口点
-// 这个文件将实现文件管理器插件的注册逻辑
+static DFMEXT::DFMExtEmblemIconPlugin *gitEmblemIcon = nullptr;
 
 extern "C" {
-    __attribute__((visibility("default"))) void dfm_extension_initalize() {
-        // TODO: 初始化Git插件
+
+void dfm_extension_initiliaze()
+{
+    if (qApp->applicationName() == "dde-file-manager") {
+        gitEmblemIcon = new GitEmblemPlugin;
+        qDebug() << "[Git Extension] Plugin initialized successfully";
     }
-    
-    __attribute__((visibility("default"))) void dfm_extension_shutdown() {
-        // TODO: 清理Git插件资源
-    }
-} 
+}
+
+void dfm_extension_shutdown()
+{
+    delete gitEmblemIcon;
+    gitEmblemIcon = nullptr;
+    qDebug() << "[Git Extension] Plugin shutdown";
+}
+
+DFMEXT::DFMExtEmblemIconPlugin *dfm_extension_emblem()
+{
+    return gitEmblemIcon;
+}
+
+}   // extern "C" 

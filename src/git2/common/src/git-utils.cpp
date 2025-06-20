@@ -45,4 +45,10 @@ GitRepositoryInfo getRepositoryInfo(const QString &repositoryPath)
     return info;
 }
 
+bool isDirectoryEmpty(const QString &path)
+{
+    QDir dir(path);
+    return dir.isEmpty();
+}
+
 } 

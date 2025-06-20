@@ -18,4 +18,7 @@ namespace GitUtils {
     
     // 获取仓库信息
     GitRepositoryInfo getRepositoryInfo(const QString &repositoryPath);
+    
+    // 检查目录是否为空
+    bool isDirectoryEmpty(const QString &path);
 } 

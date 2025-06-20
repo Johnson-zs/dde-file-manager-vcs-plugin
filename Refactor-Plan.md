@@ -575,8 +575,7 @@ Restart=on-failure
 
 请提供完整的系统集成配置和部署脚本。
 
-```
----
+
 
 ## 🚀 2.0版本 - 对话框进程迁移
 
@@ -611,7 +610,6 @@ Restart=on-failure
 - [x] 错误处理机制完整，用户友好
 
 #### AI编程助手提示词
-```
 
 你是Qt应用架构专家，精通进程间通信和命令行应用设计。当前任务是设计Git对话框的独立进程架构。
 
@@ -638,8 +636,7 @@ dde-file-manager-git-dialog --action=log --repository=/path/to/repo --file=/path
 
 请提供完整的对话框进程架构实现。
 
-```
----
+
 
 ### TASK008 - 核心Git对话框迁移
 **版本**: 2.0  
@@ -696,8 +693,6 @@ dde-file-manager-git-dialog --action=log --repository=/path/to/repo --file=/path
 - [x] 菜单项点击正确启动对应对话框
 - [x] 窗口事件处理功能保持不变
 - [x] 插件资源占用最小化
-
----
 
 ## 🌟 3.0版本 - 系统优化和完善
 

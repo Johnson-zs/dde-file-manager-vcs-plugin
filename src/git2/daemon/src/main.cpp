@@ -1,6 +1,7 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDebug>
+#include "git-daemon.h"
 #include "git-service.h"
 #include "gitservice_adaptor.h"
 
@@ -15,14 +16,18 @@ int main(int argc, char *argv[])
         return 1;
     }
     
-    // 创建服务对象
-    GitService gitService;
+    // 创建守护进程管理器
+    GitDaemon daemon;
+    if (!daemon.initialize()) {
+        qCritical() << "Failed to initialize Git daemon";
+        return 1;
+    }
     
     // 创建自动生成的适配器
-    new GitAdaptor(&gitService);
+    new GitAdaptor(daemon.service());
     
     // 注册DBus对象
-    if (!connection.registerObject("/org/deepin/filemanager/git", &gitService)) {
+    if (!connection.registerObject("/org/deepin/filemanager/git", daemon.service())) {
         qWarning() << "Failed to register DBus object:" << connection.lastError().message();
         return 1;
     }

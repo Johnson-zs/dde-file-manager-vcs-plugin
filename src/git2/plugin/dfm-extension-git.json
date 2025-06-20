@@ -1,0 +1,18 @@
+{
+    "Name": "Git Extension Plugin",
+    "Version": "2.0.0",
+    "CompatVersion": "2.0.0",
+    "Vendor": "deepin",
+    "Copyright": "Copyright (C) 2024 deepin",
+    "License": "GPL-3.0-or-later",
+    "Category": "Version Control",
+    "Description": "Git version control integration for DDE File Manager",
+    "Url": "https://github.com/linuxdeepin/dde-file-manager",
+    "BugReportUrl": "https://github.com/linuxdeepin/dde-file-manager/issues",
+    "Dependencies": [
+        {
+            "Name": "dde-file-manager",
+            "Version": ">=6.0.0"
+        }
+    ]
+} 
