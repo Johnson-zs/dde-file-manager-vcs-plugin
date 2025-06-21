@@ -72,7 +72,7 @@ DFMEXT::DFMExtEmblem GitEmblemPlugin::locationEmblemIcons(const std::string &fil
             isRepositoryRoot = true;
         } else {
             // 执行轻量级仓库检测
-            if (GitUtils::isGitRepository(path)) {
+            if (GitUtils::isGitRepositoryRoot(path)) {
                 // 发现新仓库，添加到缓存
                 addToCache(path, true);
                 qDebug() << "[GitEmblemPlugin] Discovered new repository:" << path;
@@ -130,26 +130,24 @@ DFMEXT::DFMExtEmblem GitEmblemPlugin::locationEmblemIcons(const std::string &fil
 QString GitEmblemPlugin::getIconNameForStatus(ItemVersion status) const
 {
     switch (status) {
-    case UnmodifiedVersion:
+    case NormalVersion:
         return QStringLiteral(""); // 无角标
     case LocallyModifiedVersion:
         return QStringLiteral("vcs-locally-modified");
+    case LocallyModifiedUnstagedVersion:
+        return QStringLiteral("vcs-locally-modified-unstaged");
     case AddedVersion:
         return QStringLiteral("vcs-added");
-    case DeletedVersion:
+    case RemovedVersion:
         return QStringLiteral("vcs-removed");
-    case RenamedVersion:
-        return QStringLiteral("vcs-renamed");
-    case ConflictVersion:
+    case ConflictingVersion:
         return QStringLiteral("vcs-conflicting");
-    case StagedVersion:
-        return QStringLiteral("vcs-staged");
-    case UpdatedButUnmergedVersion:
+    case UpdateRequiredVersion:
         return QStringLiteral("vcs-update-required");
+    case MissingVersion:
+        return QStringLiteral("vcs-missing");
     case UnversionedVersion:
     case IgnoredVersion:
-    case UntrackedVersion:
-    case CopiedVersion:
     default:
         return QString();
     }
