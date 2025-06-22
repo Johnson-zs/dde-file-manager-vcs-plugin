@@ -14,17 +14,43 @@ Homepage: https://github.com/yourusername-or-organization/dde-file-manager-vcs-p
 Vcs-Browser: https://github.com/yourusername-or-organization/dde-file-manager-vcs-plugin
 Vcs-Git: https://github.com/yourusername-or-organization/dde-file-manager-vcs-plugin.git
 
-Package: dde-file-manager-vcs-plugin
+Package: dde-file-manager-git-extension
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          dde-file-manager,
-         git
-Description: Git version control plugin for Deepin File Manager
- This plugin adds Git version control functionality to the 
- Deepin File Manager (dde-file-manager).
+         dde-file-manager-git-service (>= ${binary:Version})
+Description: Git extension for Deepin File Manager
+ This package provides the Git extension for Deepin File Manager,
+ including emblems and menu operations.
+ .
+ This is the lightweight frontend package that integrates with
+ the file manager interface.
+
+Package: dde-file-manager-git-service
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         git,
+         dbus-user-session | dbus-x11
+Suggests: dde-file-manager-git-extension
+Description: Git status service for Deepin File Manager
+ This package provides the Git status monitoring service that
+ runs as a user daemon to track Git repository changes.
  .
  Features include:
-  * Git status emblems on files and folders
-  * Git contextual menu operations
-  * Git repository monitoring 
+  * Real-time Git status monitoring
+  * DBus interface for status queries
+  * Efficient multi-repository support
+  * Automatic service management
+
+Package: dde-file-manager-vcs-plugin
+Architecture: any
+Depends: dde-file-manager-git-extension (= ${binary:Version}),
+         dde-file-manager-git-service (= ${binary:Version})
+Description: Git version control plugin for Deepin File Manager (metapackage)
+ This is a metapackage that installs both the Git extension and service
+ components for Deepin File Manager.
+ .
+ This package provides backward compatibility and convenient installation
+ of the complete Git integration functionality. 

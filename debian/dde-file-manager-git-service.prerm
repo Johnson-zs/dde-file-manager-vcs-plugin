@@ -1,0 +1,42 @@
+#!/bin/bash
+set -e
+
+# Package: dde-file-manager-git-service
+# Prerm script for Git service daemon
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Stop and disable the service for all users
+        if [ -x /bin/systemctl ]; then
+            for user_dir in /run/user/*/; do
+                if [ -d "$user_dir" ]; then
+                    user_id=$(basename "$user_dir")
+                    if [ "$user_id" -ge 1000 ] 2>/dev/null; then
+                        # Try to stop and disable the service for this user
+                        sudo -u "#$user_id" XDG_RUNTIME_DIR="$user_dir" \
+                            systemctl --user stop dde-file-manager-git-daemon.service 2>/dev/null || true
+                        sudo -u "#$user_id" XDG_RUNTIME_DIR="$user_dir" \
+                            systemctl --user disable dde-file-manager-git-daemon.service 2>/dev/null || true
+                    fi
+                fi
+            done
+        fi
+        
+        # Kill any remaining daemon processes
+        pkill -f dde-file-manager-git-daemon || true
+        
+        echo "Git service daemon stopped and disabled."
+        ;;
+        
+    failed-upgrade)
+        ;;
+        
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0 

@@ -1,0 +1,5 @@
+# Git service daemon and configuration
+usr/bin/dde-file-manager-git-daemon
+usr/bin/dde-file-manager-git-dialog
+usr/share/dbus-1/services/org.deepin.FileManager.Git.service
+usr/lib/systemd/user/dde-file-manager-git-daemon.service 

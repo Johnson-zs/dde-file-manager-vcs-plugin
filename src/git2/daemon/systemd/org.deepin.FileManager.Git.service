@@ -2,4 +2,5 @@
 Name=org.deepin.FileManager.Git
 Exec=/usr/bin/dde-file-manager-git-daemon
 User=
-SystemdService=dde-file-manager-git-daemon.service 
+SystemdService=dde-file-manager-git-daemon.service
+AssumedAppArmorLabel=unconfined 

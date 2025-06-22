@@ -1,0 +1,50 @@
+#!/bin/bash
+set -e
+
+# Package: dde-file-manager-git-service
+# Postinst script for Git service daemon
+
+case "$1" in
+    configure)
+        # Reload systemd user daemon for all users
+        if [ -x /bin/systemctl ]; then
+            # Enable the service for all users who have a systemd user session
+            for user_dir in /run/user/*/; do
+                if [ -d "$user_dir" ]; then
+                    user_id=$(basename "$user_dir")
+                    if [ "$user_id" -ge 1000 ] 2>/dev/null; then
+                        # Try to reload and enable the service for this user
+                        sudo -u "#$user_id" XDG_RUNTIME_DIR="$user_dir" \
+                            systemctl --user daemon-reload 2>/dev/null || true
+                        sudo -u "#$user_id" XDG_RUNTIME_DIR="$user_dir" \
+                            systemctl --user enable dde-file-manager-git-daemon.service 2>/dev/null || true
+                    fi
+                fi
+            done
+        fi
+        
+        # Reload DBus configuration
+        if [ -x /usr/bin/dbus-send ]; then
+            dbus-send --system --type=method_call \
+                --dest=org.freedesktop.DBus \
+                /org/freedesktop/DBus \
+                org.freedesktop.DBus.ReloadConfig 2>/dev/null || true
+        fi
+        
+        echo "Git service daemon installed successfully."
+        echo "The service will start automatically when needed."
+        echo "To manually start: systemctl --user start dde-file-manager-git-daemon.service"
+        ;;
+        
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+        
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0 

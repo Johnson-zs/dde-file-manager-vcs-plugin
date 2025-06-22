@@ -77,4 +77,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 install(TARGETS ${PROJECT_NAME}
     LIBRARY DESTINATION ${DFM_EXT_PLUGIN_DIR}
     COMPONENT extension
-) 
+)
+
+# 创建扩展组件
+set(CPACK_COMPONENT_EXTENSION_DISPLAY_NAME "Git Extension")
+set(CPACK_COMPONENT_EXTENSION_DESCRIPTION "Git integration plugin for DDE File Manager")
+set(CPACK_COMPONENT_EXTENSION_DEPENDS service) 

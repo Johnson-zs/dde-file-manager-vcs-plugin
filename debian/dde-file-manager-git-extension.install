@@ -1,0 +1,3 @@
+# Git extension files (plugin)
+usr/lib/*/dde-file-manager/plugins/extensions/libdfm-extension-git2.so
+usr/share/dde-file-manager/git/dialogs/* 

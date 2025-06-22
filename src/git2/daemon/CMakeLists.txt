@@ -71,12 +71,17 @@ install(TARGETS ${PROJECT_NAME}
 
 # 安装DBus服务配置
 install(FILES systemd/org.deepin.FileManager.Git.service
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/share/dbus-1/services
+    DESTINATION share/dbus-1/services
     COMPONENT service
 )
 
 # 安装Systemd用户服务
 install(FILES systemd/dde-file-manager-git-daemon.service
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/user
+    DESTINATION lib/systemd/user
     COMPONENT service
-) 
+)
+
+# 创建服务组件
+set(CPACK_COMPONENT_SERVICE_DISPLAY_NAME "Git Service Daemon")
+set(CPACK_COMPONENT_SERVICE_DESCRIPTION "Git status monitoring service for DDE File Manager")
+set(CPACK_COMPONENT_SERVICE_REQUIRED ON) 

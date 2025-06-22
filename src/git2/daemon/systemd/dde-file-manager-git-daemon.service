@@ -1,13 +1,32 @@
 [Unit]
 Description=DDE File Manager Git Status Service
-After=graphical-session.target
+Documentation=man:dde-file-manager-git-daemon(1)
+After=graphical-session.target dbus.service
+Requires=dbus.service
+PartOf=graphical-session.target
 
 [Service]
 Type=dbus
 BusName=org.deepin.FileManager.Git
 ExecStart=/usr/bin/dde-file-manager-git-daemon
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=3
+TimeoutStartSec=10
+TimeoutStopSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Resource limits
+MemoryMax=100M
+CPUQuota=10%
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.cache %h/.local/share
 
 [Install]
 WantedBy=default.target 

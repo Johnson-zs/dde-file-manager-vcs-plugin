@@ -1,0 +1,47 @@
+#!/bin/bash
+set -e
+
+# Package: dde-file-manager-git-service
+# Postrm script for Git service daemon
+
+case "$1" in
+    purge)
+        # Clean up user cache and configuration files
+        for user_home in /home/*; do
+            if [ -d "$user_home" ]; then
+                # Remove cache files
+                rm -rf "$user_home/.cache/dde-file-manager-git" 2>/dev/null || true
+                rm -rf "$user_home/.local/share/dde-file-manager-git" 2>/dev/null || true
+                
+                # Remove systemd user service links
+                rm -f "$user_home/.config/systemd/user/default.target.wants/dde-file-manager-git-daemon.service" 2>/dev/null || true
+            fi
+        done
+        
+        echo "Git service daemon configuration and cache files removed."
+        ;;
+        
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        # Reload systemd configuration after removal
+        if [ -x /bin/systemctl ]; then
+            for user_dir in /run/user/*/; do
+                if [ -d "$user_dir" ]; then
+                    user_id=$(basename "$user_dir")
+                    if [ "$user_id" -ge 1000 ] 2>/dev/null; then
+                        sudo -u "#$user_id" XDG_RUNTIME_DIR="$user_dir" \
+                            systemctl --user daemon-reload 2>/dev/null || true
+                    fi
+                fi
+            done
+        fi
+        ;;
+        
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0 
