@@ -198,4 +198,47 @@ namespace GitUtils {
      * @return 如果被忽略返回true
      */
     bool isIgnoredDirectory(const QString &directory, const QString &path);
+    
+    // === 内部工具函数 ===
+    
+    /**
+     * @brief 读取设备数据直到遇到零字符
+     * @param device 输入设备
+     * @param buffer 缓冲区
+     * @param maxChars 最大字符数
+     * @return 读取的字符数
+     */
+    int readUntilZeroChar(QIODevice *device, char *buffer, const int maxChars);
+    
+    /**
+     * @brief 解析Git状态行
+     * @param line Git状态输出行
+     * @return 包含X状态、Y状态和文件名的元组
+     */
+    std::tuple<char, char, QString> parseLineGitStatus(const QString &line);
+    
+    /**
+     * @brief 解析Git状态字符为ItemVersion
+     * @param state 初始状态
+     * @param X 索引状态字符
+     * @param Y 工作树状态字符
+     * @return 解析后的状态
+     */
+    ItemVersion parseXYState(ItemVersion state, char X, char Y);
+    
+    /**
+     * @brief 从状态字符解析文件状态
+     * @param indexStatus 索引状态字符
+     * @param workingStatus 工作树状态字符
+     * @return 解析后的ItemVersion
+     */
+    ItemVersion parseFileStatusFromChars(char indexStatus, char workingStatus);
+    
+    /**
+     * @brief 创建目录组列表
+     * @param directory 基础目录
+     * @param relativeFileName 相对文件名
+     * @return 目录路径列表
+     */
+    QStringList makeDirGroup(const QString &directory, const QString &relativeFileName);
 } 

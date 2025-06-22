@@ -13,6 +13,14 @@ set(CMAKE_CXX_FLAGS "-g -std=c++17 -lstdc++fs")
 find_package(Qt6 REQUIRED COMPONENTS Core Core5Compat Widgets Gui)
 find_package(dfm-extension REQUIRED)
 
+if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+    set(BUILD_TESTING ON)
+    # 启用测试
+    enable_testing()
+endif()
+
+
+
 include(GNUInstallDirs)
 if(NOT DEFINED LIB_INSTALL_DIR)
     set(LIB_INSTALL_DIR ${CMAKE_INSTALL_FULL_LIBDIR})
@@ -23,7 +31,7 @@ if(NOT DEFINED DFM_EXT_PLUGIN_DIR)
 endif()
 
 # 原版本（已废弃）
-# add_subdirectory(src/git)
+add_subdirectory(src/git)
 
 # 重构版本（Task005完成）
 add_subdirectory(src/git2)

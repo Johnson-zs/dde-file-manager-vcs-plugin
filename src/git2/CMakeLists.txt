@@ -37,6 +37,11 @@ add_subdirectory(daemon)
 add_subdirectory(dialog)
 add_subdirectory(plugin)
 
+# 添加测试目录
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
 # 安装规则
 install(DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/
         DESTINATION bin

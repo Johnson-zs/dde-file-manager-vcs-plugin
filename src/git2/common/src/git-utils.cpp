@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QIODevice>
 #include <QObject>
+#include <QDebug>
 
 // 进程适配包含
 #ifdef GIT_PLUGIN_PROCESS
@@ -120,12 +121,87 @@ bool isInsideRepositoryFile(const QString &filePath)
     if (g_dbusClient) {
         return g_dbusClient->isInsideRepository(filePath);
     }
+#else
+    // 测试环境：检查文件是否在仓库中
+    QFileInfo fileInfo(filePath);
+    
+    // 首先检查文件是否存在
+    if (!fileInfo.exists()) {
+        // 对于不存在的文件，先检查是否在Git仓库中
+        QString directory = fileInfo.absolutePath();
+        QString repositoryPath = repositoryBaseDir(directory);
+        if (repositoryPath.isEmpty()) {
+            return UnversionedVersion;
+        }
+        
+        // 检查文件是否被Git跟踪
+        QProcess process;
+        process.setWorkingDirectory(repositoryPath);
+        QString relativePath = filePath;
+        if (filePath.startsWith(repositoryPath + "/")) {
+            relativePath = filePath.mid(repositoryPath.length() + 1);
+        }
+        
+        process.start("git", {"ls-files", relativePath});
+        if (process.waitForFinished(3000) && process.exitCode() == 0) {
+            QString lsOutput = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+            if (!lsOutput.isEmpty()) {
+                return MissingVersion;  // 被跟踪但文件不存在
+            }
+        }
+        return UnversionedVersion;  // 不存在且未被跟踪
+    }
+    
+    QString directory = fileInfo.isDir() ? filePath : fileInfo.absolutePath();
+    
+    // 获取仓库根目录
+    QString repositoryPath = repositoryBaseDir(directory);
+    if (repositoryPath.isEmpty()) {
+        return UnversionedVersion;
+    }
+    
+    QProcess process;
+    process.setWorkingDirectory(repositoryPath);
+    
+    // 使用相对路径查询文件状态
+    QString relativePath = filePath;
+    if (filePath.startsWith(repositoryPath + "/")) {
+        relativePath = filePath.mid(repositoryPath.length() + 1);
+    } else if (filePath == repositoryPath) {
+        // 查询仓库根目录状态，使用 "." 
+        relativePath = ".";
+    }
+    
+    process.start("git", {"status", "--porcelain", relativePath});
+    if (process.waitForFinished(3000) && process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        
+        if (output.isEmpty()) {
+            // 如果是仓库根目录，检查是否有任何更改
+            if (relativePath == ".") {
+                process.start("git", {"status", "--porcelain"});
+                if (process.waitForFinished(3000) && process.exitCode() == 0) {
+                    QString fullOutput = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+                    return fullOutput.isEmpty() ? NormalVersion : LocallyModifiedVersion;
+                }
+            }
+            
+            return NormalVersion;  // 文件已提交且无更改
+        }
+        
+        // 解析状态输出
+        if (output.length() >= 2) {
+            char indexStatus = output[0].toLatin1();
+            char workingStatus = output[1].toLatin1();
+            return parseFileStatusFromChars(indexStatus, workingStatus);
+        }
+    }
 #endif
     
     // 降级处理：直接检查目录
-    QFileInfo fileInfo(filePath);
-    QString directory = fileInfo.isDir() ? filePath : fileInfo.absolutePath();
-    return isInsideRepositoryDir(directory);
+    QFileInfo fallbackFileInfo(filePath);
+    QString fallbackDirectory = fallbackFileInfo.isDir() ? filePath : fallbackFileInfo.absolutePath();
+    return isInsideRepositoryDir(fallbackDirectory);
 }
 
 bool isGitRepositoryRoot(const QString &directoryPath)
@@ -160,10 +236,129 @@ ItemVersion getFileGitStatus(const QString &filePath)
     if (g_dbusClient) {
         return g_dbusClient->getFileStatus(filePath);
     }
+#else
+    // 测试环境：直接查询Git状态
+    QFileInfo fileInfo(filePath);
+    
+    // 首先检查文件是否存在
+    if (!fileInfo.exists()) {
+        // 对于不存在的文件，先检查是否在Git仓库中
+        QString directory = fileInfo.absolutePath();
+        QString repositoryPath = repositoryBaseDir(directory);
+        if (repositoryPath.isEmpty()) {
+            return UnversionedVersion;
+        }
+        
+        // 检查文件是否被Git跟踪
+        QProcess process;
+        process.setWorkingDirectory(repositoryPath);
+        QString relativePath = filePath;
+        if (filePath.startsWith(repositoryPath + "/")) {
+            relativePath = filePath.mid(repositoryPath.length() + 1);
+        }
+        
+        process.start("git", {"ls-files", relativePath});
+        if (process.waitForFinished(3000) && process.exitCode() == 0) {
+            QString lsOutput = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+            if (!lsOutput.isEmpty()) {
+                return MissingVersion;  // 被跟踪但文件不存在
+            }
+        }
+        return UnversionedVersion;  // 不存在且未被跟踪
+    }
+    
+    QString directory = fileInfo.isDir() ? filePath : fileInfo.absolutePath();
+    
+    // 获取仓库根目录
+    QString repositoryPath = repositoryBaseDir(directory);
+    if (repositoryPath.isEmpty()) {
+        return UnversionedVersion;
+    }
+    
+    QProcess process;
+    process.setWorkingDirectory(repositoryPath);
+    
+    // 使用相对路径查询文件状态
+    QString relativePath = filePath;
+    if (filePath.startsWith(repositoryPath + "/")) {
+        relativePath = filePath.mid(repositoryPath.length() + 1);
+    } else if (filePath == repositoryPath) {
+        // 查询仓库根目录状态，使用 "." 
+        relativePath = ".";
+    }
+    
+    process.start("git", {"status", "--porcelain", relativePath});
+    if (process.waitForFinished(3000) && process.exitCode() == 0) {
+        QString output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+        
+        if (output.isEmpty()) {
+            // 如果是仓库根目录，检查是否有任何更改
+            if (relativePath == ".") {
+                process.start("git", {"status", "--porcelain"});
+                if (process.waitForFinished(3000) && process.exitCode() == 0) {
+                    QString fullOutput = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+                    return fullOutput.isEmpty() ? NormalVersion : LocallyModifiedVersion;
+                }
+            }
+            
+            return NormalVersion;  // 文件已提交且无更改
+        }
+        
+        // 解析状态输出
+        if (output.length() >= 2) {
+            char indexStatus = output[0].toLatin1();
+            char workingStatus = output[1].toLatin1();
+            return parseFileStatusFromChars(indexStatus, workingStatus);
+        }
+    }
 #endif
     
     // 降级处理：返回未版本控制状态
     return UnversionedVersion;
+}
+
+// 添加用于解析Git状态字符的辅助函数
+ItemVersion parseFileStatusFromChars(char indexStatus, char workingStatus)
+{
+    // 处理冲突状态
+    if ((indexStatus == 'U' && workingStatus == 'U') ||  // 两边都修改的冲突
+        (indexStatus == 'A' && workingStatus == 'A') ||  // 两边都添加的冲突
+        (indexStatus == 'D' && workingStatus == 'D') ||  // 两边都删除的冲突
+        (indexStatus == 'U' && workingStatus != 'U') ||  // 一边冲突
+        (indexStatus != 'U' && workingStatus == 'U')) {  // 另一边冲突
+        return ConflictingVersion;
+    }
+    
+    // Parse git status codes to our enum
+    if (indexStatus != ' ' && indexStatus != '?') {
+        // File is staged
+        if (indexStatus == 'A') {
+            return AddedVersion;
+        } else if (indexStatus == 'M') {
+            return LocallyModifiedVersion;
+        } else if (indexStatus == 'D') {
+            return RemovedVersion;
+        } else if (indexStatus == 'R') {
+            return LocallyModifiedVersion;  // Renamed files treated as modified
+        } else if (indexStatus == 'C') {
+            return AddedVersion;  // Copied files treated as added
+        } else {
+            return LocallyModifiedVersion;  // Other staged changes
+        }
+    } else if (workingStatus == '?') {
+        return UnversionedVersion;
+    } else if (workingStatus == '!') {
+        return IgnoredVersion;
+    } else {
+        // File is modified but not staged
+        if (workingStatus == 'M') {
+            return LocallyModifiedUnstagedVersion;
+        } else if (workingStatus == 'D') {
+            return MissingVersion;  // Deleted in working tree
+        } else {
+            return LocallyModifiedUnstagedVersion;
+        }
+    }
 }
 
 QString getFileStatusDescription(const QString &filePath)

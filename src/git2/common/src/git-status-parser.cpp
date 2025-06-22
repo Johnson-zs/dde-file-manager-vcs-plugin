@@ -54,6 +54,15 @@ ItemVersion GitStatusParser::parseFileStatus(const QString &statusLine)
 
 ItemVersion GitStatusParser::parseFileStatusFromChars(char indexStatus, char workingStatus)
 {
+    // 处理冲突状态
+    if ((indexStatus == 'U' && workingStatus == 'U') ||  // 两边都修改的冲突
+        (indexStatus == 'A' && workingStatus == 'A') ||  // 两边都添加的冲突
+        (indexStatus == 'D' && workingStatus == 'D') ||  // 两边都删除的冲突
+        (indexStatus == 'U' && workingStatus != 'U') ||  // 一边冲突
+        (indexStatus != 'U' && workingStatus == 'U')) {  // 另一边冲突
+        return ConflictingVersion;
+    }
+    
     // Parse git status codes to our enum
     if (indexStatus != ' ' && indexStatus != '?') {
         // File is staged

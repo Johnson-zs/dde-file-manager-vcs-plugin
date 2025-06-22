@@ -1,0 +1,63 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            build-essential \
+            qt6-base-dev \
+            qt6-tools-dev \
+            libqt6dbus6-dev \
+            git \
+            lcov \
+            gcovr
+
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cd build
+          cmake -DCMAKE_BUILD_TYPE=Debug \
+                -DBUILD_TESTS=ON \
+                -DCMAKE_CXX_FLAGS="--coverage" \
+                ..
+
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+
+      - name: Run Tests
+        run: |
+          cd build
+          ctest --output-on-failure --verbose
+
+      - name: Generate Coverage Report
+        run: |
+          cd build
+          lcov --directory . --capture --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' --output-file coverage.info
+          lcov --remove coverage.info '*/tests/*' --output-file coverage.info
+          lcov --list coverage.info
+
+      - name: Upload Coverage to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v3
+        with:
+          file: build/coverage.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false

@@ -71,6 +71,11 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+# 设置编译定义
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    GIT_DIALOG_PROCESS=1
+)
+
 # 安装二进制文件
 install(TARGETS ${PROJECT_NAME}
     DESTINATION bin
