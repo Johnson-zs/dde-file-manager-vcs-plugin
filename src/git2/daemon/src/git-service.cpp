@@ -41,6 +41,9 @@ bool GitService::RegisterRepository(const QString &repositoryPath)
     bool result = GitStatusCache::instance().registerRepository(repositoryPath);
     
     if (result) {
+        // 请求添加监控
+        Q_EMIT RepositoryWatchRequested(repositoryPath);
+        
         // 立即刷新仓库状态
         QTimer::singleShot(0, this, [this, repositoryPath]() {
             refreshRepositoryInternal(repositoryPath);
@@ -58,7 +61,15 @@ bool GitService::UnregisterRepository(const QString &repositoryPath)
     }
 
     qDebug() << "[GitService::UnregisterRepository] Unregistering repository:" << repositoryPath;
-    return GitStatusCache::instance().unregisterRepository(repositoryPath);
+    
+    bool result = GitStatusCache::instance().unregisterRepository(repositoryPath);
+    
+    if (result) {
+        // 请求移除监控
+        Q_EMIT RepositoryUnwatchRequested(repositoryPath);
+    }
+    
+    return result;
 }
 
 QVariantMap GitService::GetFileStatuses(const QStringList &filePaths)
@@ -134,6 +145,36 @@ QVariantMap GitService::GetServiceStatus()
     status["registeredRepositories"] = GitStatusCache::instance().getCachedRepositories().size();
     
     return status;
+}
+
+bool GitService::ClearAllResources()
+{
+    if (!m_serviceReady) {
+        qWarning() << "[GitService::ClearAllResources] Service not ready";
+        return false;
+    }
+
+    qDebug() << "[GitService::ClearAllResources] Requesting resource cleanup";
+    
+    // 发出清理请求信号，由daemon处理实际的清理工作
+    Q_EMIT ClearAllResourcesRequested();
+    
+    return true;
+}
+
+bool GitService::TriggerRetrieval(const QString &directoryPath)
+{
+    if (!m_serviceReady) {
+        qWarning() << "[GitService::TriggerRetrieval] Service not ready";
+        return false;
+    }
+
+    qDebug() << "[GitService::TriggerRetrieval] Triggering retrieval for directory:" << directoryPath;
+    
+    // 发出检索请求信号，由daemon处理实际的检索工作
+    Q_EMIT RetrievalRequested(directoryPath);
+    
+    return true;
 }
 
 void GitService::onRepositoryChanged(const QString &repositoryPath)

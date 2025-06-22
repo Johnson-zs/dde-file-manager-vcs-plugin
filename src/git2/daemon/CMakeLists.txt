@@ -7,6 +7,7 @@ set(DAEMON_HEADERS
     include/git-status-cache.h
     include/git-repository-watcher.h
     include/git-service.h
+    include/git-version-worker.h
 )
 
 # 设置源文件
@@ -16,6 +17,7 @@ set(DAEMON_SOURCES
     src/git-status-cache.cpp
     src/git-repository-watcher.cpp
     src/git-service.cpp
+    src/git-version-worker.cpp
 )
 
 # DBus接口生成 - Qt6方式

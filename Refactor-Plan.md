@@ -367,10 +367,175 @@ namespace GitUtils {
 
 请提供完整的公共组件重构方案，重点关注模块化设计和API兼容性。
 
-### TASK005 - 单元测试框架搭建和核心模块测试
+### TASK005 - Git窗口插件和版本控制器重构
+**版本**: 1.0  
+**状态**: 计划中  
+**优先级**: P0 - 阻塞级
+
+#### 任务描述
+重构GitWindowPlugin和GitVersionController，实现角标业务的核心驱动逻辑，确保1.0版本具备完整的角标功能。
+
+#### 子任务清单
+1. **GitVersionWorker重构**
+   - 迁移retrieval函数到daemon/src/git-version-worker.cpp
+   - 保留完整的Git状态检索和解析逻辑
+   - 集成到GitStatusCache服务中
+   - 实现批量状态更新和缓存管理
+
+2. **GitVersionController重构**  
+   - 重构为轻量级的DBus客户端触发器
+   - 保留定时器和文件系统监控集成
+   - 通过DBus调用daemon服务进行状态更新
+   - 实现新仓库发现和注册逻辑
+
+3. **GitWindowPlugin完整实现**
+   - 实现windowUrlChanged的完整业务逻辑
+   - 集成GitVersionController和本地缓存
+   - 保持与原版本完全一致的触发时机
+   - 实现firstWindowOpened的初始化逻辑
+
+4. **GitFileSystemWatcher集成**
+   - 将GitFileSystemWatcher迁移到daemon进程
+   - 实现实时文件变更监控
+   - 通过DBus信号通知插件进程更新
+   - 保持高性能的文件系统监控
+
+5. **角标业务完整性验证**
+   - 验证文件夹导航时角标正确显示
+   - 验证Git操作后角标实时更新
+   - 验证仓库根目录状态计算逻辑
+   - 验证多仓库环境下的角标显示
+
+#### 验收标准
+- [x] GitVersionWorker完整迁移，状态检索逻辑保持不变
+- [x] GitVersionController重构为DBus客户端，触发逻辑正确
+- [x] GitWindowPlugin实现完整，窗口事件正确处理
+- [x] 文件系统监控集成到daemon，实时性保持
+- [x] 角标显示与原版本完全一致
+- [x] 新仓库发现和注册机制正常工作
+- [x] 多仓库环境下性能和稳定性良好
+
+#### 关键技术实现
+```cpp
+// GitVersionWorker核心逻辑保留
+class GitVersionWorker : public QObject
+{
+    Q_OBJECT
+public slots:
+    void onRetrieval(const QUrl &url);
+    
+private:
+    QHash<QString, ItemVersion> retrieval(const QString &directory);
+    ItemVersion calculateRepositoryRootStatus(const QHash<QString, ItemVersion> &versionInfoHash);
+};
+
+// GitVersionController重构为DBus客户端
+class GitVersionController : public QObject  
+{
+    Q_OBJECT
+public:
+    GitVersionController();
+    
+private slots:
+    void onTimeout();
+    void onRepositoryChanged(const QString &repositoryPath);
+    void onNewRepositoryAdded(const QString &path);
+    
+private:
+    GitDBusClient *m_dbusClient;
+    GitFileSystemWatcher *m_fileSystemWatcher;
+    QTimer *m_timer;
+};
+```
+
+#### AI编程助手提示词
+
+```
+你是Git版本控制系统专家，精通文件状态监控和角标显示逻辑。当前任务是重构GitWindowPlugin的核心业务逻辑，确保角标功能完整实现。
+
+**重构约束**:
+- 必须保留原有的retrieval函数完整逻辑
+- 保持calculateRepositoryRootStatus的状态计算规则
+- 维持windowUrlChanged的触发时机和频率
+- 确保文件系统监控的实时性不下降
+
+**架构要求**:
+- GitVersionWorker迁移到daemon进程，作为状态检索引擎
+- GitVersionController重构为DBus客户端，负责触发更新
+- GitWindowPlugin实现完整的窗口事件处理
+- 保持与原有角标显示逻辑的100%兼容性
+
+**关键业务逻辑**:
+1. 文件夹导航时立即触发状态检索
+2. Git命令执行后通过文件系统监控触发更新
+3. 定时器作为备用机制确保状态同步
+4. 新仓库发现时自动添加到监控列表
+
+**性能要求**:
+- 状态检索延迟<500ms
+- 文件系统监控延迟<100ms  
+- 支持100+仓库同时监控
+- 内存使用合理控制
+
+**测试验证**:
+- 在真实Git仓库中测试角标显示
+- 验证文件修改后角标实时更新
+- 测试多仓库环境的性能表现
+- 确保与原版本行为完全一致
+
+请提供完整的重构实现，重点关注业务逻辑的完整性和性能稳定性。
+```
+
+---
+
+### TASK006 - 系统服务集成和部署配置
+
 **版本**: 1.0  
 **状态**: 计划中  
 **优先级**: P1 - 重要
+
+#### 任务描述
+
+配置DBus服务和Systemd用户服务，实现Git daemon的系统级集成和自动启动。
+
+#### 子任务清单
+
+1. **DBus服务配置**
+   - 编写org.deepin.FileManager.Git.service配置文件
+   - 配置服务的启动参数和用户权限
+   - 测试DBus服务的注册和激活
+
+2. **Systemd用户服务配置**
+   - 编写dde-file-manager-git-daemon.service配置
+   - 配置服务的依赖关系和重启策略
+   - 实现服务的优雅启动和关闭
+
+3. **Debian包配置**
+   - 设计两个包的分离策略：extension和service
+   - 编写postinst/prerm脚本处理服务安装
+   - 配置包的依赖关系和冲突处理
+
+4. **安装脚本和部署**
+   - 编写CMake安装目标
+   - 配置文件和二进制文件的正确部署
+   - 测试完整的安装和卸载流程
+
+#### 验收标准
+
+- [x] DBus服务可以正确注册到系统
+- [x] Systemd用户服务可以自动启动和重启
+- [x] 服务进程在异常退出后能自动恢复
+- [x] Debian包安装后服务配置正确
+- [x] 服务卸载时能正确清理资源
+- [x] 多用户环境下服务隔离正常
+- [x] 服务启动时间控制在3秒以内
+
+---
+
+### TASK007 - 单元测试框架搭建和核心模块测试
+**版本**: 1.0  
+**状态**: 计划中  
+**优先级**: P2 - 一般
 
 #### 任务描述
 从零搭建单元测试框架，为核心角标业务模块编写完整的单元测试。
@@ -388,10 +553,10 @@ namespace GitUtils {
    - 测试LRU缓存淘汰机制
    - 测试批量查询接口的正确性
 
-3. **GitRepositoryWatcher测试套件**
-   - 测试仓库发现和注册功能
-   - 测试文件变更监控的实时性
-   - 测试监控器的启动和停止流程
+3. **GitVersionWorker测试套件**
+   - 测试retrieval函数的状态检索逻辑
+   - 测试calculateRepositoryRootStatus的计算规则
+   - 测试文件系统监控的实时性
    - 测试异常情况的处理机制
 
 4. **Git工具函数测试套件**
@@ -410,77 +575,11 @@ namespace GitUtils {
 - [x] Qt Test框架正确集成，测试可以正常运行
 - [x] CMake测试目标配置完整，支持ctest运行
 - [x] GitStatusCache测试覆盖率达到90%以上
-- [x] GitRepositoryWatcher测试覆盖率达到85%以上
+- [x] GitVersionWorker测试覆盖率达到85%以上
 - [x] Git工具函数测试覆盖率达到95%以上
 - [x] DBus接口集成测试能发现通信问题
 - [x] 所有测试在CI环境中可以稳定通过
 - [x] 测试覆盖率报告可以正确生成
-
-#### 测试用例示例
-```cpp
-// GitStatusCache测试示例
-class TestGitStatusCache : public QObject
-{
-    Q_OBJECT
-private slots:
-    void testVersionStorage();
-    void testConcurrentAccess();
-    void testBatchQuery();
-    void testCacheEviction();
-    void testRepositoryRemoval();
-};
-
-void TestGitStatusCache::testVersionStorage()
-{
-    GitStatusCache cache;
-    QString repoPath = "/tmp/test-repo";
-    QHash<QString, ItemVersion> versions;
-    versions["/tmp/test-repo/file1.txt"] = LocallyModifiedVersion;
-    
-    cache.resetVersion(repoPath, versions);
-    
-    QCOMPARE(cache.version("/tmp/test-repo/file1.txt"), LocallyModifiedVersion);
-    QCOMPARE(cache.version("/tmp/test-repo/nonexistent.txt"), UnversionedVersion);
-}
-```
-
-#### AI编程助手提示词
-
-```
-你是软件质量保证专家，精通Qt Test框架和C++单元测试最佳实践。当前任务是为Git插件重构项目建立完整的测试体系。
-
-**测试框架要求**:
-- 使用Qt Test框架作为主要测试工具
-- 集成CMake的CTest功能
-- 支持测试覆盖率统计和报告生成
-- 配置CI/CD自动化测试流水线
-
-**重点测试模块**:
-1. GitStatusCache - 缓存核心逻辑和线程安全
-2. GitRepositoryWatcher - 文件系统监控和仓库发现
-3. Git工具函数 - 状态查询和仓库检测
-4. DBus接口 - 进程间通信和错误处理
-
-**测试策略设计**:
-- 单元测试：测试单个类和函数的正确性
-- 集成测试：测试DBus服务和客户端的协作
-- 性能测试：验证缓存和监控的性能指标
-- 边界测试：测试异常输入和错误情况
-
-**测试环境要求**:
-- 模拟Git仓库环境进行测试
-- 多线程并发测试
-- DBus服务的Mock和Stub
-- 内存泄漏检测
-
-**质量目标**:
-- 核心模块测试覆盖率>90%
-- 所有测试在CI环境稳定通过
-- 测试执行时间<2分钟
-- 发现和预防回归问题
-
-请提供完整的测试框架搭建方案和核心模块的测试用例实现。
-```
 
 ---
 
@@ -576,7 +675,7 @@ Restart=on-failure
 
 ## 🚀 2.0版本 - 对话框进程迁移
 
-### TASK007 - Git对话框进程架构搭建
+### TASK008 - Git对话框进程架构搭建
 **版本**: 2.0  
 **状态**: 计划中  
 **优先级**: P1 - 重要
@@ -635,7 +734,7 @@ dde-file-manager-git-dialog --action=log --repository=/path/to/repo --file=/path
 
 
 
-### TASK008 - 核心Git对话框迁移
+### TASK009 - 核心Git对话框迁移
 **版本**: 2.0  
 **状态**: 计划中  
 **优先级**: P1 - 重要
@@ -667,7 +766,7 @@ dde-file-manager-git-dialog --action=log --repository=/path/to/repo --file=/path
 
 ---
 
-### TASK009 - Git菜单和窗口插件重构
+### TASK010 - Git菜单和窗口插件重构
 **版本**: 2.0  
 **状态**: 计划中  
 **优先级**: P2 - 一般
@@ -693,7 +792,7 @@ dde-file-manager-git-dialog --action=log --repository=/path/to/repo --file=/path
 
 ## 🌟 3.0版本 - 系统优化和完善
 
-### TASK010 - 性能优化和稳定性增强
+### TASK011 - 性能优化和稳定性增强
 **版本**: 3.0  
 **状态**: 计划中  
 **优先级**: P2 - 一般
@@ -725,7 +824,7 @@ dde-file-manager-git-dialog --action=log --repository=/path/to/repo --file=/path
 
 ---
 
-### TASK011 - 文档和部署完善
+### TASK012 - 文档和部署完善
 **版本**: 3.0  
 **状态**: 计划中  
 **优先级**: P3 - 可选
@@ -788,11 +887,16 @@ IMPLEMENTATION CHECKLIST:
 6. 重构GitEmblemIconPlugin为轻量级DBus客户端
 7. 实现GitLocalCache本地缓存层
 8. 迁移Utils和GitStatusParser到公共组件模块
-9. 搭建Qt Test单元测试框架
-10. 编写GitStatusCache、GitRepositoryWatcher等核心模块测试
-11. 配置DBus服务和Systemd用户服务
-12. 设置Debian包分离和部署脚本
-13. 实现对话框进程架构和命令行接口
-14. 迁移GitCommitDialog、GitLogDialog等核心对话框
-15. 重构GitMenuPlugin和GitWindowPlugin为进程启动器
-16. 进行集成测试和性能优化
+9. 迁移GitVersionWorker的retrieval函数到daemon进程
+10. 重构GitVersionController为DBus客户端触发器
+11. 实现GitWindowPlugin的完整窗口事件处理逻辑
+12. 集成GitFileSystemWatcher到daemon进程
+13. 验证角标业务的完整性和实时性
+14. 配置DBus服务和Systemd用户服务
+15. 搭建Qt Test单元测试框架
+16. 编写GitStatusCache、GitVersionWorker等核心模块测试
+17. 设置Debian包分离和部署脚本
+18. 实现对话框进程架构和命令行接口
+19. 迁移GitCommitDialog、GitLogDialog等核心对话框
+20. 重构GitMenuPlugin为进程启动器
+21. 进行集成测试和性能优化

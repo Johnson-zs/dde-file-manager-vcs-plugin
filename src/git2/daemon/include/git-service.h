@@ -76,6 +76,20 @@ public Q_SLOTS:
      */
     QVariantMap GetServiceStatus();
 
+    /**
+     * @brief 清理所有资源（缓存和监控）
+     * 当文件管理器所有窗口关闭时调用，释放所有资源
+     * @return 清理是否成功
+     */
+    bool ClearAllResources();
+
+    /**
+     * @brief 触发目录状态检索
+     * @param directoryPath 目录路径
+     * @return 触发是否成功
+     */
+    bool TriggerRetrieval(const QString &directoryPath);
+
 Q_SIGNALS:
     /**
      * @brief 仓库状态发生变化时发出的信号
@@ -89,6 +103,30 @@ Q_SIGNALS:
      * @param repositoryPath 新发现的仓库路径
      */
     void RepositoryDiscovered(const QString &repositoryPath);
+
+    /**
+     * @brief 请求清理所有资源的信号
+     * 此信号会通知daemon清理所有缓存和监控资源
+     */
+    void ClearAllResourcesRequested();
+
+    /**
+     * @brief 请求添加仓库监控的信号
+     * @param repositoryPath 仓库路径
+     */
+    void RepositoryWatchRequested(const QString &repositoryPath);
+
+    /**
+     * @brief 请求移除仓库监控的信号
+     * @param repositoryPath 仓库路径
+     */
+    void RepositoryUnwatchRequested(const QString &repositoryPath);
+
+    /**
+     * @brief 请求状态检索的信号
+     * @param directoryPath 目录路径
+     */
+    void RetrievalRequested(const QString &directoryPath);
 
 private Q_SLOTS:
     /**

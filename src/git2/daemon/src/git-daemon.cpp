@@ -1,6 +1,7 @@
 #include "git-daemon.h"
 #include "git-service.h"
 #include "git-repository-watcher.h"
+#include "git-version-worker.h"
 #include "git-status-cache.h"
 #include <QDebug>
 
@@ -8,6 +9,7 @@ GitDaemon::GitDaemon(QObject *parent)
     : QObject(parent)
     , m_service(nullptr)
     , m_watcher(nullptr)
+    , m_versionWorker(nullptr)
     , m_healthTimer(new QTimer(this))
     , m_initialized(false)
 {
@@ -43,6 +45,13 @@ bool GitDaemon::initialize()
         return false;
     }
     
+    // 创建版本工作器
+    m_versionWorker = new GitVersionWorker(this);
+    if (!m_versionWorker) {
+        qCritical() << "[GitDaemon::initialize] Failed to create GitVersionWorker";
+        return false;
+    }
+    
     // 设置组件间连接
     setupConnections();
     
@@ -71,6 +80,11 @@ void GitDaemon::shutdown()
     }
     
     // 清理组件
+    if (m_versionWorker) {
+        m_versionWorker->deleteLater();
+        m_versionWorker = nullptr;
+    }
+    
     if (m_watcher) {
         m_watcher->deleteLater();
         m_watcher = nullptr;
@@ -93,6 +107,31 @@ void GitDaemon::setupConnections()
     
     connect(m_watcher, &GitRepositoryWatcher::repositoryDiscovered,
             m_service, &GitService::RegisterRepository);
+    
+    // 连接资源清理信号
+    connect(m_service, &GitService::ClearAllResourcesRequested,
+            this, &GitDaemon::onClearAllResourcesRequested);
+    
+    // 连接监控管理信号
+    connect(m_service, &GitService::RepositoryWatchRequested,
+            m_watcher, &GitRepositoryWatcher::addRepository);
+    
+    connect(m_service, &GitService::RepositoryUnwatchRequested,
+            m_watcher, &GitRepositoryWatcher::removeRepository);
+    
+    // 连接版本工作器信号
+    connect(m_versionWorker, &GitVersionWorker::newRepositoryAdded,
+            m_service, &GitService::RegisterRepository);
+    
+    connect(m_versionWorker, &GitVersionWorker::retrievalCompleted,
+            this, [this](const QString &repositoryPath, const QHash<QString, ItemVersion> &versionInfoHash) {
+                qDebug() << "[GitDaemon] Version retrieval completed for:" << repositoryPath
+                         << "with" << versionInfoHash.size() << "entries";
+            });
+    
+    // 连接检索请求信号
+    connect(m_service, &GitService::RetrievalRequested,
+            m_versionWorker, QOverload<const QString&>::of(&GitVersionWorker::onRetrieval));
     
     qDebug() << "[GitDaemon::setupConnections] Component connections established";
 }
@@ -121,4 +160,29 @@ void GitDaemon::onHealthCheck()
         qWarning() << "[GitDaemon::onHealthCheck] Cache size too large, triggering cleanup";
         GitStatusCache::instance().performCleanup();
     }
+}
+
+void GitDaemon::clearAllResources()
+{
+    qDebug() << "[GitDaemon::clearAllResources] Clearing all daemon resources";
+    
+    // 清理状态缓存
+    GitStatusCache::instance().clearCache();
+    
+    // 清理仓库监控器
+    if (m_watcher) {
+        QStringList watchedRepos = m_watcher->getWatchedRepositories();
+        for (const QString &repo : watchedRepos) {
+            m_watcher->removeRepository(repo);
+        }
+        qDebug() << "[GitDaemon::clearAllResources] Removed monitoring for" << watchedRepos.size() << "repositories";
+    }
+    
+    qDebug() << "[GitDaemon::clearAllResources] All resources cleared successfully";
+}
+
+void GitDaemon::onClearAllResourcesRequested()
+{
+    qDebug() << "[GitDaemon::onClearAllResourcesRequested] Received resource cleanup request";
+    clearAllResources();
 }

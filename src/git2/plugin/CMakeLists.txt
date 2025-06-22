@@ -12,6 +12,7 @@ set(PLUGIN_HEADERS
     include/git-window-plugin.h
     include/git-local-cache.h
     include/git-dbus-client.h
+    include/git-version-controller.h
 )
 
 # 设置源文件
@@ -22,6 +23,7 @@ set(PLUGIN_SOURCES
     src/git-window-plugin.cpp
     src/git-local-cache.cpp
     src/git-dbus-client.cpp
+    src/git-version-controller.cpp
 )
 
 # DBus接口生成 - 依赖daemon生成的XML

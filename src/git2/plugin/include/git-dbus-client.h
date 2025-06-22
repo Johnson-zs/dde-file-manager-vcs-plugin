@@ -37,6 +37,8 @@ public:
     // 操作触发接口
     bool refreshRepository(const QString &repositoryPath);
     bool clearRepositoryCache(const QString &repositoryPath);
+    bool clearAllResources();
+    bool triggerRetrieval(const QString &directoryPath);
     
     // 服务状态查询
     QVariantMap getServiceStatus();

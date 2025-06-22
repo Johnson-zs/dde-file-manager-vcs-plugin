@@ -199,6 +199,40 @@ bool GitDBusClient::clearRepositoryCache(const QString &repositoryPath)
     return reply.value();
 }
 
+bool GitDBusClient::clearAllResources()
+{
+    if (!m_serviceAvailable || !m_interface) {
+        qWarning() << "[GitDBusClient::clearAllResources] Service not available";
+        return false;
+    }
+    
+    QDBusReply<bool> reply = m_interface->call("ClearAllResources");
+    if (!reply.isValid()) {
+        handleDBusError("ClearAllResources", reply.error());
+        return false;
+    }
+    
+    qDebug() << "[GitDBusClient::clearAllResources] All resources cleared successfully";
+    return reply.value();
+}
+
+bool GitDBusClient::triggerRetrieval(const QString &directoryPath)
+{
+    if (!m_serviceAvailable || !m_interface) {
+        qWarning() << "[GitDBusClient::triggerRetrieval] Service not available";
+        return false;
+    }
+    
+    QDBusReply<bool> reply = m_interface->call("TriggerRetrieval", directoryPath);
+    if (!reply.isValid()) {
+        handleDBusError("TriggerRetrieval", reply.error());
+        return false;
+    }
+    
+    qDebug() << "[GitDBusClient::triggerRetrieval] Retrieval triggered successfully for:" << directoryPath;
+    return reply.value();
+}
+
 QVariantMap GitDBusClient::getServiceStatus()
 {
     if (!m_serviceAvailable || !m_interface) {

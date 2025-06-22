@@ -22,5 +22,8 @@ if(NOT DEFINED DFM_EXT_PLUGIN_DIR)
     set(DFM_EXT_PLUGIN_DIR ${LIB_INSTALL_DIR}/dde-file-manager/plugins/extensions)
 endif()
 
-add_subdirectory(src/git)
+# 原版本（已废弃）
+# add_subdirectory(src/git)
+
+# 重构版本（Task005完成）
 add_subdirectory(src/git2)

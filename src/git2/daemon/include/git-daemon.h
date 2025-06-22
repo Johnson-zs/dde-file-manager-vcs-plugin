@@ -5,6 +5,7 @@
 
 class GitService;
 class GitRepositoryWatcher;
+class GitVersionWorker;
 
 /**
  * @brief Git守护进程主管理类
@@ -25,14 +26,19 @@ public:
     
     GitService* service() const { return m_service; }
     GitRepositoryWatcher* watcher() const { return m_watcher; }
+    GitVersionWorker* versionWorker() const { return m_versionWorker; }
+    
+    void clearAllResources();
     
 private Q_SLOTS:
     void onRepositoryChanged(const QString &repositoryPath);
     void onHealthCheck();
+    void onClearAllResourcesRequested();
     
 private:
     GitService *m_service;
     GitRepositoryWatcher *m_watcher;
+    GitVersionWorker *m_versionWorker;
     QTimer *m_healthTimer;
     bool m_initialized;
     
