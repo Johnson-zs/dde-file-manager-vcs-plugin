@@ -5,6 +5,9 @@
 ## 🌟 功能特性
 
 ### 📊 智能状态可视化
+
+![](./asserts/README/status.png)
+
 - **文件状态角标**：实时显示文件的Git状态
   - 🟢 正常版本（已提交）
   - 🔵 本地修改（已暂存）
@@ -13,12 +16,13 @@
   - ➖ 已删除文件
   - ⚠️ 冲突文件
   - 📁 目录状态汇总
-- **实时文件系统监控**：100ms内响应文件变化，自动更新状态
-- **智能缓存机制**：减少Git命令调用，提升性能
 
 ### 🖱️ 全面的右键菜单集成
 
 #### 单文件操作
+
+![](./asserts/README/menu_single_file.png)
+
 对选中的文件可进行以下操作（根据文件状态智能启用/禁用）：
 
 - **Git Add** - 将文件添加到暂存区
@@ -35,9 +39,13 @@
 - **Git Revert Selected** - 批量还原选中文件
 
 #### 仓库级操作
+
+![](./asserts/README/menu.png)
+
 在Git仓库目录的空白区域右键可进行以下操作：
 
 **基础操作**：
+
 - **Git Status...** - 查看仓库状态概览
 - **Git Log...** - 查看完整的仓库提交历史
 - **Git Commit...** - 提交暂存的更改
@@ -52,12 +60,16 @@
 - **Git Remote Manager...** - 远程仓库管理
 
 **高级功能**：
+
 - **Git Stash** - 快速创建stash
 - **Git Stash Manager...** - 完整的stash管理界面
 
-### 🖥️ 专业级交互界面
+### 🖥️ 交互界面
 
-#### Git Log 查看器（GitKraken风格）
+#### Git Log 查看器
+
+![](./asserts/README/gitlogdialog.png)
+
 采用现代化三栏布局设计：
 
 - **左侧提交列表**：
@@ -77,13 +89,16 @@
   - 支持文件预览
 
 **高级功能**：
-- **智能搜索**：实时搜索提交消息、作者、哈希
+- **搜索**：实时搜索提交消息、作者、哈希
 - **分支过滤**：可搜索的分支选择器
 - **右键菜单**：丰富的上下文操作
 - **浏览器集成**：支持在浏览器中打开commit（GitHub/GitLab等）
 
 #### Git Commit 对话框
-现代化的提交界面：
+
+![](./asserts/README/gitcommitdialog.png)
+
+提交界面：
 
 - **智能文件管理**：
   - 分离显示暂存区和工作区文件
@@ -101,6 +116,9 @@
   - 文件预览功能
 
 #### Git Status 对话框
+
+![](./asserts/README/gitstatusdialog.png)
+
 全面的仓库状态管理：
 
 - **状态概览**：显示暂存、修改、未跟踪文件统计
@@ -109,7 +127,10 @@
 - **批量操作**：支持多文件选择和批量处理
 
 #### Git Push/Pull 对话框
-专业级的同步操作界面：
+
+![](./asserts/README/gitpushdialog.png)
+
+同步操作界面：
 
 **Push对话框**：
 - **仓库状态概览**：显示未推送提交和远程状态
@@ -124,7 +145,10 @@
 - **冲突处理**：智能冲突检测和处理建议
 
 #### Git Checkout 对话框
-强大的分支切换界面：
+
+![](./asserts/README/gitcheckoutdialog.png)
+
+分支切换界面：
 
 - **标签页设计**：
   - 分支标签页：本地和远程分支，当前分支高亮
@@ -134,7 +158,10 @@
 - **安全检查**：自动检测未提交更改并提供stash选项
 
 #### Git Stash 管理器
-完整的stash管理功能：
+
+![](./asserts/README/gitstashdialog.png)
+
+stash管理功能：
 
 - **Stash列表**：显示所有stash及其信息
 - **内容预览**：实时显示stash的差异内容
@@ -143,6 +170,9 @@
 - **键盘快捷键**：提高操作效率
 
 #### Git Blame 对话框
+
+![](./asserts/README/gitblamedialog.gif)
+
 GitHub风格的blame界面：
 
 - **逐行显示**：每行代码的作者、时间和提交信息
@@ -151,7 +181,10 @@ GitHub风格的blame界面：
 - **右键菜单**：支持查看提交详情等操作
 
 #### Git 远程仓库管理器
-专业的远程仓库管理：
+
+![](./asserts/README/gitremotedialog.png)
+
+远程仓库管理：
 
 - **远程列表**：显示所有配置的远程仓库
 - **连接测试**：实时测试远程仓库连接状态
@@ -159,7 +192,10 @@ GitHub风格的blame界面：
 - **批量操作**：支持多个远程仓库的批量管理
 
 #### Git 文件预览对话框
-强大的文件查看功能：
+
+![](./asserts/README/gitpreviewdialog.png)
+
+在文件item上按下空格键，可进行文件查看功能：
 
 - **多模式预览**：支持文本、图片、Markdown等格式
 - **历史版本**：查看文件在特定提交时的内容
@@ -212,42 +248,36 @@ $ cd dde-file-manager-vcs-plugin
 $ sudo apt build-dep ./
 ```
 
-
-
-1. 构建
+2. 构建
 
 ```bash
 $ cmake -B build -DCMAKE_INSTALL_PREFIX=/usr
 $ cmake --build build -j$(nproc)
 ```
 
-#### 安装位置
+3. 安装
 
 ```bash 
 $ sudo cmake --build build --target install
 ```
 
-插件将安装到：`/usr/lib/dde-file-manager/plugins/extensions/`
+#### 打包
 
-## 📋 使用方法
+本地构建 debian 包：
 
-### 基础使用
-1. **自动激活**：插件在DDE文件管理器启动时自动加载
-2. **状态显示**：打开任何Git仓库目录，文件状态角标自动显示
-3. **右键操作**：在文件或空白区域右键，选择Git相关操作
-4. **实时更新**：Git操作完成后，状态自动刷新
-
-### 高级功能
-- **分支管理**：使用Checkout对话框进行分支切换和创建
-- **提交历史**：Log对话框提供完整的提交历史浏览
-- **冲突解决**：Status对话框协助处理合并冲突
-- **远程同步**：Push/Pull对话框提供专业级同步功能
-- **Stash管理**：完整的工作进度保存和恢复功能
+```bash
+dpkg-buildpackage -us -uc -nc -b -j$(nproc) 
+```
 
 ## 🔮 未来规划
 
-- [ ] 重构为多进程架构
-- [ ] 适配Qt5
+- [ ] refactor：参考 rabbitVCS, 重构为多进程架构
+- [ ] refactor：适配 Qt5
+- [ ] feat：svn 插件
+- [ ] feat：接入 AI
+- [ ] feat：gitdiffdialog 使用双行号列
+- [ ] feat：文件视图支持树形列表视图
+- [ ] bug：部分场景 git 状态角标异常
 
 ## 📄 许可证
 
