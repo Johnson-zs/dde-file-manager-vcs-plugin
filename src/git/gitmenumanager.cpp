@@ -66,14 +66,14 @@ bool GitMenuManager::buildNormalMenu(DFMEXT::DFMExtMenu *main,
         auto actions = main->actions();
         auto it = std::find_if(actions.cbegin(), actions.cend(), [](const auto *action) {
             const std::string &text = action->text();
-            return (text.find("打开方式") == 0) || (text.find("Open with") == 0);
+            return (text.find("发送到") == 0) || (text.find("Send to") == 0);
         });
 
         if (it != actions.cend()) {
-            // 在"打开方式"的下一个菜单项之前插入Git菜单
+            // 在"发送到"的下一个菜单项之前插入Git菜单
             main->insertAction(*it, rootAction);
         } else {
-            // 如果没有找到"打开方式"，直接添加到末尾
+            // 如果没有找到"发送到"，直接添加到末尾
             main->addAction(rootAction);
         }
 
