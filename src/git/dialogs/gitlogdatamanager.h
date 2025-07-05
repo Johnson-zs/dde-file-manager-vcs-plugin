@@ -230,7 +230,6 @@ private:
     QString m_pendingFilePath;
 
     // 配置
-    static const int DEFAULT_COMMIT_LIMIT = 100;
     static const int MAX_CACHE_SIZE = 1000;
     static const int REMOTE_REF_UPDATE_INTERVAL_MINUTES = 30;   // 远程引用更新间隔（分钟）
     static const int GIT_FETCH_TIMEOUT_SECONDS = 10;   // Git fetch超时时间（秒）

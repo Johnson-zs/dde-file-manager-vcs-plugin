@@ -133,14 +133,14 @@ private Q_SLOTS:
     void loadCommitsForInitialBranch(const QString &branch);
 
     // === 加载状态管理 ===
-    void showLoadingStatus(const QString &message);  // 显示加载状态
-    void hideLoadingStatus();                        // 隐藏加载状态
+    void showLoadingStatus(const QString &message);   // 显示加载状态
+    void hideLoadingStatus();   // 隐藏加载状态
 
 private:
     // === UI初始化 ===
     void initializeDialog(const QString &repositoryPath, const QString &filePath, const QString &initialBranch);
     void setupUI();
-    void setupAdaptiveWindowSize();  
+    void setupAdaptiveWindowSize();
     void setupMainLayout();
     void setupToolbar();
     void setupCommitList();
@@ -159,10 +159,10 @@ private:
     void setChangeStatsColor(QTreeWidgetItem *item, int additions, int deletions) const;
 
     // === 新增：浏览器打开commit相关方法 ===
-    QString getRepositoryName() const;                                          // 获取仓库名称
-    QString getRemoteUrl(const QString &remoteName = "origin") const;          // 获取远程URL
-    QString buildCommitUrl(const QString &remoteUrl, const QString &commitHash) const;  // 构建commit URL
-    void openCommitInBrowser(const QString &commitHash);                       // 在浏览器中打开commit
+    QString getRepositoryName() const;   // 获取仓库名称
+    QString getRemoteUrl(const QString &remoteName = "origin") const;   // 获取远程URL
+    QString buildCommitUrl(const QString &remoteUrl, const QString &commitHash) const;   // 构建commit URL
+    void openCommitInBrowser(const QString &commitHash);   // 在浏览器中打开commit
 
     // === 远程状态渲染方法 ===
     QIcon getRemoteStatusIcon(GitLogDataManager::RemoteStatus status) const;
@@ -196,8 +196,8 @@ private:
     QSplitter *m_rightSplitter;
 
     // === 加载状态指示器 ===
-    QWidget *m_loadingWidget;               // 加载状态容器
-    CharacterAnimationWidget *m_loadingAnimation;  // 加载动画组件
+    QWidget *m_loadingWidget;   // 加载状态容器
+    CharacterAnimationWidget *m_loadingAnimation;   // 加载动画组件
 
     // 左侧：提交列表
     QTreeWidget *m_commitTree;
@@ -220,6 +220,8 @@ private:
 
     // === 功能控制选项 ===
     bool m_enableChangeStats;
+
+    static const int DEFAULT_COMMIT_LIMIT = 1000;
 };
 
 #endif   // GITLOGDIALOG_H

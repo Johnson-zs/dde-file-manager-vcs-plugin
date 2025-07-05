@@ -87,10 +87,10 @@ void GitLogDialog::setupUI()
     setWindowTitle(windowTitle);
 
     setModal(false);
-    
+
     // === 新增：基于屏幕分辨率的自适应窗口尺寸 ===
     setupAdaptiveWindowSize();
-    
+
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint);
     setAttribute(Qt::WA_DeleteOnClose);
 
@@ -126,7 +126,7 @@ void GitLogDialog::setupAdaptiveWindowSize()
     // 简单的尺寸计算：占屏幕的75%，但不超过合理的最大值
     int windowWidth = qMin(static_cast<int>(screenWidth * 0.75), 1400);
     int windowHeight = qMin(static_cast<int>(screenHeight * 0.75), 900);
-    
+
     // 确保最小尺寸
     windowWidth = qMax(windowWidth, 1000);
     windowHeight = qMax(windowHeight, 700);
@@ -195,14 +195,14 @@ void GitLogDialog::setupMainLayout()
     // === 新增：设置加载状态指示器 ===
     m_loadingWidget = new QWidget;
     m_loadingWidget->setFixedHeight(50);
-    m_loadingWidget->setVisible(false);  // 初始状态隐藏
-    
+    m_loadingWidget->setVisible(false);   // 初始状态隐藏
+
     auto *loadingLayout = new QHBoxLayout(m_loadingWidget);
     loadingLayout->setContentsMargins(16, 8, 16, 8);
-    
+
     m_loadingAnimation = new CharacterAnimationWidget(m_loadingWidget);
     m_loadingAnimation->setTextStyleSheet("QLabel { color: #2196F3; font-weight: bold; font-size: 14px; }");
-    
+
     loadingLayout->addWidget(m_loadingAnimation);
     loadingLayout->addStretch();
 
@@ -310,29 +310,28 @@ void GitLogDialog::connectSignals()
                     m_commitTree->setCurrentItem(item);
                     QString commitHash = getCurrentSelectedCommitHash();
                     QString commitMessage = item->text(1);
-                    
+
                     // === 修复：获取commit来源信息以正确控制浏览器打开选项 ===
                     bool isRemoteCommit = false;
                     bool hasRemoteUrl = false;
-                    
+
                     // 检查是否有远程URL
                     QString remoteUrl = getRemoteUrl("origin");
                     hasRemoteUrl = !remoteUrl.isEmpty();
-                    
+
                     // 从数据管理器获取commit信息来判断是否为远程commit
                     const auto &commits = m_dataManager->getCommits();
                     for (const auto &commit : commits) {
                         if (commit.fullHash == commitHash) {
                             // 只有远程专有的commit或者已同步到远程的commit才显示浏览器打开选项
-                            isRemoteCommit = (commit.source == GitLogDataManager::CommitSource::Remote ||
-                                            commit.source == GitLogDataManager::CommitSource::Both);
+                            isRemoteCommit = (commit.source == GitLogDataManager::CommitSource::Remote || commit.source == GitLogDataManager::CommitSource::Both);
                             break;
                         }
                     }
-                    
+
                     // 使用新的重载方法，传递commit来源信息
                     m_contextMenuManager->showCommitContextMenu(
-                            m_commitTree->mapToGlobal(pos), commitHash, commitMessage, 
+                            m_commitTree->mapToGlobal(pos), commitHash, commitMessage,
                             isRemoteCommit, hasRemoteUrl);
                 }
             });
@@ -459,35 +458,37 @@ void GitLogDialog::onRefreshClicked()
     m_dataManager->loadBranches();
 
     QString currentBranch = m_branchSelector->getCurrentSelection();
-    
+
     // === 修改：刷新时强制更新远程引用（使用全局策略） ===
     if (!currentBranch.isEmpty() && currentBranch != "HEAD") {
         qInfo() << "INFO: [GitLogDialog] Force updating all remote references during refresh";
-        
+
         // === 新增：显示刷新状态 ===
         showLoadingStatus(tr("Refreshing remote data..."));
-        
+
         // 清除远程引用缓存，强制更新（现在是全局的）
         m_dataManager->clearRemoteRefTimestampCache();
-        
+
         // 连接更新完成信号，在完成后隐藏加载状态
-        connect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
+        connect(
+                m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
                 this, [this](const QString &branch, bool success) {
                     Q_UNUSED(branch)
                     Q_UNUSED(success)
-                    
+
                     // 断开这个临时连接
                     disconnect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
                                this, nullptr);
-                    
+
                     // === 新增：隐藏加载状态 ===
                     hideLoadingStatus();
-                }, Qt::SingleShotConnection);
-        
+                },
+                Qt::SingleShotConnection);
+
         // 异步更新所有远程引用（不阻塞UI）
         m_dataManager->updateRemoteReferencesAsync(currentBranch);
     }
-    
+
     m_dataManager->loadCommitHistory(currentBranch);
 
     // 直接刷新远程状态
@@ -561,22 +562,22 @@ void GitLogDialog::onSettingsClicked()
 void GitLogDialog::onBranchSelectorChanged(const QString &branchName)
 {
     qInfo() << "INFO: [GitLogDialog] Branch selector changed to:" << branchName;
-    
+
     // 跳过"All Branches"选项，因为它没有实际用途
     if (branchName == tr("All Branches")) {
         qInfo() << "INFO: [GitLogDialog] Skipping 'All Branches' selection - not implemented";
         return;
     }
-    
+
     m_dataManager->clearCommitCache();
-    
+
     // 根据分支类型采用不同的加载策略
     if (!branchName.isEmpty() && branchName != "HEAD") {
         qInfo() << "INFO: [GitLogDialog] Loading commits for branch:" << branchName;
-        
+
         // 先加载远程跟踪信息
         m_dataManager->loadAllRemoteTrackingInfo(branchName);
-        
+
         // 检查是否需要加载远程commits
         if (m_dataManager->shouldLoadRemoteCommits(branchName)) {
             qInfo() << "INFO: [GitLogDialog] Branch has remote tracking, loading with remote commits";
@@ -585,7 +586,7 @@ void GitLogDialog::onBranchSelectorChanged(const QString &branchName)
             qInfo() << "INFO: [GitLogDialog] Loading local commits only";
             m_dataManager->loadCommitHistory(branchName);
         }
-        
+
         // 延迟更新远程状态
         QTimer::singleShot(200, this, [this, branchName]() {
             if (m_dataManager) {
@@ -623,16 +624,16 @@ void GitLogDialog::onCommitHistoryLoaded(const QList<GitLogDataManager::CommitIn
     // 在append模式时，保存当前滚动位置和选中项的hash
     int savedScrollPosition = -1;
     QString selectedCommitHash;
-    
+
     if (append && m_commitTree && m_commitScrollBar) {
         savedScrollPosition = m_commitScrollBar->value();
-        
+
         // 保存当前选中项的commit hash而不是指针，避免悬垂指针
         QTreeWidgetItem *currentItem = m_commitTree->currentItem();
         if (currentItem) {
             selectedCommitHash = currentItem->data(4, Qt::UserRole).toString();
         }
-        
+
         qDebug() << "DEBUG: [GitLogDialog] Saving scroll position:" << savedScrollPosition
                  << "selected commit:" << selectedCommitHash.left(8);
     }
@@ -662,11 +663,11 @@ void GitLogDialog::onCommitHistoryLoaded(const QList<GitLogDataManager::CommitIn
                 qWarning() << "WARNING: [GitLogDialog] Object destroyed during delayed scroll restore";
                 return;
             }
-            
+
             // 恢复滚动位置
             m_commitScrollBar->setValue(savedScrollPosition);
             qDebug() << "DEBUG: [GitLogDialog] Restored scroll position:" << savedScrollPosition;
-            
+
             // 恢复选中项（根据commit hash查找）
             if (!selectedCommitHash.isEmpty()) {
                 for (int i = 0; i < m_commitTree->topLevelItemCount(); ++i) {
@@ -707,32 +708,34 @@ void GitLogDialog::onBranchesLoaded(const GitLogDataManager::BranchInfo &branchI
         // 检查是否需要更新远程引用
         if (m_dataManager->shouldUpdateRemoteReferences(initialBranch)) {
             qInfo() << "INFO: [GitLogDialog] Remote references are outdated, updating before loading commits";
-            
+
             // === 新增：显示加载状态 ===
             showLoadingStatus(tr("Fetching remote updates..."));
-            
+
             // 连接远程引用更新完成信号，确保更新完成后再加载commits
-            connect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
+            connect(
+                    m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
                     this, [this, initialBranch](const QString &branch, bool success) {
                         Q_UNUSED(branch)
-                        
+
                         // 断开这个临时连接，避免重复执行
                         disconnect(m_dataManager, &GitLogDataManager::remoteReferencesUpdated,
                                    this, nullptr);
-                        
+
                         // === 新增：隐藏加载状态 ===
                         hideLoadingStatus();
-                        
+
                         if (success) {
                             qInfo() << "INFO: [GitLogDialog] Remote references updated successfully, now loading commits";
                         } else {
                             qWarning() << "WARNING: [GitLogDialog] Remote references update failed, loading with existing data";
                         }
-                        
+
                         // 现在加载commits（无论更新成功还是失败）
                         loadCommitsForInitialBranch(initialBranch);
-                    }, Qt::SingleShotConnection);
-            
+                    },
+                    Qt::SingleShotConnection);
+
             // 异步更新远程引用
             m_dataManager->updateRemoteReferencesAsync(initialBranch);
         } else {
@@ -831,15 +834,15 @@ void GitLogDialog::onRemoteReferencesUpdated(const QString &branch, bool success
 {
     if (success) {
         qInfo() << QString("INFO: [GitLogDialog] Remote references updated successfully for branch: %1").arg(branch);
-        
+
         // 远程引用更新成功后，重新加载commit历史以获取最新的远程状态
         QString currentBranch = m_branchSelector->getCurrentSelection();
         if (currentBranch == branch) {
             qInfo() << "INFO: [GitLogDialog] Refreshing commit history after remote update";
-            
+
             // 清除缓存并重新加载
             m_dataManager->clearCommitCache();
-            
+
             // 重新加载commit历史（包括远程commits）
             if (m_dataManager->shouldLoadRemoteCommits(branch)) {
                 m_dataManager->loadCommitHistoryWithRemote(branch);
@@ -1151,7 +1154,7 @@ void GitLogDialog::loadMoreCommitsIfNeeded()
         QString currentBranch = m_branchSelector->getCurrentSelection();
 
         qInfo() << "INFO: [GitLogDialog] Loading more commits, current count:" << currentCount;
-        m_dataManager->loadCommitHistory(currentBranch, currentCount, 100);
+        m_dataManager->loadCommitHistory(currentBranch, currentCount, DEFAULT_COMMIT_LIMIT);
     }
 }
 
@@ -1169,47 +1172,46 @@ void GitLogDialog::selectFirstLocalCommit()
     }
 
     const auto &commits = m_dataManager->getCommits();
-    
+
     // === 修复：优先选中标记为isLocalHead的commit ===
     for (int i = 0; i < m_commitTree->topLevelItemCount() && i < commits.size(); ++i) {
         const auto &commit = commits[i];
-        
+
         if (commit.isLocalHead) {
             // 找到本地HEAD commit，选中它
             QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
             m_commitTree->setCurrentItem(item);
             m_commitTree->scrollToItem(item);
-            
+
             qInfo() << QString("INFO: [GitLogDialog] Auto-selected local HEAD commit at index %1: %2")
                                .arg(i)
                                .arg(commit.shortHash);
             return;
         }
     }
-    
+
     // === 回退逻辑1：如果没有找到isLocalHead标记，寻找第一个本地commit ===
     for (int i = 0; i < m_commitTree->topLevelItemCount() && i < commits.size(); ++i) {
         const auto &commit = commits[i];
-        
-        if (commit.source == GitLogDataManager::CommitSource::Local || 
-            commit.source == GitLogDataManager::CommitSource::Both) {
-            
+
+        if (commit.source == GitLogDataManager::CommitSource::Local || commit.source == GitLogDataManager::CommitSource::Both) {
+
             QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
             m_commitTree->setCurrentItem(item);
             m_commitTree->scrollToItem(item);
-            
+
             qInfo() << QString("INFO: [GitLogDialog] Auto-selected first local commit at index %1: %2")
                                .arg(i)
                                .arg(commit.shortHash);
             return;
         }
     }
-    
+
     // === 最终回退：选择第一个可用的commit ===
     QTreeWidgetItem *firstItem = m_commitTree->topLevelItem(0);
     m_commitTree->setCurrentItem(firstItem);
     m_commitTree->scrollToItem(firstItem);
-    
+
     qInfo() << "INFO: [GitLogDialog] No local commits found, selected first available commit";
 }
 
@@ -1476,17 +1478,17 @@ QColor GitLogDialog::getCommitSourceColor(GitLogDataManager::CommitSource source
 void GitLogDialog::loadCommitsForInitialBranch(const QString &branch)
 {
     qInfo() << "INFO: [GitLogDialog] Loading commits for initial branch:" << branch;
-    
+
     // === 关键修复：使用新的确保HEAD包含的加载方法 ===
     // 这个方法会确保本地HEAD commit包含在初始加载的commits中
     bool loadSuccess = m_dataManager->loadCommitHistoryEnsureHead(branch, 100);
-    
+
     if (!loadSuccess) {
         qWarning() << "WARNING: [GitLogDialog] Failed to load commits ensuring HEAD, falling back to normal loading";
-        
+
         // 回退到原来的逻辑
         m_dataManager->loadAllRemoteTrackingInfo(branch);
-        
+
         if (m_dataManager->shouldLoadRemoteCommits(branch)) {
             qInfo() << "INFO: [GitLogDialog] Fallback: Loading with remote commits";
             m_dataManager->loadCommitHistoryWithRemote(branch);
@@ -1515,7 +1517,7 @@ void GitLogDialog::showLoadingStatus(const QString &message)
     }
 
     qInfo() << "INFO: [GitLogDialog] Showing loading status:" << message;
-    
+
     m_loadingAnimation->setBaseText(message);
     m_loadingAnimation->startAnimation();
     m_loadingWidget->setVisible(true);
@@ -1528,7 +1530,7 @@ void GitLogDialog::hideLoadingStatus()
     }
 
     qInfo() << "INFO: [GitLogDialog] Hiding loading status";
-    
+
     m_loadingAnimation->stopAnimation();
     m_loadingWidget->setVisible(false);
 }
@@ -1550,18 +1552,18 @@ QString GitLogDialog::getRepositoryName() const
 {
     QDir repoDir(m_repositoryPath);
     QString repoName = repoDir.dirName();
-    
+
     // 如果目录名为空或者是"."，尝试从路径中获取
     if (repoName.isEmpty() || repoName == ".") {
         QFileInfo repoInfo(m_repositoryPath);
         repoName = repoInfo.baseName();
     }
-    
+
     // 如果仍然为空，使用默认名称
     if (repoName.isEmpty()) {
         repoName = tr("Repository");
     }
-    
+
     return repoName;
 }
 
@@ -1571,9 +1573,9 @@ QString GitLogDialog::getRemoteUrl(const QString &remoteName) const
         return QString();
     }
 
-    QStringList args = {"remote", "get-url", remoteName};
+    QStringList args = { "remote", "get-url", remoteName };
     QString output, error;
-    
+
     if (!m_dataManager->executeGitCommand(args, output, error)) {
         qWarning() << "WARNING: [GitLogDialog::getRemoteUrl] Failed to get remote URL for" << remoteName << ":" << error;
         return QString();
@@ -1632,7 +1634,7 @@ void GitLogDialog::openCommitInBrowser(const QString &commitHash)
     }
 
     QString remoteUrl = getRemoteUrl("origin");
-    
+
     if (remoteUrl.isEmpty()) {
         QMessageBox::warning(this, tr("No Remote URL"),
                              tr("Cannot open commit in browser: no remote URL found for 'origin'.\n\n"
@@ -1644,7 +1646,8 @@ void GitLogDialog::openCommitInBrowser(const QString &commitHash)
     if (commitUrl.isEmpty()) {
         QMessageBox::warning(this, tr("Unsupported Remote"),
                              tr("Cannot open commit in browser: unsupported remote URL format.\n\n"
-                                "Remote URL: %1").arg(remoteUrl));
+                                "Remote URL: %1")
+                                     .arg(remoteUrl));
         return;
     }
 
@@ -1654,6 +1657,7 @@ void GitLogDialog::openCommitInBrowser(const QString &commitHash)
         QMessageBox::critical(this, tr("Failed to Open Browser"),
                               tr("Failed to open the commit URL in browser.\n\n"
                                  "URL: %1\n\n"
-                                 "You can copy this URL manually.").arg(commitUrl));
+                                 "You can copy this URL manually.")
+                                      .arg(commitUrl));
     }
 }

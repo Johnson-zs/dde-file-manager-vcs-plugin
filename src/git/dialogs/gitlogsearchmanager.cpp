@@ -111,14 +111,8 @@ void GitLogSearchManager::performSearch()
     // 过滤当前已加载的提交
     filterCurrentCommits();
     
-    // 检查是否需要加载更多数据
-    if (m_searchTotalFound < 20 && m_commitTree->topLevelItemCount() > 0) {
-        m_isLoadingMore = true;
-        Q_EMIT moreDataNeeded();
-    } else {
-        // 搜索完成
-        stopSearch();
-    }
+    // 不再自动加载更多数据，避免死循环和卡死
+    stopSearch();
 }
 
 void GitLogSearchManager::onNewCommitsLoaded()
@@ -157,26 +151,45 @@ void GitLogSearchManager::filterCurrentCommits()
         return;
     }
 
+    const int MAX_SCAN = 1000; // 最多遍历1000条
+    const int MAX_HIGHLIGHT = 100; // 最多高亮100条
     int visibleCount = 0;
-    
-    for (int i = 0; i < m_commitTree->topLevelItemCount(); ++i) {
+    int scanned = 0;
+    int highlighted = 0;
+    int total = m_commitTree->topLevelItemCount();
+
+    for (int i = 0; i < total && scanned < MAX_SCAN; ++i, ++scanned) {
         QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
         bool matches = itemMatchesSearch(item, m_currentSearchText);
-        
         item->setHidden(!matches);
-        
         if (matches) {
             visibleCount++;
-            highlightItemMatches(item, m_currentSearchText);
+            if (highlighted < MAX_HIGHLIGHT) {
+                highlightItemMatches(item, m_currentSearchText);
+                highlighted++;
+            } else {
+                clearItemHighlight(item);
+            }
         } else {
             clearItemHighlight(item);
         }
     }
-    
+    // 超出部分全部隐藏
+    for (int i = scanned; i < total; ++i) {
+        QTreeWidgetItem *item = m_commitTree->topLevelItem(i);
+        item->setHidden(true);
+        clearItemHighlight(item);
+    }
+
     m_searchTotalFound = visibleCount;
     updateSearchStatus();
 
-    qDebug() << "[GitLogSearchManager] Filtered commits, found:" << m_searchTotalFound << "matches";
+    if (scanned == MAX_SCAN && visibleCount > MAX_HIGHLIGHT) {
+        m_statusLabel->setText(tr("Too many results, only showing first %1 matches. Please refine your search.").arg(MAX_HIGHLIGHT));
+        m_statusLabel->show();
+    }
+
+    qDebug() << "[GitLogSearchManager] Filtered commits, found:" << m_searchTotalFound << "matches (scanned" << scanned << ")";
 }
 
 void GitLogSearchManager::highlightSearchResults()
