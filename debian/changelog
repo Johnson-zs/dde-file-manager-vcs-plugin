@@ -1,3 +1,9 @@
+dde-file-manager-vcs-plugin (0.7.3) unstable; urgency=medium
+
+  * fix bug
+
+ -- Zhang Sheng <zhangsheng@uniontech.com>  Mon, 07 Jul 2025 15:02:43 +0800
+
 dde-file-manager-vcs-plugin (0.7.2) unstable; urgency=medium
 
   * fix bug
