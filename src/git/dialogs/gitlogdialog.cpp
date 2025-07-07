@@ -697,12 +697,15 @@ void GitLogDialog::onBranchesLoaded(const GitLogDataManager::BranchInfo &branchI
 
     // 设置初始分支
     QString initialBranch;
-    if (!m_initialBranch.isEmpty()) {
-        initialBranch = m_initialBranch;
-        m_branchSelector->setCurrentSelection(m_initialBranch);
-    } else if (!branchInfo.currentBranch.isEmpty()) {
+    // === 修复：优先使用实际的当前分支，而不是传入的initialBranch ===
+    if (!branchInfo.currentBranch.isEmpty()) {
         initialBranch = branchInfo.currentBranch;
         m_branchSelector->setCurrentSelection(branchInfo.currentBranch);
+        qInfo() << "INFO: [GitLogDialog] Using actual current branch:" << branchInfo.currentBranch;
+    } else if (!m_initialBranch.isEmpty()) {
+        initialBranch = m_initialBranch;
+        m_branchSelector->setCurrentSelection(m_initialBranch);
+        qInfo() << "INFO: [GitLogDialog] Using initial branch parameter:" << m_initialBranch;
     }
 
     // === 新增：在初始化时主动检查并更新远程引用 ===

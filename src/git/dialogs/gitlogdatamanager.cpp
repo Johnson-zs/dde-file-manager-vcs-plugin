@@ -244,10 +244,35 @@ bool GitLogDataManager::loadBranches()
     QString tagOutput;
     QString error;
 
-    // 获取当前分支
-    QStringList currentBranchArgs = { "branch", "--show-current" };
+    // 获取当前分支 - 兼容老版本Git
+    QStringList currentBranchArgs = { "symbolic-ref", "--short", "HEAD" };
     if (executeGitCommand(currentBranchArgs, currentBranch, error)) {
         currentBranch = currentBranch.trimmed();
+        qInfo() << "INFO: [GitLogDataManager] Got current branch via symbolic-ref:" << currentBranch;
+    } else {
+        // === 备用方案：解析git branch输出（兼容所有Git版本） ===
+        qWarning() << "WARNING: [GitLogDataManager] git symbolic-ref failed:" << error;
+        qInfo() << "INFO: [GitLogDataManager] Trying fallback git branch parsing";
+        
+        QStringList fallbackArgs = { "branch" };
+        QString fallbackOutput;
+        if (executeGitCommand(fallbackArgs, fallbackOutput, error)) {
+            // 解析 git branch 输出，查找带 * 的行
+            QStringList lines = fallbackOutput.split('\n');
+            for (const QString &line : lines) {
+                if (line.startsWith("* ")) {
+                    currentBranch = line.mid(2).trimmed();
+                    // 移除可能的 (HEAD detached at ...) 信息
+                    if (currentBranch.startsWith("(HEAD detached")) {
+                        currentBranch.clear();
+                    }
+                    qInfo() << "INFO: [GitLogDataManager] Got current branch via branch parsing:" << currentBranch;
+                    break;
+                }
+            }
+        } else {
+            qWarning() << "WARNING: [GitLogDataManager] All git branch commands failed:" << error;
+        }
     }
 
     // 获取所有分支
