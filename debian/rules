@@ -13,33 +13,41 @@ QT5_AVAILABLE := $(shell pkg-config --exists Qt5Core && echo yes || echo no)
 override_dh_auto_configure:
 ifeq ($(QT6_AVAILABLE),yes)
 	dh_auto_configure --builddirectory=build-qt6 -- -DUSE_QT6=ON -DCMAKE_BUILD_TYPE=Release
-endif
+	dh_auto_configure --builddirectory=build-qt5 -- -DUSE_QT6=OFF -DCMAKE_BUILD_TYPE=Release
+else
 ifeq ($(QT5_AVAILABLE),yes)
 	dh_auto_configure --builddirectory=build-qt5 -- -DUSE_QT6=OFF -DCMAKE_BUILD_TYPE=Release
+endif
 endif
 
 override_dh_auto_build:
 ifeq ($(QT6_AVAILABLE),yes)
 	dh_auto_build --builddirectory=build-qt6
-endif
+	dh_auto_build --builddirectory=build-qt5
+else
 ifeq ($(QT5_AVAILABLE),yes)
 	dh_auto_build --builddirectory=build-qt5
+endif
 endif
 
 override_dh_auto_install:
 ifeq ($(QT6_AVAILABLE),yes)
 	dh_auto_install --builddirectory=build-qt6 --destdir=debian/dde-file-manager-vcs-plugin-qt6
-endif
+	dh_auto_install --builddirectory=build-qt5 --destdir=debian/dde-file-manager-vcs-plugin-qt5
+else
 ifeq ($(QT5_AVAILABLE),yes)
 	dh_auto_install --builddirectory=build-qt5 --destdir=debian/dde-file-manager-vcs-plugin-qt5
+endif
 endif
 
 override_dh_auto_clean:
 ifeq ($(QT6_AVAILABLE),yes)
 	dh_auto_clean --builddirectory=build-qt6
-endif
+	dh_auto_clean --builddirectory=build-qt5
+else
 ifeq ($(QT5_AVAILABLE),yes)
 	dh_auto_clean --builddirectory=build-qt5
+endif
 endif
 
 override_dh_auto_test:

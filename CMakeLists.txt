@@ -13,8 +13,16 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # Find required packages
 find_package(PkgConfig REQUIRED)
 
-# Find Qt version - auto detect Qt6 first, fallback to Qt5
-if (NOT DEFINED QT_VERSION_MAJOR)
+# Find Qt version - check for USE_QT6 option first
+if (DEFINED USE_QT6)
+    if (USE_QT6)
+        set(QT_VERSION_MAJOR 6)
+        message("   >>> Using Qt6 (forced by USE_QT6=ON)")
+    else()
+        set(QT_VERSION_MAJOR 5)
+        message("   >>> Using Qt5 (forced by USE_QT6=OFF)")
+    endif()
+elseif (NOT DEFINED QT_VERSION_MAJOR)
     # Try to find Qt6 first
     find_package(Qt6 QUIET COMPONENTS Core)
     if (Qt6_FOUND)

@@ -4,9 +4,11 @@ Priority: optional
 Maintainer: zhangsheng <zhangsheng@uniontech.com>
 Build-Depends: debhelper (>= 11),
                cmake,
-               qt6-base-dev | qtbase5-dev,
-               qt6-base-dev-tools | qtbase5-dev-tools,
-               libqt6core5compat6-dev | qtbase5-dev,
+               qt6-base-dev | hello,
+               qt6-base-dev-tools | hello,
+               libqt6core5compat6-dev | hello,
+               qtbase5-dev,
+               qtbase5-dev-tools,
                libdfm-extension-dev,
                pkg-config
 Standards-Version: 4.5.1
