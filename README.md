@@ -272,7 +272,6 @@ dpkg-buildpackage -us -uc -nc -b -j$(nproc)
 ## 🔮 未来规划
 
 - [ ] refactor：参考 rabbitVCS, 重构为多进程架构
-- [ ] refactor：适配 Qt5
 - [ ] feat：svn 插件
 - [ ] feat：接入 AI
 - [ ] feat：gitdiffdialog 使用双行号列
@@ -285,4 +284,4 @@ dpkg-buildpackage -us -uc -nc -b -j$(nproc)
 
 ---
 
-**注意**：本插件需要DDE文件管理器支持，当前由于 Qt 版本原因，仅支持 Deepin v25。请确保系统版本兼容。推荐在最新版本的深度操作系统上使用以获得最佳体验。
+**注意**：本插件需要DDE文件管理器支持，当前由于 Qt 版本原因，Deepin v25 使用 Qt6 版本，Deepin V23 使用 Qt5 版本。
