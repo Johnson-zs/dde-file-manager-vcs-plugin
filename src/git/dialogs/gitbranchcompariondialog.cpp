@@ -226,7 +226,13 @@ void GitBranchComparisonDialog::loadCommitDifferences()
 
     if (process.waitForFinished(10000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
 
         for (const QString &line : lines) {
             QStringList parts = line.split('|');
@@ -286,7 +292,13 @@ void GitBranchComparisonDialog::loadFileDifferences()
 
     if (process.waitForFinished(5000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
 
         for (const QString &line : lines) {
             QStringList parts = line.split('\t');

@@ -1,12 +1,22 @@
 #include "characteranimationwidget.h"
 
 #include <QVBoxLayout>
+#include <QDebug>
 
 CharacterAnimationWidget::CharacterAnimationWidget(QWidget *parent)
     : QWidget(parent), m_animationStep(0)
 {
     // 初始化动画帧
-    m_animationFrames << "⠋" << "⠙" << "⠹" << "⠸" << "⠼" << "⠴" << "⠦" << "⠧" << "⠇" << "⠏";
+    m_animationFrames << "⠋"
+                      << "⠙"
+                      << "⠹"
+                      << "⠸"
+                      << "⠼"
+                      << "⠴"
+                      << "⠦"
+                      << "⠧"
+                      << "⠇"
+                      << "⠏";
 
     // 创建标签
     m_label = new QLabel(this);
@@ -19,7 +29,7 @@ CharacterAnimationWidget::CharacterAnimationWidget(QWidget *parent)
 
     // 创建定时器
     m_timer = new QTimer(this);
-    m_timer->setInterval(100); // 默认100ms间隔
+    m_timer->setInterval(100);   // 默认100ms间隔
     connect(m_timer, &QTimer::timeout, this, &CharacterAnimationWidget::onAnimationTimer);
 
     qInfo() << "INFO: [CharacterAnimationWidget] Animation widget initialized";
@@ -87,4 +97,4 @@ void CharacterAnimationWidget::updateAnimationText()
         }
         m_label->setText(animatedText);
     }
-} 
+}

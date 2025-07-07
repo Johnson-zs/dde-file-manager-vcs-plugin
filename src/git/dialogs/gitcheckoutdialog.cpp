@@ -975,12 +975,12 @@ void GitCheckoutDialog::performBranchDelete(const QString &branchName, BranchDel
 
     switch (mode) {
     case BranchDeleteMode::SafeDelete:
-        args = { "branch", "-d", branchName };
+        args = QStringList { "branch", "-d", branchName };
         operation = tr("Safe delete branch");
         break;
 
     case BranchDeleteMode::ForceDelete:
-        args = { "branch", "-D", branchName };
+        args = QStringList { "branch", "-D", branchName };
         operation = tr("Force delete branch");
         break;
     }
@@ -1215,19 +1215,20 @@ void GitCheckoutDialog::performCheckout(const QString &branchName, CheckoutMode 
 
     switch (mode) {
     case CheckoutMode::Normal:
-        args = { "checkout", branchName };
+        args = QStringList { "checkout", branchName };
         operation = tr("Checkout branch");
         break;
 
     case CheckoutMode::Force:
-        args = { "checkout", "-f", branchName };
+        args = QStringList() << "checkout"
+                             << "-f" << branchName;
         operation = tr("Force checkout branch");
         break;
 
     case CheckoutMode::Stash:
         // 先暂存，再切换，最后恢复
         if (executeGitCommandWithResult({ "stash", "push", "-m", tr("Auto-stash for checkout") }, tr("Stash changes"))) {
-            args = { "checkout", branchName };
+            args = QStringList { "checkout", branchName };
             operation = tr("Checkout branch (with stash)");
         } else {
             return;   // 暂存失败，不继续操作
@@ -1285,7 +1286,13 @@ bool GitCheckoutDialog::hasLocalChanges()
 
     if (process.waitForFinished(3000)) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
 
         qDebug() << "[GitCheckoutDialog] Git status output lines:" << lines.size();
 
@@ -1365,9 +1372,9 @@ bool GitCheckoutDialog::executeGitCommandWithResult(const QStringList &args, con
                     QHash<QString, Global::ItemVersion> emptyVersionInfo;
                     emptyVersionInfo.insert(m_repositoryPath, Global::ItemVersion::NormalVersion);
                     Global::Cache::instance().resetVersion(m_repositoryPath, emptyVersionInfo);
-                    
+
                     qDebug() << "[GitCheckoutDialog] Reset repository cache to trigger refresh while preserving repository path";
-                    
+
                     // 发送信号通知状态变化
                     emit repositoryStateChanged(m_repositoryPath);
                 });
@@ -1412,7 +1419,13 @@ void GitCheckoutDialog::showOperationResult(bool success, const QString &operati
 QVector<BranchItem> GitCheckoutDialog::parseLocalBranches(const QString &output)
 {
     QVector<BranchItem> branches;
-    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    QStringList lines = output.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+        Qt::SkipEmptyParts
+#else
+        QString::SkipEmptyParts
+#endif
+    );
 
     for (const QString &line : lines) {
         QString trimmed = line.trimmed();
@@ -1427,7 +1440,13 @@ QVector<BranchItem> GitCheckoutDialog::parseLocalBranches(const QString &output)
         }
 
         // 解析分支名称和最后提交信息
-        QStringList parts = trimmed.split(' ', Qt::SkipEmptyParts);
+        QStringList parts = trimmed.split(' ', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
         if (!parts.isEmpty()) {
             item.name = parts.first();
             if (parts.size() > 1) {
@@ -1444,7 +1463,13 @@ QVector<BranchItem> GitCheckoutDialog::parseLocalBranches(const QString &output)
 QVector<BranchItem> GitCheckoutDialog::parseRemoteBranches(const QString &output)
 {
     QVector<BranchItem> branches;
-    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    QStringList lines = output.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+        Qt::SkipEmptyParts
+#else
+        QString::SkipEmptyParts
+#endif
+    );
 
     for (const QString &line : lines) {
         QString trimmed = line.trimmed();
@@ -1454,7 +1479,13 @@ QVector<BranchItem> GitCheckoutDialog::parseRemoteBranches(const QString &output
         item.type = BranchItem::RemoteBranch;
 
         // 解析远程分支名称和最后提交信息
-        QStringList parts = trimmed.split(' ', Qt::SkipEmptyParts);
+        QStringList parts = trimmed.split(' ', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
         if (!parts.isEmpty()) {
             item.name = parts.first();
             if (parts.size() > 1) {
@@ -1471,7 +1502,13 @@ QVector<BranchItem> GitCheckoutDialog::parseRemoteBranches(const QString &output
 QVector<BranchItem> GitCheckoutDialog::parseTags(const QString &output)
 {
     QVector<BranchItem> tags;
-    QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    QStringList lines = output.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+        Qt::SkipEmptyParts
+#else
+        QString::SkipEmptyParts
+#endif
+    );
 
     for (const QString &line : lines) {
         QString trimmed = line.trimmed();

@@ -52,10 +52,22 @@ QList<std::shared_ptr<GitFileInfo>> GitStatusParser::parseGitStatus(const QStrin
     QStringList lines;
     if (gitStatusOutput.contains('\0')) {
         // Split by null character for -z output
-        lines = gitStatusOutput.split('\0', Qt::SkipEmptyParts);
+        lines = gitStatusOutput.split('\0', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
     } else {
         // Fallback to newline split for regular output
-        lines = gitStatusOutput.split('\n', Qt::SkipEmptyParts);
+        lines = gitStatusOutput.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
     }
 
     for (const QString &line : lines) {

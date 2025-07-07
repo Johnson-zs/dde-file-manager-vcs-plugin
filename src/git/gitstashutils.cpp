@@ -146,7 +146,13 @@ int GitStashUtils::getStashCount(const QString &repositoryPath)
     auto result = executor.executeCommand(cmd, output, error);
     
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n', 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+            Qt::SkipEmptyParts
+#else
+            QString::SkipEmptyParts
+#endif
+        );
         return lines.size();
     }
     

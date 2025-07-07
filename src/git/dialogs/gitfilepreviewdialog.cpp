@@ -23,7 +23,9 @@
 #include <QDebug>
 #include <QFile>
 #include <QTextStream>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QStringConverter>
+#endif
 #include <QStackedWidget>
 #include <QTextBrowser>
 
@@ -597,7 +599,11 @@ void GitFilePreviewDialog::loadFileContent()
     }
     
     QTextStream stream(&file);
+    #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     stream.setEncoding(QStringConverter::Utf8);
+#else
+    stream.setCodec("UTF-8");
+#endif
     QString content = stream.readAll();
     
     if (content.isEmpty()) {

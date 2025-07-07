@@ -188,16 +188,32 @@ void GitFileSystemWatcher::onCleanupPaths()
     // 更新缓存
     for (auto it = m_repoFiles.begin(); it != m_repoFiles.end(); ++it) {
         QStringList &files = it.value();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         files.removeIf([](const QString &path) {
             return !QFileInfo::exists(path);
         });
+#else
+        for (int i = files.size() - 1; i >= 0; --i) {
+            if (!QFileInfo::exists(files.at(i))) {
+                files.removeAt(i);
+            }
+        }
+#endif
     }
 
     for (auto it = m_repoDirs.begin(); it != m_repoDirs.end(); ++it) {
         QStringList &dirs = it.value();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         dirs.removeIf([](const QString &path) {
             return !QDir(path).exists();
         });
+#else
+        for (int i = dirs.size() - 1; i >= 0; --i) {
+            if (!QDir(dirs.at(i)).exists()) {
+                dirs.removeAt(i);
+            }
+        }
+#endif
     }
 }
 
@@ -326,7 +342,11 @@ QStringList GitFileSystemWatcher::getTrackedFiles(const QString &repositoryPath)
     }
 
     QString output = QString::fromUtf8(process.readAllStandardOutput());
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
     QStringList relativePaths = output.split('\0', Qt::SkipEmptyParts);
+#else
+    QStringList relativePaths = output.split('\0', QString::SkipEmptyParts);
+#endif
 
     qInfo() << "INFO: [GitFileSystemWatcher] git ls-files returned" << relativePaths.size() << "files";
 

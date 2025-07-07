@@ -233,7 +233,11 @@ void GitBlameDialog::loadBlameData()
     }
 
     // 解析blame输出
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
     const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+#else
+    const QStringList lines = output.split('\n', QString::SkipEmptyParts);
+#endif
     m_progressBar->setRange(0, lines.size());
 
     int currentIndex = 0;
@@ -279,7 +283,11 @@ BlameLineInfo GitBlameDialog::parseBlameLineInfo(const QStringList &blameLines, 
 
     // 第一行包含哈希和行号信息
     const QString firstLine = blameLines[currentIndex];
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
     const QStringList parts = firstLine.split(' ', Qt::SkipEmptyParts);
+#else
+    const QStringList parts = firstLine.split(' ', QString::SkipEmptyParts);
+#endif
 
     if (parts.size() >= 3) {
         info.hash = parts[0];

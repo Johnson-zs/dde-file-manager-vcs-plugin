@@ -725,7 +725,11 @@ bool SearchableBranchSelector::eventFilter(QObject *obj, QEvent *event)
         
         if (m_dropdownVisible) {
             QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+            #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             QPoint globalPos = mouseEvent->globalPosition().toPoint();
+#else
+            QPoint globalPos = mouseEvent->globalPos();
+#endif
             
             // 检查点击是否在组件区域内
             QRect mainWidgetRect = QRect(mapToGlobal(QPoint(0, 0)), size());

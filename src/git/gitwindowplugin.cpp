@@ -6,6 +6,7 @@
 #include <QTextCodec>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDebug>
 
 #include <cache.h>
 

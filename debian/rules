@@ -3,8 +3,45 @@
 # output every command that modifies files on the build system.
 #export DH_VERBOSE = 1
 
+# Detect available Qt version
+QT6_AVAILABLE := $(shell pkg-config --exists Qt6Core && echo yes || echo no)
+QT5_AVAILABLE := $(shell pkg-config --exists Qt5Core && echo yes || echo no)
+
 %:
 	dh $@ --buildsystem=cmake
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release 
+ifeq ($(QT6_AVAILABLE),yes)
+	dh_auto_configure --builddirectory=build-qt6 -- -DUSE_QT6=ON -DCMAKE_BUILD_TYPE=Release
+endif
+ifeq ($(QT5_AVAILABLE),yes)
+	dh_auto_configure --builddirectory=build-qt5 -- -DUSE_QT6=OFF -DCMAKE_BUILD_TYPE=Release
+endif
+
+override_dh_auto_build:
+ifeq ($(QT6_AVAILABLE),yes)
+	dh_auto_build --builddirectory=build-qt6
+endif
+ifeq ($(QT5_AVAILABLE),yes)
+	dh_auto_build --builddirectory=build-qt5
+endif
+
+override_dh_auto_install:
+ifeq ($(QT6_AVAILABLE),yes)
+	dh_auto_install --builddirectory=build-qt6 --destdir=debian/dde-file-manager-vcs-plugin-qt6
+endif
+ifeq ($(QT5_AVAILABLE),yes)
+	dh_auto_install --builddirectory=build-qt5 --destdir=debian/dde-file-manager-vcs-plugin-qt5
+endif
+
+override_dh_auto_clean:
+ifeq ($(QT6_AVAILABLE),yes)
+	dh_auto_clean --builddirectory=build-qt6
+endif
+ifeq ($(QT5_AVAILABLE),yes)
+	dh_auto_clean --builddirectory=build-qt5
+endif
+
+override_dh_auto_test:
+	# No tests to run
+ 

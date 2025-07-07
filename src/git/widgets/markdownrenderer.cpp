@@ -65,7 +65,11 @@ private:
         // 代码格式
         m_codeFormat.setForeground(QColor(139, 69, 19));
         m_codeFormat.setBackground(QColor(245, 245, 245));
+#if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
         m_codeFormat.setFontFamilies(QStringList{"Consolas", "Monaco", "monospace"});
+#else
+        m_codeFormat.setFontFamily("Consolas");
+#endif
 
         // 链接格式
         m_linkFormat.setForeground(QColor(0, 0, 255));
@@ -215,10 +219,15 @@ void MarkdownRenderer::setContent(const QString &content)
     if (m_htmlBrowser) {
         QTextDocument *document = m_htmlBrowser->document();
         
-        // 使用 Qt6 的原生 Markdown 解析，支持 GitHub 风格
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+        // 使用 Qt5.14+ 的原生 Markdown 解析，支持 GitHub 风格
         document->setMarkdown(content, QTextDocument::MarkdownDialectGitHub);
-        
-        qDebug() << "[MarkdownRenderer] Content set using Qt6 native Markdown support";
+        qDebug() << "[MarkdownRenderer] Content set using Qt native Markdown support";
+#else
+        // Qt5.11 doesn't have native markdown support, use setPlainText as fallback
+        document->setPlainText(content);
+        qDebug() << "[MarkdownRenderer] Content set using plain text fallback for Qt5.11";
+#endif
     }
 
     // 设置源码编辑器内容

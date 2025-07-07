@@ -4,9 +4,9 @@ Priority: optional
 Maintainer: zhangsheng <zhangsheng@uniontech.com>
 Build-Depends: debhelper (>= 11),
                cmake,
-               qt6-base-dev,
-               qt6-base-dev-tools,
-               libqt6core5compat6-dev,
+               qt6-base-dev | qtbase5-dev,
+               qt6-base-dev-tools | qtbase5-dev-tools,
+               libqt6core5compat6-dev | qtbase5-dev,
                libdfm-extension-dev,
                pkg-config
 Standards-Version: 4.5.1
@@ -14,16 +14,39 @@ Homepage: https://github.com/yourusername-or-organization/dde-file-manager-vcs-p
 Vcs-Browser: https://github.com/yourusername-or-organization/dde-file-manager-vcs-plugin
 Vcs-Git: https://github.com/yourusername-or-organization/dde-file-manager-vcs-plugin.git
 
-Package: dde-file-manager-vcs-plugin
+Package: dde-file-manager-vcs-plugin-qt5
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          dde-file-manager,
          git
-Description: Git version control plugin for Deepin File Manager
+Replaces: dde-file-manager-vcs-plugin (<< 0.7.0)
+Breaks: dde-file-manager-vcs-plugin (<< 0.7.0)
+Conflicts: dde-file-manager-vcs-plugin
+Description: Git version control plugin for Deepin File Manager (Qt5)
  This plugin adds Git version control functionality to the 
  Deepin File Manager (dde-file-manager).
  .
+ This package is built with Qt5.
+ Features include:
+  * Git status emblems on files and folders
+  * Git contextual menu operations
+  * Git repository monitoring
+
+Package: dde-file-manager-vcs-plugin-qt6
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         dde-file-manager,
+         git
+Replaces: dde-file-manager-vcs-plugin (<< 0.7.0)
+Breaks: dde-file-manager-vcs-plugin (<< 0.7.0)
+Conflicts: dde-file-manager-vcs-plugin
+Description: Git version control plugin for Deepin File Manager (Qt6)
+ This plugin adds Git version control functionality to the 
+ Deepin File Manager (dde-file-manager).
+ .
+ This package is built with Qt6.
  Features include:
   * Git status emblems on files and folders
   * Git contextual menu operations

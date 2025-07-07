@@ -482,8 +482,12 @@ void GitLogDialog::onRefreshClicked()
 
                     // === 新增：隐藏加载状态 ===
                     hideLoadingStatus();
-                },
-                Qt::SingleShotConnection);
+                }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                ,
+                Qt::SingleShotConnection
+#endif
+        );
 
         // 异步更新所有远程引用（不阻塞UI）
         m_dataManager->updateRemoteReferencesAsync(currentBranch);
@@ -733,8 +737,12 @@ void GitLogDialog::onBranchesLoaded(const GitLogDataManager::BranchInfo &branchI
 
                         // 现在加载commits（无论更新成功还是失败）
                         loadCommitsForInitialBranch(initialBranch);
-                    },
-                    Qt::SingleShotConnection);
+                    }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                    ,
+                    Qt::SingleShotConnection
+#endif
+            );
 
             // 异步更新远程引用
             m_dataManager->updateRemoteReferencesAsync(initialBranch);

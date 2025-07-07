@@ -68,6 +68,8 @@ private:
     bool m_checked;
 };
 
+Q_DECLARE_METATYPE(std::shared_ptr<GitFileItem>)
+
 /**
  * @brief Model for managing Git files in the commit dialog
  */

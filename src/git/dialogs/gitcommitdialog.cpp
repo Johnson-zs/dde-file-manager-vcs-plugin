@@ -184,10 +184,19 @@ void GitFileModel::removeFile(const QString &filePath)
     if (item) {
         removeRow(item->row());
 
-        // Remove from our list
+// Remove from our list
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         m_files.removeIf([&filePath](const std::shared_ptr<GitFileItem> &file) {
             return file->filePath() == filePath;
         });
+#else
+        for (int i = 0; i < m_files.size(); ++i) {
+            if (m_files.at(i)->filePath() == filePath) {
+                m_files.removeAt(i);
+                break;
+            }
+        }
+#endif
     }
 }
 
@@ -724,7 +733,7 @@ void GitCommitDialog::loadChangedFiles()
     if (!m_savedColumnWidths.isEmpty()) {
         saveColumnWidths();
     }
-    
+
     // 使用新的GitStatusParser来加载文件状态
     auto files = GitStatusParser::getRepositoryStatus(m_repositoryPath);
 
@@ -774,7 +783,7 @@ void GitCommitDialog::loadChangedFiles()
     m_fileModel->setFiles(gitFileItems);
     updateFileCountLabels();
     updateButtonStates();
-    
+
     // 恢复列宽设置
     restoreColumnWidths();
 
@@ -854,7 +863,9 @@ void GitCommitDialog::loadCommitTemplate()
     // First check if commit.template is configured
     QProcess configProcess;
     configProcess.setWorkingDirectory(m_repositoryPath);
-    configProcess.start("git", QStringList() << "config" << "--get" << "commit.template");
+    configProcess.start("git", QStringList() << "config"
+                                             << "--get"
+                                             << "commit.template");
 
     if (!configProcess.waitForFinished(3000)) {
         qDebug() << "[GitCommitDialog] Git config command timed out";
@@ -867,7 +878,7 @@ void GitCommitDialog::loadCommitTemplate()
     }
 
     QString templatePath = QString::fromUtf8(configProcess.readAllStandardOutput()).trimmed();
-    
+
     if (templatePath.isEmpty()) {
         qDebug() << "[GitCommitDialog] Empty commit.template path";
         return;
@@ -891,7 +902,7 @@ void GitCommitDialog::loadCommitTemplate()
     }
 
     m_commitTemplate = QString::fromUtf8(templateFile.readAll()).trimmed();
-    
+
     if (!m_commitTemplate.isEmpty()) {
         // Only set template if message edit is empty to avoid overwriting user input
         if (m_messageEdit->toPlainText().isEmpty()) {
@@ -1460,10 +1471,10 @@ void GitCommitDialog::keyPressEvent(QKeyEvent *event)
                 previewSelectedFile();
             }
         }
-        event->accept(); // 标记事件已处理
+        event->accept();   // 标记事件已处理
         return;
     }
-    
+
     QDialog::keyPressEvent(event);
 }
 
@@ -1471,8 +1482,8 @@ bool GitCommitDialog::eventFilter(QObject *watched, QEvent *event)
 {
     // 捕获TreeView的键盘事件
     if (watched == m_fileView && event->type() == QEvent::KeyPress) {
-        QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
-        
+        QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
+
         // 空格键预览文件
         if (keyEvent->key() == Qt::Key_Space) {
             QString filePath = getCurrentSelectedFilePath();
@@ -1485,11 +1496,11 @@ bool GitCommitDialog::eventFilter(QObject *watched, QEvent *event)
                     // 打开新的预览对话框
                     previewSelectedFile();
                 }
-                return true; // 事件已处理，不再传播
+                return true;   // 事件已处理，不再传播
             }
         }
     }
-    
+
     return QDialog::eventFilter(watched, event);
 }
 
@@ -1513,25 +1524,25 @@ void GitCommitDialog::previewSelectedFile()
 {
     QString filePath = getCurrentSelectedFilePath();
     if (filePath.isEmpty()) {
-        QMessageBox::information(this, tr("No File Selected"), 
+        QMessageBox::information(this, tr("No File Selected"),
                                  tr("Please select a file to preview."));
         return;
     }
-    
+
     // 关闭之前的预览对话框
     if (m_currentPreviewDialog) {
         m_currentPreviewDialog->close();
         m_currentPreviewDialog = nullptr;
     }
-    
+
     // 创建新的预览对话框
     m_currentPreviewDialog = GitDialogManager::instance()->showFilePreview(m_repositoryPath, filePath, this);
-    
+
     // 连接对话框关闭信号，以便清理引用
     connect(m_currentPreviewDialog, &QDialog::finished, this, [this]() {
         m_currentPreviewDialog = nullptr;
     });
-    
+
     qInfo() << "INFO: [GitCommitDialog] Opened file preview for:" << filePath;
 }
 
@@ -1540,21 +1551,21 @@ void GitCommitDialog::saveColumnWidths()
     if (!m_fileView || !m_fileView->header()) {
         return;
     }
-    
+
     auto *header = m_fileView->header();
     m_savedColumnWidths.clear();
-    
+
     // 保存每列的宽度
     for (int i = 0; i < header->count(); ++i) {
         m_savedColumnWidths.append(header->sectionSize(i));
     }
-    
+
     // 保存resize模式
     m_savedResizeModes.clear();
     for (int i = 0; i < header->count(); ++i) {
         m_savedResizeModes.append(header->sectionResizeMode(i));
     }
-    
+
     qDebug() << "[GitCommitDialog] Saved column widths:" << m_savedColumnWidths;
 }
 
@@ -1567,21 +1578,21 @@ void GitCommitDialog::restoreColumnWidths()
         });
         return;
     }
-    
+
     // 延迟恢复列宽，确保模型已经完全更新
     QTimer::singleShot(0, this, [this]() {
         auto *header = m_fileView->header();
-        
+
         // 恢复resize模式
         for (int i = 0; i < qMin(m_savedResizeModes.size(), header->count()); ++i) {
             header->setSectionResizeMode(i, m_savedResizeModes.at(i));
         }
-        
+
         // 恢复列宽
         for (int i = 0; i < qMin(m_savedColumnWidths.size(), header->count()); ++i) {
             header->resizeSection(i, m_savedColumnWidths.at(i));
         }
-        
+
         qDebug() << "[GitCommitDialog] Restored column widths:" << m_savedColumnWidths;
     });
 }
@@ -1591,16 +1602,16 @@ void GitCommitDialog::setDefaultColumnWidths()
     if (!m_fileView || !m_fileView->header()) {
         return;
     }
-    
+
     auto *header = m_fileView->header();
     header->setStretchLastSection(false);
     header->setSectionResizeMode(0, QHeaderView::Interactive);   // File name - user can resize
     header->setSectionResizeMode(1, QHeaderView::Interactive);   // Status - user can resize
-    header->setSectionResizeMode(2, QHeaderView::Stretch);       // Path - stretches to fill
-    
+    header->setSectionResizeMode(2, QHeaderView::Stretch);   // Path - stretches to fill
+
     header->resizeSection(0, 250);   // File name column
     header->resizeSection(1, 180);   // Status column
     // Path column will stretch automatically
-    
+
     qDebug() << "[GitCommitDialog] Set default column widths: File=250, Status=180";
 }

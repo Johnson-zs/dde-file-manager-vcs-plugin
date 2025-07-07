@@ -33,6 +33,7 @@
 #include <QTreeWidget>
 #include <QSyntaxHighlighter>
 #include <QTextCharFormat>
+#include <QDebug>
 
 GitPushDialog::GitPushDialog(const QString &repositoryPath, QWidget *parent)
     : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_statusUpdateTimer(new QTimer(this))
@@ -275,15 +276,15 @@ void GitPushDialog::setupConnections()
     connect(m_previewButton, &QPushButton::clicked, this, [this]() {
         // 创建预览选择菜单
         QMenu *previewMenu = new QMenu(this);
-        
+
         auto *branchCompareAction = previewMenu->addAction(QIcon(":/icons/vcs-branch"), tr("Branch Comparison Preview"));
         branchCompareAction->setToolTip(tr("Use advanced branch comparison dialog"));
         connect(branchCompareAction, &QAction::triggered, this, &GitPushDialog::previewChanges);
-        
+
         auto *quickPreviewAction = previewMenu->addAction(QIcon(":/icons/vcs-diff"), tr("Quick Preview"));
         quickPreviewAction->setToolTip(tr("Show simple preview with commit list and file changes"));
         connect(quickPreviewAction, &QAction::triggered, this, &GitPushDialog::showQuickPreview);
-        
+
         previewMenu->exec(m_previewButton->mapToGlobal(QPoint(0, m_previewButton->height())));
     });
     connect(m_dryRunButton, &QPushButton::clicked, this, &GitPushDialog::executeDryRun);
@@ -338,7 +339,13 @@ void GitPushDialog::loadRemotes()
     m_remoteCombo->clear();
 
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
         QSet<QString> remoteNames;
 
         for (const QString &line : lines) {
@@ -386,7 +393,13 @@ void GitPushDialog::loadBranches()
     m_localBranchCombo->clear();
 
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
 
         for (const QString &line : lines) {
             QString branchName = line.trimmed();
@@ -438,7 +451,13 @@ void GitPushDialog::loadRemoteBranches()
     m_remoteBranchCombo->clear();
 
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
         QString currentRemote = m_remoteCombo->currentText();
 
         for (const QString &line : lines) {
@@ -491,11 +510,23 @@ void GitPushDialog::loadUnpushedCommits()
     m_commitsWidget->clear();
 
     if (result == GitCommandExecutor::Result::Success && !output.trimmed().isEmpty()) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
 
         for (const QString &line : lines) {
             CommitInfo commit;
-            QStringList parts = line.split(' ', Qt::SkipEmptyParts);
+            QStringList parts = line.split(' ',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                           Qt::SkipEmptyParts
+#else
+                                           QString::SkipEmptyParts
+#endif
+            );
             if (!parts.isEmpty()) {
                 commit.shortHash = parts[0];
                 commit.hash = parts[0];   // 简化处理
@@ -583,7 +614,7 @@ void GitPushDialog::onForceToggled(bool enabled)
                              tr("Force push can overwrite remote changes and cause data loss.\n"
                                 "Only use this if you are certain about what you're doing.\n\n"
                                 "Consider using 'git pull' first to merge remote changes."));
-        
+
         // 显示影响评估
         showImpactAssessment();
     }
@@ -621,7 +652,7 @@ void GitPushDialog::previewChanges()
     // 使用GitBranchComparisonDialog来预览推送内容
     QString remoteBranch = m_remoteCombo->currentText() + "/" + m_remoteBranchCombo->currentText();
     QString localBranch = m_localBranchCombo->currentText();
-    
+
     // 调用GitDialogManager来显示分支比较，比较远程分支和本地分支的差异
     GitDialogManager::instance()->showBranchComparisonDialog(m_repositoryPath, remoteBranch, localBranch, this);
 }
@@ -982,9 +1013,9 @@ void GitPushDialog::showQuickPreview()
 
     // 预览信息
     QString previewInfo = tr("Push Target: %1 → %2/%3\n")
-                                 .arg(m_localBranchCombo->currentText())
-                                 .arg(m_remoteCombo->currentText())
-                                 .arg(m_remoteBranchCombo->currentText());
+                                  .arg(m_localBranchCombo->currentText())
+                                  .arg(m_remoteCombo->currentText())
+                                  .arg(m_remoteBranchCombo->currentText());
     previewInfo += tr("Commits to Push: %1\n\n").arg(m_unpushedCommits.size());
 
     // 提交列表
@@ -1189,12 +1220,12 @@ void GitPushDialog::showCommitDetails()
     changedFilesTree->setRootIsDecorated(false);
     changedFilesTree->setAlternatingRowColors(true);
     changedFilesTree->setContextMenuPolicy(Qt::CustomContextMenu);
-    
+
     // 设置列宽
     changedFilesTree->setColumnWidth(0, 60);   // Status
     changedFilesTree->setColumnWidth(1, 300);   // File
     changedFilesTree->setColumnWidth(2, 100);   // Changes
-    
+
     rightSplitter->addWidget(changedFilesTree);
 
     // === 3. 差异显示区域 (50%) ===
@@ -1256,9 +1287,15 @@ void GitPushDialog::showCommitDetails()
     int filesChanged = 0;
 
     if (filesResult == GitCommandExecutor::Result::Success && !filesOutput.trimmed().isEmpty()) {
-        QStringList lines = filesOutput.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = filesOutput.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                              Qt::SkipEmptyParts
+#else
+                                              QString::SkipEmptyParts
+#endif
+        );
         filesChanged = lines.size();
-        
+
         for (const QString &line : lines) {
             QStringList parts = line.split('\t');
             if (parts.size() >= 2) {
@@ -1268,11 +1305,11 @@ void GitPushDialog::showCommitDetails()
                 fileInfo.additions = 0;
                 fileInfo.deletions = 0;
                 fileInfo.statsLoaded = false;
-                
+
                 fileInfos.append(fileInfo);
-                
+
                 auto *item = new QTreeWidgetItem(changedFilesTree);
-                
+
                 // 状态列
                 if (fileInfo.status == "A") {
                     item->setText(0, tr("Added"));
@@ -1290,11 +1327,11 @@ void GitPushDialog::showCommitDetails()
                     item->setText(0, fileInfo.status);
                     item->setIcon(0, QIcon(":/icons/document-properties"));
                 }
-                
+
                 // 文件路径列
                 item->setText(1, fileInfo.filePath);
                 item->setToolTip(1, fileInfo.filePath);
-                
+
                 // 变更统计列（先显示Loading...）
                 item->setText(2, tr("Loading..."));
             }
@@ -1314,12 +1351,18 @@ void GitPushDialog::showCommitDetails()
 
         QString statOutput, statError;
         auto statResult = executor.executeCommand(statCmd, statOutput, statError);
-        
+
         if (statResult == GitCommandExecutor::Result::Success && !statOutput.trimmed().isEmpty()) {
             // 解析统计信息（复用GitLogDataManager的逻辑）
-            QStringList statLines = statOutput.split('\n', Qt::SkipEmptyParts);
+            QStringList statLines = statOutput.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                                     Qt::SkipEmptyParts
+#else
+                                                     QString::SkipEmptyParts
+#endif
+            );
             QHash<QString, QPair<int, int>> fileStats;
-            
+
             for (const QString &line : statLines) {
                 if (line.trimmed().isEmpty()) continue;
 
@@ -1336,40 +1379,40 @@ void GitPushDialog::showCommitDetails()
                     fileStats[filePath] = qMakePair(additions, deletions);
                 }
             }
-            
+
             // 更新文件信息和UI
             int totalAdditions = 0;
             int totalDeletions = 0;
-            
+
             for (int i = 0; i < fileInfos.size() && i < changedFilesTree->topLevelItemCount(); ++i) {
                 auto &fileInfo = fileInfos[i];
                 auto *item = changedFilesTree->topLevelItem(i);
-                
+
                 if (fileStats.contains(fileInfo.filePath)) {
                     QPair<int, int> stats = fileStats[fileInfo.filePath];
                     fileInfo.additions = stats.first;
                     fileInfo.deletions = stats.second;
                     fileInfo.statsLoaded = true;
-                    
+
                     totalAdditions += fileInfo.additions;
                     totalDeletions += fileInfo.deletions;
-                    
+
                     // 更新UI显示（复用GitLogDialog的格式化逻辑）
                     QString changeText;
                     if (fileInfo.additions > 0 && fileInfo.deletions > 0) {
                         changeText = QString("+%1 -%2").arg(fileInfo.additions).arg(fileInfo.deletions);
-                        item->setForeground(2, QBrush(QColor(255, 140, 0))); // 橙色
+                        item->setForeground(2, QBrush(QColor(255, 140, 0)));   // 橙色
                     } else if (fileInfo.additions > 0) {
                         changeText = QString("+%1").arg(fileInfo.additions);
-                        item->setForeground(2, QBrush(QColor(0, 128, 0))); // 绿色
+                        item->setForeground(2, QBrush(QColor(0, 128, 0)));   // 绿色
                     } else if (fileInfo.deletions > 0) {
                         changeText = QString("-%1").arg(fileInfo.deletions);
-                        item->setForeground(2, QBrush(QColor(128, 0, 0))); // 红色
+                        item->setForeground(2, QBrush(QColor(128, 0, 0)));   // 红色
                     } else {
                         changeText = tr("No changes");
-                        item->setForeground(2, QBrush(QColor(128, 128, 128))); // 灰色
+                        item->setForeground(2, QBrush(QColor(128, 128, 128)));   // 灰色
                     }
-                    
+
                     item->setText(2, changeText);
                     item->setToolTip(2, tr("Lines added: %1, Lines deleted: %2").arg(fileInfo.additions).arg(fileInfo.deletions));
                 } else {
@@ -1377,7 +1420,7 @@ void GitPushDialog::showCommitDetails()
                     item->setForeground(2, QBrush(QColor(128, 128, 128)));
                 }
             }
-            
+
             // === 使用GitCommitDetailsWidget的setCommitSummaryStats方法 ===
             detailsWidget->setCommitSummaryStats(filesChanged, totalAdditions, totalDeletions);
         } else {

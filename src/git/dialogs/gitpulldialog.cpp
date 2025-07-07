@@ -26,6 +26,7 @@
 #include <QRegularExpression>
 #include <QPlainTextEdit>
 #include <QFont>
+#include <QDebug>
 
 GitPullDialog::GitPullDialog(const QString &repositoryPath, QWidget *parent)
     : QDialog(parent), m_repositoryPath(repositoryPath), m_operationService(new GitOperationService(this)), m_hasLocalChanges(false), m_hasUncommittedChanges(false), m_isOperationInProgress(false), m_isDryRunInProgress(false), m_isDataLoaded(false), m_statusUpdateTimer(new QTimer(this)), m_updatesContextMenu(nullptr), m_openInBrowserAction(nullptr), m_copyHashAction(nullptr), m_copyMessageAction(nullptr), m_showDetailsAction(nullptr)
@@ -162,7 +163,7 @@ void GitPullDialog::setupUI()
     buttonLayout->addWidget(m_cancelButton);
 
     mainLayout->addWidget(buttonWidget);
-    
+
     // 设置右键菜单
     setupUpdatesContextMenu();
 }
@@ -295,11 +296,11 @@ void GitPullDialog::setupConnections()
                 Q_UNUSED(operation)
                 onPullCompleted(success, message);
             });
-    
+
     // 右键菜单信号
     connect(m_updatesWidget, &QListWidget::customContextMenuRequested,
             this, &GitPullDialog::showUpdatesContextMenu);
-    
+
     // 双击列表项信号 - 打开浏览器
     connect(m_updatesWidget, &QListWidget::itemDoubleClicked,
             this, &GitPullDialog::onItemDoubleClicked);
@@ -333,7 +334,13 @@ void GitPullDialog::loadRemotes()
     m_remoteCombo->clear();
 
     if (result == GitCommandExecutor::Result::Success) {
-        m_remotes = output.split('\n', Qt::SkipEmptyParts);
+        m_remotes = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                 Qt::SkipEmptyParts
+#else
+                                 QString::SkipEmptyParts
+#endif
+        );
         m_remoteCombo->addItems(m_remotes);
 
         // 默认选择origin
@@ -404,7 +411,13 @@ void GitPullDialog::loadRemoteBranches()
     m_remoteBranchCombo->clear();
 
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
         QString currentRemote = m_remoteCombo->currentText();
 
         for (const QString &line : lines) {
@@ -445,7 +458,13 @@ void GitPullDialog::checkLocalChanges()
     auto result = executor.executeCommand(cmd, output, error);
 
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
 
         m_hasLocalChanges = !lines.isEmpty();
         m_hasUncommittedChanges = false;
@@ -563,20 +582,21 @@ void GitPullDialog::fetchUpdates()
 
     // 创建异步执行器
     auto *executor = new GitCommandExecutor(this);
-    
+
     // 连接异步完成信号
-    connect(executor, &GitCommandExecutor::commandFinished, 
+    connect(executor, &GitCommandExecutor::commandFinished,
             this, &GitPullDialog::onFetchCommandFinished);
 
     // 准备fetch命令
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "fetch";
-    cmd.arguments = QStringList() << "fetch" << "--all";
-    
+    cmd.arguments = QStringList() << "fetch"
+                                  << "--all";
+
     if (m_pruneCheckBox->isChecked()) {
         cmd.arguments << "--prune";
     }
-    
+
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 30000;   // 30秒超时
 
@@ -587,41 +607,41 @@ void GitPullDialog::fetchUpdates()
 void GitPullDialog::onFetchCommandFinished(const QString &command, GitCommandExecutor::Result result, const QString &output, const QString &error)
 {
     Q_UNUSED(command)
-    
+
     // 删除临时执行器
     sender()->deleteLater();
-    
+
     // 隐藏进度
     hideProgress();
-    
+
     if (result == GitCommandExecutor::Result::Success) {
         qInfo() << "INFO: [GitPullDialog::onFetchCommandFinished] Fetch completed successfully";
-        
+
         // 显示成功状态
         m_animationWidget->setVisible(true);
         m_animationWidget->getLabel()->setText(tr("✓ Fetch completed successfully!"));
         m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; font-size: 14px; }");
-        
+
         // 刷新远程分支和更新列表
         loadRemoteBranches();
         loadActualRemoteUpdates();
-        
+
         // 1.5秒后隐藏成功消息
         QTimer::singleShot(1500, this, [this]() {
             m_animationWidget->setVisible(false);
         });
-        
+
     } else {
         qWarning() << "WARNING: [GitPullDialog::onFetchCommandFinished] Fetch failed:" << error;
-        
+
         // 显示错误状态
         m_animationWidget->setVisible(true);
         m_animationWidget->getLabel()->setText(tr("✗ Fetch failed!"));
         m_animationWidget->getLabel()->setStyleSheet("QLabel { color: #F44336; font-weight: bold; font-size: 14px; }");
-        
+
         QMessageBox::critical(this, tr("Fetch Failed"),
                               tr("Failed to fetch remote updates.\n\nError: %1").arg(error));
-        
+
         // 3秒后隐藏错误消息
         QTimer::singleShot(3000, this, [this]() {
             m_animationWidget->setVisible(false);
@@ -943,7 +963,13 @@ void GitPullDialog::handleConflicts()
     }
 
     QStringList conflictFiles;
-    QStringList statusLines = output.split('\n', Qt::SkipEmptyParts);
+    QStringList statusLines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                           Qt::SkipEmptyParts
+#else
+                                           QString::SkipEmptyParts
+#endif
+    );
 
     for (const QString &line : statusLines) {
         if (line.length() >= 2) {
@@ -1107,7 +1133,13 @@ void GitPullDialog::loadActualRemoteUpdates()
     m_updatesWidget->clear();
 
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
 
         if (lines.isEmpty()) {
             m_updatesCountLabel->setText(tr("No remote updates available"));
@@ -1123,7 +1155,13 @@ void GitPullDialog::loadActualRemoteUpdates()
             for (const QString &line : lines) {
                 if (line.trimmed().isEmpty()) continue;
 
-                QStringList parts = line.split(' ', Qt::SkipEmptyParts);
+                QStringList parts = line.split(' ',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                               Qt::SkipEmptyParts
+#else
+                                               QString::SkipEmptyParts
+#endif
+                );
                 if (parts.size() >= 2) {
                     QString hash = parts[0];
                     QString message = parts.mid(1).join(' ');
@@ -1195,10 +1233,10 @@ void GitPullDialog::abortMerge()
 void GitPullDialog::delayedDataLoad()
 {
     qInfo() << "INFO: [GitPullDialog::delayedDataLoad] Starting delayed data loading";
-    
+
     // 显示加载状态
     showProgress(tr("Loading repository information..."));
-    
+
     // 增加延迟时间，确保动画开始运行
     QTimer::singleShot(200, this, &GitPullDialog::loadRepositoryInfoAsync);
 }
@@ -1209,14 +1247,14 @@ void GitPullDialog::loadRepositoryInfoAsync()
     // 这样可以避免阻塞UI线程
     QTimer::singleShot(100, this, [this]() {
         loadRepositoryInfo();
-        
+
         // 加载完成后隐藏进度动画
         hideProgress();
         m_isDataLoaded = true;
-        
+
         // 现在启动定时器
         m_statusUpdateTimer->start();
-        
+
         qInfo() << "INFO: [GitPullDialog::loadRepositoryInfoAsync] Repository data loaded successfully";
     });
 }
@@ -1322,7 +1360,7 @@ void GitPullDialog::openCommitInBrowser()
 
     QString remoteName = m_remoteCombo->currentText();
     QString remoteUrl = getRemoteUrl(remoteName);
-    
+
     if (remoteUrl.isEmpty()) {
         QMessageBox::warning(this, tr("No Remote URL"),
                              tr("Cannot open commit in browser: no remote URL found for '%1'.")
@@ -1334,7 +1372,8 @@ void GitPullDialog::openCommitInBrowser()
     if (commitUrl.isEmpty()) {
         QMessageBox::warning(this, tr("Unsupported Remote"),
                              tr("Cannot open commit in browser: unsupported remote URL format.\n\n"
-                                "Remote URL: %1").arg(remoteUrl));
+                                "Remote URL: %1")
+                                     .arg(remoteUrl));
         return;
     }
 
@@ -1344,7 +1383,8 @@ void GitPullDialog::openCommitInBrowser()
         QMessageBox::critical(this, tr("Failed to Open Browser"),
                               tr("Failed to open the commit URL in browser.\n\n"
                                  "URL: %1\n\n"
-                                 "You can copy this URL manually.").arg(commitUrl));
+                                 "You can copy this URL manually.")
+                                      .arg(commitUrl));
     }
 }
 

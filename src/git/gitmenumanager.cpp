@@ -4,6 +4,8 @@
 #include "utils.h"
 
 #include <QFileInfo>
+#include <QDebug>
+
 #include <algorithm>
 
 GitMenuManager::GitMenuManager(QObject *parent)

@@ -9,10 +9,10 @@
 #include <QDir>
 #include <QDialog>
 #include <QDateTime>
+#include <QDebug>
 
 GitOperationService::GitOperationService(QObject *parent)
-    : QObject(parent)
-    , m_executor(new GitCommandExecutor(this))
+    : QObject(parent), m_executor(new GitCommandExecutor(this))
 {
     // 连接GitCommandExecutor信号
     connect(m_executor, &GitCommandExecutor::commandFinished,
@@ -73,9 +73,11 @@ void GitOperationService::removeFile(const std::string &filePath)
 
     using Global::ItemVersion;
     if (status == ItemVersion::AddedVersion) {
-        args << "reset" << "HEAD" << relativePath;
+        args << "reset"
+             << "HEAD" << relativePath;
     } else {
-        args << "rm" << "--cached" << relativePath;
+        args << "rm"
+             << "--cached" << relativePath;
     }
 
     executeSilentOperation("Remove", repoPath, args);
@@ -108,11 +110,16 @@ void GitOperationService::revertFile(const std::string &filePath)
     if (status == ItemVersion::LocallyModifiedUnstagedVersion) {
         args << "restore" << relativePath;
     } else if (status == ItemVersion::LocallyModifiedVersion) {
-        args << "restore" << "--staged" << "--worktree" << relativePath;
+        args << "restore"
+             << "--staged"
+             << "--worktree" << relativePath;
     } else if (status == ItemVersion::AddedVersion) {
-        args << "reset" << "HEAD" << relativePath;
+        args << "reset"
+             << "HEAD" << relativePath;
     } else {
-        args << "checkout" << "HEAD" << "--" << relativePath;
+        args << "checkout"
+             << "HEAD"
+             << "--" << relativePath;
     }
 
     executeSilentOperation("Revert", repoPath, args);
@@ -218,7 +225,7 @@ void GitOperationService::removeMultipleFiles(const std::list<std::string> &path
 
     QStringList args { "rm", "--cached" };
     GitCommandExecutor executor;
-    
+
     for (const auto &pathStr : pathList) {
         const QString filePath = QString::fromStdString(pathStr);
         QString relativePath = executor.makeRelativePath(repoPath, filePath);
@@ -245,7 +252,7 @@ void GitOperationService::revertMultipleFiles(const std::list<std::string> &path
 
     QStringList args { "restore", "--staged", "--worktree" };
     GitCommandExecutor executor;
-    
+
     for (const auto &pathStr : pathList) {
         const QString filePath = QString::fromStdString(pathStr);
         QString relativePath = executor.makeRelativePath(repoPath, filePath);
@@ -292,7 +299,7 @@ void GitOperationService::checkoutBranch(const std::string &repositoryPath)
 
     QWidget *parentWidget = QApplication::activeWindow();
     GitDialogManager::instance()->showCheckoutDialog(repoPath, parentWidget);
-    
+
     // Note: The refresh signal should be emitted when the checkout operation actually completes
     // This will need to be connected through the dialog's success signal in the future
 }
@@ -330,7 +337,7 @@ void GitOperationService::commitChanges(const std::string &repositoryPath)
 
     QWidget *parentWidget = QApplication::activeWindow();
     GitDialogManager::instance()->showCommitDialog(repoPath, parentWidget);
-    
+
     // Note: The refresh signal should be emitted when the commit operation actually completes
     // This will need to be connected through the dialog's success signal in the future
 }
@@ -354,43 +361,43 @@ void GitOperationService::showCleanDialog(const std::string &repositoryPath)
     GitDialogManager::instance()->showCleanDialog(repoPath, parentWidget);
 }
 
-void GitOperationService::cleanRepository(const std::string &repositoryPath, bool force, 
-                                         bool includeDirectories, bool includeIgnored, 
-                                         bool onlyIgnored, bool dryRun)
+void GitOperationService::cleanRepository(const std::string &repositoryPath, bool force,
+                                          bool includeDirectories, bool includeIgnored,
+                                          bool onlyIgnored, bool dryRun)
 {
     const QString repoPath = QString::fromStdString(repositoryPath);
-    
+
     qInfo() << "INFO: [GitOperationService::cleanRepository] Cleaning repository:" << repoPath
-            << "force:" << force << "directories:" << includeDirectories 
-            << "ignored:" << includeIgnored << "onlyIgnored:" << onlyIgnored 
+            << "force:" << force << "directories:" << includeDirectories
+            << "ignored:" << includeIgnored << "onlyIgnored:" << onlyIgnored
             << "dryRun:" << dryRun;
 
     QStringList args { "clean" };
-    
+
     // 添加选项参数
     if (dryRun) {
-        args << "-n";  // --dry-run
+        args << "-n";   // --dry-run
     } else if (force) {
-        args << "-f";  // --force
+        args << "-f";   // --force
     }
-    
+
     if (includeDirectories) {
-        args << "-d";  // 递归删除目录
+        args << "-d";   // 递归删除目录
     }
-    
+
     if (onlyIgnored) {
-        args << "-X";  // 只删除被忽略的文件
+        args << "-X";   // 只删除被忽略的文件
     } else if (includeIgnored) {
-        args << "-x";  // 删除被忽略的文件
+        args << "-x";   // 删除被忽略的文件
     }
-    
+
     // 添加安全检查：如果不是dry-run且没有force，则拒绝执行
     if (!dryRun && !force) {
         qWarning() << "WARNING: [GitOperationService::cleanRepository] Clean operation requires force flag for safety";
         emit operationCompleted("Clean", false, tr("Clean operation requires force flag for safety"));
         return;
     }
-    
+
     if (dryRun) {
         // 对于dry-run，使用静默操作并显示结果
         executeSilentOperation("Clean Preview", repoPath, args);
@@ -400,25 +407,26 @@ void GitOperationService::cleanRepository(const std::string &repositoryPath, boo
     }
 }
 
-QStringList GitOperationService::getCleanPreview(const QString &repositoryPath, bool includeDirectories, 
-                                                bool includeIgnored, bool onlyIgnored)
+QStringList GitOperationService::getCleanPreview(const QString &repositoryPath, bool includeDirectories,
+                                                 bool includeIgnored, bool onlyIgnored)
 {
     qInfo() << "INFO: [GitOperationService::getCleanPreview] Getting clean preview for repository:" << repositoryPath;
 
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "clean";
-    cmd.arguments = QStringList() << "clean" << "-n";  // dry-run
+    cmd.arguments = QStringList() << "clean"
+                                  << "-n";   // dry-run
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 10000;
-    
+
     // 添加选项参数
     if (includeDirectories) {
         cmd.arguments << "-d";
     }
-    
+
     if (onlyIgnored) {
         cmd.arguments << "-X";
     } else if (includeIgnored) {
@@ -426,24 +434,30 @@ QStringList GitOperationService::getCleanPreview(const QString &repositoryPath, 
     }
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     QStringList fileList;
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-        
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
+
         for (const QString &line : lines) {
             // git clean -n 的输出格式通常是 "Would remove filename"
             if (line.startsWith("Would remove ")) {
-                QString fileName = line.mid(13);  // 去掉 "Would remove " 前缀
+                QString fileName = line.mid(13);   // 去掉 "Would remove " 前缀
                 fileList << fileName;
             }
         }
-        
+
         qInfo() << "INFO: [GitOperationService::getCleanPreview] Found" << fileList.size() << "files to clean";
     } else {
         qWarning() << "WARNING: [GitOperationService::getCleanPreview] Failed to get clean preview:" << error;
     }
-    
+
     return fileList;
 }
 
@@ -454,69 +468,69 @@ QStringList GitOperationService::getCleanPreview(const QString &repositoryPath, 
 void GitOperationService::createStash(const std::string &repositoryPath, const QString &message)
 {
     const QString repoPath = QString::fromStdString(repositoryPath);
-    
+
     qInfo() << "INFO: [GitOperationService::createStash] Creating stash for repository:" << repoPath;
 
     QStringList args { "stash", "push" };
-    
+
     if (!message.isEmpty()) {
         args << "-m" << message;
     } else {
         args << "-m" << QString("Stash created at %1").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"));
     }
-    
+
     executeSilentOperation("Create Stash", repoPath, args);
 }
 
 void GitOperationService::applyStash(const std::string &repositoryPath, int stashIndex, bool keepStash)
 {
     const QString repoPath = QString::fromStdString(repositoryPath);
-    
-    qInfo() << "INFO: [GitOperationService::applyStash] Applying stash" << stashIndex 
+
+    qInfo() << "INFO: [GitOperationService::applyStash] Applying stash" << stashIndex
             << "for repository:" << repoPath << "keep:" << keepStash;
 
     QStringList args { "stash" };
-    
+
     if (keepStash) {
         args << "apply";
     } else {
         args << "pop";
     }
-    
+
     args << QString("stash@{%1}").arg(stashIndex);
-    
+
     executeInteractiveOperation("Apply Stash", repoPath, args);
 }
 
 void GitOperationService::deleteStash(const std::string &repositoryPath, int stashIndex)
 {
     const QString repoPath = QString::fromStdString(repositoryPath);
-    
-    qInfo() << "INFO: [GitOperationService::deleteStash] Deleting stash" << stashIndex 
+
+    qInfo() << "INFO: [GitOperationService::deleteStash] Deleting stash" << stashIndex
             << "for repository:" << repoPath;
 
     QStringList args { "stash", "drop", QString("stash@{%1}").arg(stashIndex) };
-    
+
     executeSilentOperation("Delete Stash", repoPath, args);
 }
 
 void GitOperationService::createBranchFromStash(const std::string &repositoryPath, int stashIndex, const QString &branchName)
 {
     const QString repoPath = QString::fromStdString(repositoryPath);
-    
-    qInfo() << "INFO: [GitOperationService::createBranchFromStash] Creating branch" << branchName 
+
+    qInfo() << "INFO: [GitOperationService::createBranchFromStash] Creating branch" << branchName
             << "from stash" << stashIndex << "for repository:" << repoPath;
 
     QStringList args { "stash", "branch", branchName, QString("stash@{%1}").arg(stashIndex) };
-    
+
     executeInteractiveOperation("Create Branch from Stash", repoPath, args);
 }
 
 void GitOperationService::showStashDiff(const std::string &repositoryPath, int stashIndex)
 {
     const QString repoPath = QString::fromStdString(repositoryPath);
-    
-    qInfo() << "INFO: [GitOperationService::showStashDiff] Opening diff for stash" << stashIndex 
+
+    qInfo() << "INFO: [GitOperationService::showStashDiff] Opening diff for stash" << stashIndex
             << "in repository:" << repoPath;
 
     if (!QApplication::instance()) {
@@ -525,7 +539,7 @@ void GitOperationService::showStashDiff(const std::string &repositoryPath, int s
     }
 
     QWidget *parentWidget = QApplication::activeWindow();
-    
+
     // 使用GitDialogManager显示stash差异对话框
     // 注意：这里需要在后续实现GitDialogManager::showStashDiffDialog方法
     GitDialogManager::instance()->showDiffDialog(repoPath, QString("stash@{%1}").arg(stashIndex), parentWidget);
@@ -534,7 +548,7 @@ void GitOperationService::showStashDiff(const std::string &repositoryPath, int s
 void GitOperationService::showStashManager(const std::string &repositoryPath)
 {
     const QString repoPath = QString::fromStdString(repositoryPath);
-    
+
     qInfo() << "INFO: [GitOperationService::showStashManager] Opening stash manager for repository:" << repoPath;
 
     if (!QApplication::instance()) {
@@ -543,7 +557,7 @@ void GitOperationService::showStashManager(const std::string &repositoryPath)
     }
 
     QWidget *parentWidget = QApplication::activeWindow();
-    
+
     // 使用GitDialogManager显示stash管理对话框
     GitDialogManager::instance()->showStashDialog(repoPath, parentWidget);
 }
@@ -554,17 +568,25 @@ QStringList GitOperationService::listStashes(const QString &repositoryPath)
 
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "stash";
-    cmd.arguments = QStringList() << "stash" << "list" << "--pretty=format:%gd|%s|%cr|%an";
+    cmd.arguments = QStringList() << "stash"
+                                  << "list"
+                                  << "--pretty=format:%gd|%s|%cr|%an";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
-    
+
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList stashes = output.split('\n', Qt::SkipEmptyParts);
+        QStringList stashes = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                           Qt::SkipEmptyParts
+#else
+                                           QString::SkipEmptyParts
+#endif
+        );
         qInfo() << "INFO: [GitOperationService::listStashes] Found" << stashes.size() << "stashes";
         return stashes;
     } else {
@@ -579,17 +601,18 @@ bool GitOperationService::hasStashes(const QString &repositoryPath)
 
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "stash";
-    cmd.arguments = QStringList() << "stash" << "list";
+    cmd.arguments = QStringList() << "stash"
+                                  << "list";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 3000;
-    
+
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     bool hasStashes = (result == GitCommandExecutor::Result::Success) && !output.trimmed().isEmpty();
-    
+
     qInfo() << "INFO: [GitOperationService::hasStashes] Repository has stashes:" << hasStashes;
     return hasStashes;
 }
@@ -598,10 +621,10 @@ bool GitOperationService::hasStashes(const QString &repositoryPath)
 // 高级Push/Pull操作实现
 // ============================================================================
 
-void GitOperationService::pushWithOptions(const QString &repositoryPath, const QString &remoteName, 
-                                         const QString &localBranch, const QString &remoteBranch,
-                                         bool forceWithLease, bool pushTags, 
-                                         bool setUpstream, bool dryRun)
+void GitOperationService::pushWithOptions(const QString &repositoryPath, const QString &remoteName,
+                                          const QString &localBranch, const QString &remoteBranch,
+                                          bool forceWithLease, bool pushTags,
+                                          bool setUpstream, bool dryRun)
 {
     qInfo() << "INFO: [GitOperationService::pushWithOptions] Pushing with options:"
             << "remote:" << remoteName << "local:" << localBranch << "remote branch:" << remoteBranch
@@ -609,23 +632,23 @@ void GitOperationService::pushWithOptions(const QString &repositoryPath, const Q
 
     QStringList args;
     args << "push";
-    
+
     if (dryRun) {
         args << "--dry-run";
     }
-    
+
     if (forceWithLease) {
         args << "--force-with-lease";
     }
-    
+
     if (pushTags) {
         args << "--tags";
     }
-    
+
     if (setUpstream) {
         args << "-u";
     }
-    
+
     // 添加远程和分支
     args << remoteName;
     if (!remoteBranch.isEmpty()) {
@@ -633,13 +656,13 @@ void GitOperationService::pushWithOptions(const QString &repositoryPath, const Q
     } else {
         args << localBranch;
     }
-    
+
     executeInteractiveOperation("Push", repositoryPath, args);
 }
 
 void GitOperationService::pullWithOptions(const QString &repositoryPath, const QString &remoteName,
-                                         const QString &remoteBranch, const QString &strategy,
-                                         bool prune, bool autoStash, bool dryRun)
+                                          const QString &remoteBranch, const QString &strategy,
+                                          bool prune, bool autoStash, bool dryRun)
 {
     qInfo() << "INFO: [GitOperationService::pullWithOptions] Pulling with options:"
             << "remote:" << remoteName << "branch:" << remoteBranch << "strategy:" << strategy
@@ -647,32 +670,32 @@ void GitOperationService::pullWithOptions(const QString &repositoryPath, const Q
 
     QStringList args;
     args << "pull";
-    
+
     if (dryRun) {
         args << "--dry-run";
     }
-    
+
     if (prune) {
         args << "--prune";
     }
-    
+
     if (autoStash) {
         args << "--autostash";
     }
-    
+
     // 合并策略
     if (strategy == "rebase") {
         args << "--rebase";
     } else if (strategy == "ff-only") {
         args << "--ff-only";
     }
-    
+
     // 添加远程和分支
     args << remoteName;
     if (!remoteBranch.isEmpty()) {
         args << remoteBranch;
     }
-    
+
     executeInteractiveOperation("Pull", repositoryPath, args);
 }
 
@@ -724,8 +747,9 @@ void GitOperationService::addRemote(const QString &repositoryPath, const QString
     qInfo() << "INFO: [GitOperationService::addRemote] Adding remote:" << name << "url:" << url;
 
     QStringList args;
-    args << "remote" << "add" << name << url;
-    
+    args << "remote"
+         << "add" << name << url;
+
     executeInteractiveOperation("Add Remote", repositoryPath, args);
 }
 
@@ -734,8 +758,9 @@ void GitOperationService::removeRemote(const QString &repositoryPath, const QStr
     qInfo() << "INFO: [GitOperationService::removeRemote] Removing remote:" << name;
 
     QStringList args;
-    args << "remote" << "remove" << name;
-    
+    args << "remote"
+         << "remove" << name;
+
     executeInteractiveOperation("Remove Remote", repositoryPath, args);
 }
 
@@ -744,8 +769,9 @@ void GitOperationService::renameRemote(const QString &repositoryPath, const QStr
     qInfo() << "INFO: [GitOperationService::renameRemote] Renaming remote from:" << oldName << "to:" << newName;
 
     QStringList args;
-    args << "remote" << "rename" << oldName << newName;
-    
+    args << "remote"
+         << "rename" << oldName << newName;
+
     executeInteractiveOperation("Rename Remote", repositoryPath, args);
 }
 
@@ -754,8 +780,9 @@ void GitOperationService::setRemoteUrl(const QString &repositoryPath, const QStr
     qInfo() << "INFO: [GitOperationService::setRemoteUrl] Setting remote URL for:" << name << "to:" << url;
 
     QStringList args;
-    args << "remote" << "set-url" << name << url;
-    
+    args << "remote"
+         << "set-url" << name << url;
+
     executeInteractiveOperation("Set Remote URL", repositoryPath, args);
 }
 
@@ -765,23 +792,24 @@ bool GitOperationService::testRemoteConnection(const QString &repositoryPath, co
 
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "ls-remote";
-    cmd.arguments = QStringList() << "ls-remote" << "--heads" << remoteName;
+    cmd.arguments = QStringList() << "ls-remote"
+                                  << "--heads" << remoteName;
     cmd.workingDirectory = repositoryPath;
-    cmd.timeout = 10000; // 10秒超时
-    
+    cmd.timeout = 10000;   // 10秒超时
+
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     bool success = (result == GitCommandExecutor::Result::Success);
-    
+
     if (success) {
         qInfo() << "INFO: [GitOperationService::testRemoteConnection] Remote connection successful";
     } else {
         qWarning() << "WARNING: [GitOperationService::testRemoteConnection] Remote connection failed:" << error;
     }
-    
+
     return success;
 }
 
@@ -794,9 +822,10 @@ void GitOperationService::testRemoteConnectionAsync(const QString &repositoryPat
 
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "ls-remote";
-    cmd.arguments = QStringList() << "ls-remote" << "--heads" << remoteName;
+    cmd.arguments = QStringList() << "ls-remote"
+                                  << "--heads" << remoteName;
     cmd.workingDirectory = repositoryPath;
-    cmd.timeout = 10000; // 10秒超时
+    cmd.timeout = 10000;   // 10秒超时
 
     // 使用异步执行，结果会通过信号返回
     m_executor->executeCommandAsync(cmd);
@@ -810,7 +839,7 @@ QStringList GitOperationService::getRemotes(const QString &repositoryPath)
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "remote";
     cmd.arguments = QStringList() << "remote";
@@ -818,11 +847,17 @@ QStringList GitOperationService::getRemotes(const QString &repositoryPath)
     cmd.timeout = 5000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
-        return output.split('\n', Qt::SkipEmptyParts);
+        return output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                            Qt::SkipEmptyParts
+#else
+                            QString::SkipEmptyParts
+#endif
+        );
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::getRemotes] Failed to get remotes:" << error;
     return QStringList();
 }
@@ -831,7 +866,7 @@ QStringList GitOperationService::getLocalBranches(const QString &repositoryPath)
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
     cmd.arguments = QStringList() << "branch";
@@ -839,11 +874,17 @@ QStringList GitOperationService::getLocalBranches(const QString &repositoryPath)
     cmd.timeout = 5000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
         QStringList branches;
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-        
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
+
         for (const QString &line : lines) {
             QString branchName = line.trimmed();
             if (branchName.startsWith("* ")) {
@@ -851,10 +892,10 @@ QStringList GitOperationService::getLocalBranches(const QString &repositoryPath)
             }
             branches.append(branchName);
         }
-        
+
         return branches;
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::getLocalBranches] Failed to get local branches:" << error;
     return QStringList();
 }
@@ -863,19 +904,26 @@ QStringList GitOperationService::getRemoteBranches(const QString &repositoryPath
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "branch" << "-r";
+    cmd.arguments = QStringList() << "branch"
+                                  << "-r";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
         QStringList branches;
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-        
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
+
         for (const QString &line : lines) {
             QString branchName = line.trimmed();
             if (remoteName.isEmpty() || branchName.startsWith(remoteName + "/")) {
@@ -887,10 +935,10 @@ QStringList GitOperationService::getRemoteBranches(const QString &repositoryPath
                 }
             }
         }
-        
+
         return branches;
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::getRemoteBranches] Failed to get remote branches:" << error;
     return QStringList();
 }
@@ -899,19 +947,20 @@ QString GitOperationService::getCurrentBranch(const QString &repositoryPath)
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "branch" << "--show-current";
+    cmd.arguments = QStringList() << "branch"
+                                  << "--show-current";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
         return output.trimmed();
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::getCurrentBranch] Failed to get current branch:" << error;
     return QString();
 }
@@ -920,28 +969,44 @@ QStringList GitOperationService::getUnpushedCommits(const QString &repositoryPat
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "log";
-    cmd.arguments = QStringList() << "log" << "--oneline" << "--no-merges" << (remoteBranch + "..HEAD");
+    cmd.arguments = QStringList() << "log"
+                                  << "--oneline"
+                                  << "--no-merges" << (remoteBranch + "..HEAD");
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 10000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
-        return output.split('\n', Qt::SkipEmptyParts);
+        return output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                            Qt::SkipEmptyParts
+#else
+                            QString::SkipEmptyParts
+#endif
+        );
     }
-    
+
     // 如果没有找到远程分支，可能是新分支，返回所有本地提交
     if (error.contains("unknown revision")) {
-        cmd.arguments = QStringList() << "log" << "--oneline" << "--no-merges";
+        cmd.arguments = QStringList() << "log"
+                                      << "--oneline"
+                                      << "--no-merges";
         result = executor.executeCommand(cmd, output, error);
         if (result == GitCommandExecutor::Result::Success) {
-            return output.split('\n', Qt::SkipEmptyParts);
+            return output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                Qt::SkipEmptyParts
+#else
+                                QString::SkipEmptyParts
+#endif
+            );
         }
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::getUnpushedCommits] Failed to get unpushed commits:" << error;
     return QStringList();
 }
@@ -950,19 +1015,27 @@ QStringList GitOperationService::getRemoteUpdates(const QString &repositoryPath,
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "log";
-    cmd.arguments = QStringList() << "log" << "--oneline" << "--no-merges" << ("HEAD.." + remoteBranch);
+    cmd.arguments = QStringList() << "log"
+                                  << "--oneline"
+                                  << "--no-merges" << ("HEAD.." + remoteBranch);
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 10000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
-        return output.split('\n', Qt::SkipEmptyParts);
+        return output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                            Qt::SkipEmptyParts
+#else
+                            QString::SkipEmptyParts
+#endif
+        );
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::getRemoteUpdates] Failed to get remote updates:" << error;
     return QStringList();
 }
@@ -971,19 +1044,20 @@ bool GitOperationService::hasLocalChanges(const QString &repositoryPath)
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "status";
-    cmd.arguments = QStringList() << "status" << "--porcelain";
+    cmd.arguments = QStringList() << "status"
+                                  << "--porcelain";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
         return !output.trimmed().isEmpty();
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::hasLocalChanges] Failed to check local changes:" << error;
     return false;
 }
@@ -992,29 +1066,36 @@ bool GitOperationService::hasUncommittedChanges(const QString &repositoryPath)
 {
     GitCommandExecutor executor;
     QString output, error;
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "status";
-    cmd.arguments = QStringList() << "status" << "--porcelain";
+    cmd.arguments = QStringList() << "status"
+                                  << "--porcelain";
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 
     auto result = executor.executeCommand(cmd, output, error);
-    
+
     if (result == GitCommandExecutor::Result::Success) {
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-        
+        QStringList lines = output.split('\n',
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                         Qt::SkipEmptyParts
+#else
+                                         QString::SkipEmptyParts
+#endif
+        );
+
         for (const QString &line : lines) {
             if (line.length() >= 2) {
                 QChar worktree = line[1];
                 if (worktree != ' ' && worktree != '?') {
-                    return true; // 有工作区修改
+                    return true;   // 有工作区修改
                 }
             }
         }
         return false;
     }
-    
+
     qWarning() << "WARNING: [GitOperationService::hasUncommittedChanges] Failed to check uncommitted changes:" << error;
     return false;
 }
@@ -1023,16 +1104,16 @@ bool GitOperationService::hasUncommittedChanges(const QString &repositoryPath)
 // 私有辅助方法实现
 // ============================================================================
 
-void GitOperationService::executeSilentOperation(const QString &operation, const QString &workingDir, 
+void GitOperationService::executeSilentOperation(const QString &operation, const QString &workingDir,
                                                  const QStringList &arguments)
 {
     qInfo() << "INFO: [GitOperationService::executeSilentOperation] Starting" << operation << "operation...";
-    
+
     GitCommandExecutor::GitCommand cmd;
     cmd.command = operation;
     cmd.arguments = arguments;
     cmd.workingDirectory = workingDir;
-    cmd.timeout = 10000; // 10秒超时
+    cmd.timeout = 10000;   // 10秒超时
 
     QString output, error;
     GitCommandExecutor::Result result = m_executor->executeCommand(cmd, output, error);
@@ -1048,8 +1129,8 @@ void GitOperationService::executeSilentOperation(const QString &operation, const
     }
 }
 
-void GitOperationService::executeInteractiveOperation(const QString &operation, const QString &workingDir, 
-                                                     const QStringList &arguments)
+void GitOperationService::executeInteractiveOperation(const QString &operation, const QString &workingDir,
+                                                      const QStringList &arguments)
 {
     if (!QApplication::instance()) {
         qCritical() << "ERROR: [GitOperationService::executeInteractiveOperation] No QApplication instance found";
@@ -1078,7 +1159,7 @@ void GitOperationService::executeInteractiveOperation(const QString &operation, 
     connect(dialog, &QDialog::finished, this, [this, operation, dialog](int result) {
         bool success = (result == QDialog::Accepted);
         QString message;
-        
+
         if (success) {
             message = QObject::tr("%1 operation completed successfully").arg(operation);
             qInfo() << "INFO: [GitOperationService::executeInteractiveOperation] Operation completed successfully:" << operation;
@@ -1092,7 +1173,7 @@ void GitOperationService::executeInteractiveOperation(const QString &operation, 
             }
             qWarning() << "WARNING: [GitOperationService::executeInteractiveOperation] Operation failed or cancelled:" << operation;
         }
-        
+
         // 发射操作完成信号
         emit operationCompleted(operation, success, message);
     });
@@ -1100,18 +1181,18 @@ void GitOperationService::executeInteractiveOperation(const QString &operation, 
     // 执行命令并显示对话框
     dialog->executeCommand(workingDir, arguments);
     dialog->show();
-    
-    qInfo() << "INFO: [GitOperationService::executeInteractiveOperation] Started interactive operation:" 
+
+    qInfo() << "INFO: [GitOperationService::executeInteractiveOperation] Started interactive operation:"
             << operation << "with arguments:" << arguments;
 }
 
 void GitOperationService::showSuccessNotification(const QString &operation)
 {
     qInfo() << "INFO: [GitOperationService::showSuccessNotification] Git" << operation << "operation completed successfully";
-    
+
     // TODO: 集成系统通知
     // 示例代码（需要libnotify支持）：
-    // notify_notification_new("Git Operation", 
+    // notify_notification_new("Git Operation",
     //                        QString("Git %1 completed successfully").arg(operation).toUtf8().data(),
     //                        "vcs-normal");
 }
@@ -1122,12 +1203,12 @@ QString GitOperationService::resolveRepositoryPath(const std::string &filePath)
     return executor.resolveRepositoryPath(QString::fromStdString(filePath));
 }
 
-QStringList GitOperationService::buildFileArguments(const QString &operation, const QString &repoPath, 
-                                                   const std::list<std::string> &pathList)
+QStringList GitOperationService::buildFileArguments(const QString &operation, const QString &repoPath,
+                                                    const std::list<std::string> &pathList)
 {
     QStringList args { operation };
     GitCommandExecutor executor;
-    
+
     for (const auto &pathStr : pathList) {
         const QString filePath = QString::fromStdString(pathStr);
         QString relativePath = executor.makeRelativePath(repoPath, filePath);
@@ -1135,20 +1216,20 @@ QStringList GitOperationService::buildFileArguments(const QString &operation, co
             args << relativePath;
         }
     }
-    
+
     return args;
 }
 
 void GitOperationService::onCommandFinished(const QString &command, GitCommandExecutor::Result result,
-                                           const QString &output, const QString &error)
+                                            const QString &output, const QString &error)
 {
     bool success = (result == GitCommandExecutor::Result::Success);
-    
+
     // 特殊处理测试连接命令
     if (command == "ls-remote") {
         QString remoteName = m_currentTestingRemote.isEmpty() ? "unknown" : m_currentTestingRemote;
         QString message;
-        
+
         if (success) {
             message = tr("Remote connection successful");
             qInfo() << "INFO: [GitOperationService::onCommandFinished] Remote connection test successful for:" << remoteName;
@@ -1156,18 +1237,18 @@ void GitOperationService::onCommandFinished(const QString &command, GitCommandEx
             message = tr("Remote connection failed: %1").arg(error);
             qWarning() << "WARNING: [GitOperationService::onCommandFinished] Remote connection test failed for:" << remoteName << "error:" << error;
         }
-        
+
         emit remoteConnectionTestCompleted(remoteName, success, message);
-        
+
         // 清空当前测试的远程名称
         m_currentTestingRemote.clear();
         return;
     }
-    
+
     // 处理其他命令
     emit operationCompleted(command, success);
-    
+
     if (success) {
         emit fileManagerRefreshRequested();
     }
-} 
+}

@@ -4,6 +4,7 @@
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QDebug>
 
 GitOperationDialog::GitOperationDialog(const QString &operation, QWidget *parent)
     : QDialog(parent),
