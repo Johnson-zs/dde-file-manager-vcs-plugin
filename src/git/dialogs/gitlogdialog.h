@@ -221,7 +221,7 @@ private:
     // === 功能控制选项 ===
     bool m_enableChangeStats;
 
-    static const int DEFAULT_COMMIT_LIMIT = 1000;
+    static const int DEFAULT_COMMIT_LIMIT = 100;
 };
 
 #endif   // GITLOGDIALOG_H
