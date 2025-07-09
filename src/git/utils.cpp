@@ -357,12 +357,9 @@ bool canStashFile(const QString &filePath)
 
     // 检查文件的Git状态
     Global::ItemVersion status = getFileGitStatus(filePath);
-    
+
     // 只有已修改、已添加或已删除的文件可以被stash
-    return status == Global::ItemVersion::LocallyModifiedVersion ||
-           status == Global::ItemVersion::LocallyModifiedUnstagedVersion ||
-           status == Global::ItemVersion::AddedVersion ||
-           status == Global::ItemVersion::RemovedVersion;
+    return status == Global::ItemVersion::LocallyModifiedVersion || status == Global::ItemVersion::LocallyModifiedUnstagedVersion || status == Global::ItemVersion::AddedVersion || status == Global::ItemVersion::RemovedVersion;
 }
 
 bool hasUncommittedChanges(const QString &repositoryPath)
@@ -370,12 +367,12 @@ bool hasUncommittedChanges(const QString &repositoryPath)
     QProcess process;
     process.setWorkingDirectory(repositoryPath);
     process.start("git", { "status", "--porcelain" });
-    
+
     if (process.waitForFinished(5000) && process.exitCode() == 0) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
         return !output.trimmed().isEmpty();
     }
-    
+
     return false;
 }
 
@@ -384,12 +381,12 @@ bool hasStashes(const QString &repositoryPath)
     QProcess process;
     process.setWorkingDirectory(repositoryPath);
     process.start("git", { "stash", "list" });
-    
+
     if (process.waitForFinished(5000) && process.exitCode() == 0) {
         QString output = QString::fromUtf8(process.readAllStandardOutput());
         return !output.trimmed().isEmpty();
     }
-    
+
     return false;
 }
 
@@ -436,7 +433,7 @@ QString getBranchName(const QString &repositoryPath)
 {
     QProcess process;
     process.setWorkingDirectory(repositoryPath);
-    process.start("git", { "branch", "--show-current" });
+    process.start("git", { "symbolic-ref", "--short", "HEAD" });
 
     if (process.waitForFinished(3000) && process.exitCode() == 0) {
         QString branchName = QString::fromUtf8(process.readAllStandardOutput()).trimmed();

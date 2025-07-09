@@ -950,8 +950,7 @@ QString GitOperationService::getCurrentBranch(const QString &repositoryPath)
 
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "branch"
-                                  << "--show-current";
+    cmd.arguments = QStringList { "symbolic-ref", "--short", "HEAD" };
     cmd.workingDirectory = repositoryPath;
     cmd.timeout = 5000;
 

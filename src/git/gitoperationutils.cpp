@@ -56,7 +56,7 @@ GitOperationResult GitOperationUtils::resetFiles(const QString &repositoryPath, 
 
 QString GitOperationUtils::getCurrentBranch(const QString &repositoryPath)
 {
-    auto result = executeGitCommand(repositoryPath, { "branch", "--show-current" }, 3000);
+    auto result = executeGitCommand(repositoryPath, { "symbolic-ref", "--short", "HEAD" }, 3000);
     if (result.success) {
         QString branch = result.output.trimmed();
         if (!branch.isEmpty()) {

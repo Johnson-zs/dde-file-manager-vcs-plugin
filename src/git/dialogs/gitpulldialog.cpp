@@ -365,8 +365,7 @@ void GitPullDialog::loadBranches()
     // 获取当前分支
     GitCommandExecutor::GitCommand cmd;
     cmd.command = "branch";
-    cmd.arguments = QStringList() << "branch"
-                                  << "--show-current";
+    cmd.arguments = QStringList { "symbolic-ref", "--short", "HEAD" };
     cmd.workingDirectory = m_repositoryPath;
     cmd.timeout = 5000;
 
