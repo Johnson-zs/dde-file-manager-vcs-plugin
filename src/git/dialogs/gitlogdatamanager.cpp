@@ -378,7 +378,8 @@ bool GitLogDataManager::loadFileDiff(const QString &commitHash, const QString &f
         return true;
     }
 
-    QStringList args = { "show", commitHash, "--", filePath };
+    // 修复：使用--format=""来只显示文件diff内容，不包含commit message
+    QStringList args = { "show", "--format=", commitHash, "--", filePath };
     QString output, error;
 
     if (!executeGitCommand(args, output, error)) {

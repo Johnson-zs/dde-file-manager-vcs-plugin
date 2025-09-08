@@ -255,8 +255,8 @@ void GitDiffDialog::loadCommitFileDiff(const QString &filePath, const QString &c
     QDir repoDir(m_repositoryPath);
     QString relativePath = repoDir.relativeFilePath(filePath);
 
-    // === 关键：使用git show命令显示特定commit的文件差异 ===
-    QStringList args { "show", "--color=never", commitHash, "--", relativePath };
+    // === 关键：使用git show命令显示特定commit的文件差异，--format=""排除commit message ===
+    QStringList args { "show", "--format=", "--color=never", commitHash, "--", relativePath };
     process.start("git", args);
 
     if (process.waitForFinished(10000)) {  // commit diff可能需要更长时间
