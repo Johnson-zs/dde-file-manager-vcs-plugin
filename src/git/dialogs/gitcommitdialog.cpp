@@ -448,10 +448,14 @@ void GitCommitDialog::setupUI()
 
     m_messageEdit = new QTextEdit(this);
     m_messageEdit->setAcceptRichText(false);
-    m_messageEdit->setMaximumHeight(150);
     m_messageEdit->setPlaceholderText(tr("feat: add new feature\n\nDetailed description of the changes..."));
     m_messageEdit->setFont(QFont("Courier", 10));
     messageLayout->addWidget(m_messageEdit);
+
+    // Give the message edit more vertical space than the hint label so the editor
+    // grows preferentially when the dialog is resized.
+    messageLayout->setStretch(0, 0);
+    messageLayout->setStretch(1, 1);
 
     m_mainSplitter->addWidget(m_messageGroup);
 
