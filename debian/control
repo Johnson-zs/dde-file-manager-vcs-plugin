@@ -21,7 +21,8 @@ Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          dde-file-manager,
-         git
+         git,
+         papirus-icon-theme
 Replaces: dde-file-manager-vcs-plugin (<< 0.7.0)
 Breaks: dde-file-manager-vcs-plugin (<< 0.7.0)
 Conflicts: dde-file-manager-vcs-plugin
@@ -40,7 +41,8 @@ Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          dde-file-manager,
-         git
+         git,
+         papirus-icon-theme
 Replaces: dde-file-manager-vcs-plugin (<< 0.7.0)
 Breaks: dde-file-manager-vcs-plugin (<< 0.7.0)
 Conflicts: dde-file-manager-vcs-plugin
